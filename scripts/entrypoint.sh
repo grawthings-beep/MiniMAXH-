@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 COMFYUI_ROOT="${COMFYUI_ROOT:-/opt/ComfyUI}"
 MODEL_DIR="${COMFYUI_MODEL_DIR:-${COMFYUI_ROOT}/models}"
-MANIFEST="${MODEL_MANIFEST:-${PROJECT_DIR}/manifests/minimax_h3_i2v.json}"
+MANIFEST="${MODEL_MANIFEST:-${PROJECT_DIR}/manifests/minimax_h3_all.json}"
 
 if [[ "${ACCEPT_MINIMAX_H3_LICENSE:-0}" != "1" ]]; then
   echo "MiniMax H3 model download was not started."
@@ -48,7 +48,13 @@ check_deployment_territory
 mkdir -p "${MODEL_DIR}" "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V.json"
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality.json"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache.json"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json"
 
 python "${SCRIPT_DIR}/preflight.py" \
   --manifest "${MANIFEST}" \

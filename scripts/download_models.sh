@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-MANIFEST="${MODEL_MANIFEST:-${PROJECT_DIR}/manifests/minimax_h3_i2v.json}"
+MANIFEST="${MODEL_MANIFEST:-${PROJECT_DIR}/manifests/minimax_h3_all.json}"
 MODEL_DIR="${COMFYUI_MODEL_DIR:-/opt/ComfyUI/models}"
 VERIFY_MODE="${MODEL_VERIFY:-sha256}"
 HF_DOWNLOAD_WORKERS="${HF_DOWNLOAD_WORKERS:-4}"
@@ -116,7 +116,7 @@ download_with_aria2() {
 }
 
 start_epoch="$(date +%s)"
-echo "[download] MiniMax H3 I2V: ${TOTAL_BYTES} bytes from ${REPO_ID}@${REVISION}"
+echo "[download] MiniMax H3 I2V+R2V: ${TOTAL_BYTES} bytes from ${REPO_ID}@${REVISION}"
 
 for ((attempt = 1; attempt <= DOWNLOAD_RETRIES; attempt++)); do
   echo "[download] Xet attempt ${attempt}/${DOWNLOAD_RETRIES}"

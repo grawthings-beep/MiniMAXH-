@@ -1,7 +1,7 @@
 {
-  "name": "MiniMax-H3-I2V-Ephemeral-Xet",
-  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.1.0",
-  "containerDiskInGb": 90,
+  "name": "MiniMax-H3-I2V-R2V-Ephemeral-Xet",
+  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.2.0",
+  "containerDiskInGb": 120,
   "volumeInGb": 0,
   "volumeMountPath": "/workspace",
   "ports": [
@@ -10,8 +10,13 @@
   "env": {
     "ACCEPT_MINIMAX_H3_LICENSE": "0",
     "MINIMAX_H3_SEPARATE_LICENSE": "0",
+    "MINIMAX_H3_DEPLOYMENT_ALLOWED": "0",
+    "TINI_SUBREAPER": "1",
     "HF_XET_HIGH_PERFORMANCE": "auto",
+    "HF_XET_CHUNK_CACHE_SIZE_BYTES": "0",
     "HF_DOWNLOAD_WORKERS": "4",
+    "HF_HUB_DOWNLOAD_TIMEOUT": "120",
+    "DOWNLOAD_RETRIES": "3",
     "MODEL_VERIFY": "sha256"
   }
 }

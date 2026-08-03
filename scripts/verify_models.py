@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the exact MiniMax H3 I2V model files from a pinned manifest."""
+"""Verify exact MiniMax H3 model files from a pinned manifest."""
 
 from __future__ import annotations
 
@@ -86,4 +86,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
