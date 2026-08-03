@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     COMFYUI_ROOT=/opt/ComfyUI \
     COMFYUI_MODEL_DIR=/opt/ComfyUI/models \
-    MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_i2v.json \
+    MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_all.json \
     HF_HOME=/tmp/huggingface \
     HF_XET_HIGH_PERFORMANCE=auto \
     HF_XET_CHUNK_CACHE_SIZE_BYTES=0 \
@@ -42,10 +42,36 @@ COPY . /opt/minimax-h3
 RUN chmod +x /opt/minimax-h3/scripts/*.sh /opt/minimax-h3/scripts/*.py \
     && mkdir -p "${COMFYUI_ROOT}/user/default/workflows" \
     && cp /opt/minimax-h3/workflows/minimax_h3_i2v.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V.json" \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_i2v_easycache.json \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_r2v.json \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_r2v_easycache.json \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_i2v.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v.json \
+      --mode i2v \
+      --comfyui-root "${COMFYUI_ROOT}" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_i2v_easycache.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_i2v.json \
+      --mode i2v \
+      --expect-easycache \
+      --comfyui-root "${COMFYUI_ROOT}" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_r2v.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_r2v.json \
+      --mode r2v \
+      --require-video-reference \
+      --comfyui-root "${COMFYUI_ROOT}" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_r2v_easycache.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_r2v.json \
+      --mode r2v \
+      --expect-easycache \
+      --require-video-reference \
       --comfyui-root "${COMFYUI_ROOT}"
 
 WORKDIR /opt/ComfyUI

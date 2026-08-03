@@ -10,41 +10,125 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = ROOT / "manifests" / "minimax_h3_i2v.json"
-WORKFLOW = ROOT / "workflows" / "minimax_h3_i2v.json"
+MANIFESTS = ROOT / "manifests"
+WORKFLOWS = ROOT / "workflows"
 
 
 class AssetTests(unittest.TestCase):
-    def test_manifest_is_exact_i2v_set(self) -> None:
-        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-        files = manifest["files"]
-        paths = {item["path"] for item in files}
-        self.assertEqual(manifest["total_bytes"], sum(item["size"] for item in files))
-        self.assertEqual(len(paths), 4)
-        self.assertIn(
-            "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
-            paths,
-        )
-        self.assertFalse(any("ref2va" in path for path in paths))
-        for item in files:
-            self.assertRegex(item["sha256"], r"^[0-9a-f]{64}$")
-            self.assertGreater(item["size"], 0)
+    def load_manifest(self, name: str) -> dict[str, object]:
+        return json.loads((MANIFESTS / name).read_text(encoding="utf-8"))
 
-    def test_workflow_is_pinned_upstream_asset(self) -> None:
-        digest = hashlib.sha256(WORKFLOW.read_bytes()).hexdigest()
-        self.assertEqual(
-            digest, "bb71aecdd3c0b62e56eafe03acb14d1cfeabec7072eaed9cbdf473c2aaf73009"
-        )
-        workflow = json.loads(WORKFLOW.read_text(encoding="utf-8"))
-        serialized = json.dumps(workflow)
-        self.assertIn("minimax_h3_fl2va_pruned_int8_convrot.safetensors", serialized)
-        self.assertNotIn("minimax_h3_ref2va", serialized)
-        self.assertIn("MiniMaxH3ImageToVideo", serialized)
+    def test_manifests_cover_i2v_r2v_and_combined_download(self) -> None:
+        i2v = self.load_manifest("minimax_h3_i2v.json")
+        r2v = self.load_manifest("minimax_h3_r2v.json")
+        combined = self.load_manifest("minimax_h3_all.json")
+        sets = {
+            "i2v": {item["path"] for item in i2v["files"]},
+            "r2v": {item["path"] for item in r2v["files"]},
+            "combined": {item["path"] for item in combined["files"]},
+        }
+        self.assertEqual(len(sets["i2v"]), 4)
+        self.assertEqual(len(sets["r2v"]), 4)
+        self.assertEqual(len(sets["combined"]), 5)
+        self.assertTrue(any("fl2va" in path for path in sets["i2v"]))
+        self.assertFalse(any("ref2va" in path for path in sets["i2v"]))
+        self.assertTrue(any("ref2va" in path for path in sets["r2v"]))
+        self.assertFalse(any("fl2va" in path for path in sets["r2v"]))
+        self.assertEqual(sets["combined"], sets["i2v"] | sets["r2v"])
+        for manifest in (i2v, r2v, combined):
+            self.assertEqual(
+                manifest["total_bytes"], sum(item["size"] for item in manifest["files"])
+            )
+            for item in manifest["files"]:
+                self.assertRegex(item["sha256"], r"^[0-9a-f]{64}$")
+                self.assertGreater(item["size"], 0)
 
-    def test_dockerfile_pins_comfyui(self) -> None:
+    def test_upstream_workflows_are_pinned(self) -> None:
+        expected = {
+            "minimax_h3_i2v.json": "bb71aecdd3c0b62e56eafe03acb14d1cfeabec7072eaed9cbdf473c2aaf73009",
+            "upstream_minimax_h3_r2v.json": "6d36bacc5e09ae9168e703cf42d817ee78d44329b96369a3fdce123750e98247",
+        }
+        for name, digest in expected.items():
+            self.assertEqual(hashlib.sha256((WORKFLOWS / name).read_bytes()).hexdigest(), digest)
+
+    def test_generated_workflows_are_reproducible(self) -> None:
+        generated_names = (
+            "minimax_h3_r2v.json",
+            "minimax_h3_i2v_easycache.json",
+            "minimax_h3_r2v_easycache.json",
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "build_workflows.py"),
+                    "--i2v-source",
+                    str(WORKFLOWS / "minimax_h3_i2v.json"),
+                    "--r2v-upstream",
+                    str(WORKFLOWS / "upstream_minimax_h3_r2v.json"),
+                    "--output-dir",
+                    temp,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for name in generated_names:
+                self.assertEqual((Path(temp) / name).read_bytes(), (WORKFLOWS / name).read_bytes())
+
+    def test_quality_and_fast_workflows_verify(self) -> None:
+        cases = (
+            ("minimax_h3_i2v.json", "minimax_h3_i2v.json", "i2v", []),
+            (
+                "minimax_h3_i2v_easycache.json",
+                "minimax_h3_i2v.json",
+                "i2v",
+                ["--expect-easycache"],
+            ),
+            (
+                "minimax_h3_r2v.json",
+                "minimax_h3_r2v.json",
+                "r2v",
+                ["--require-video-reference"],
+            ),
+            (
+                "minimax_h3_r2v_easycache.json",
+                "minimax_h3_r2v.json",
+                "r2v",
+                ["--expect-easycache", "--require-video-reference"],
+            ),
+        )
+        for workflow, manifest, mode, extra in cases:
+            with self.subTest(workflow=workflow):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(ROOT / "scripts" / "verify_workflow.py"),
+                        "--workflow",
+                        str(WORKFLOWS / workflow),
+                        "--manifest",
+                        str(MANIFESTS / manifest),
+                        "--mode",
+                        mode,
+                        *extra,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(mode.upper(), result.stdout)
+
+    def test_dockerfile_pins_comfyui_and_installs_four_workflows(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn("ARG COMFYUI_VERSION=v0.30.0", dockerfile)
         self.assertRegex(dockerfile, r"ARG COMFYUI_COMMIT=[0-9a-f]{40}")
+        self.assertIn("manifests/minimax_h3_all.json", dockerfile)
+        self.assertIn("MiniMax_H3_I2V_Quality.json", dockerfile)
+        self.assertIn("MiniMax_H3_I2V_Fast_EasyCache.json", dockerfile)
+        self.assertIn("MiniMax_H3_R2V_Quality.json", dockerfile)
+        self.assertIn("MiniMax_H3_R2V_Fast_EasyCache.json", dockerfile)
         self.assertIn("HF_XET_HIGH_PERFORMANCE=auto", dockerfile)
         self.assertNotIn("HF_HUB_ENABLE_HF_TRANSFER", dockerfile)
         self.assertIn("--start-period=30m", dockerfile)
@@ -57,6 +141,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("RUNPOD_DC_ID", entrypoint)
         self.assertIn("MINIMAX_H3_SEPARATE_LICENSE", entrypoint)
         self.assertIn("US-*|EU-*", entrypoint)
+        self.assertIn("manifests/minimax_h3_all.json", entrypoint)
 
     def test_required_minimax_notice_is_present(self) -> None:
         notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
@@ -98,23 +183,6 @@ class AssetTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("Verified 1 files", result.stdout)
-
-    def test_workflow_models_match_manifest_exactly(self) -> None:
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(ROOT / "scripts" / "verify_workflow.py"),
-                "--workflow",
-                str(WORKFLOW),
-                "--manifest",
-                str(MANIFEST),
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("4 models", result.stdout)
 
 
 if __name__ == "__main__":

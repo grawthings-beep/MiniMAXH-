@@ -24,11 +24,31 @@ jobs:
           python scripts/verify_workflow.py \
             --workflow workflows/minimax_h3_i2v.json \
             --manifest manifests/minimax_h3_i2v.json \
+            --mode i2v \
+            --comfyui-root .ci-ComfyUI
+          python scripts/verify_workflow.py \
+            --workflow workflows/minimax_h3_i2v_easycache.json \
+            --manifest manifests/minimax_h3_i2v.json \
+            --mode i2v \
+            --expect-easycache \
+            --comfyui-root .ci-ComfyUI
+          python scripts/verify_workflow.py \
+            --workflow workflows/minimax_h3_r2v.json \
+            --manifest manifests/minimax_h3_r2v.json \
+            --mode r2v \
+            --require-video-reference \
+            --comfyui-root .ci-ComfyUI
+          python scripts/verify_workflow.py \
+            --workflow workflows/minimax_h3_r2v_easycache.json \
+            --manifest manifests/minimax_h3_r2v.json \
+            --mode r2v \
+            --expect-easycache \
+            --require-video-reference \
             --comfyui-root .ci-ComfyUI
       - name: Validate shell scripts
         run: bash -n scripts/entrypoint.sh scripts/download_models.sh
       - name: Validate JSON
         run: |
-          python -m json.tool manifests/minimax_h3_i2v.json >/dev/null
-          python -m json.tool workflows/minimax_h3_i2v.json >/dev/null
-          python -m json.tool runpod-template.example.json >/dev/null
+          for file in manifests/*.json workflows/*.json runpod-template.example.json; do
+            python -m json.tool "$file" >/dev/null
+          done

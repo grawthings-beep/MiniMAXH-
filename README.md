@@ -1,39 +1,42 @@
-# MiniMax H3 I2V for ephemeral RunPod Pods
+# MiniMax H3 I2V + R2V for ephemeral RunPod Pods
 
-MiniMax H3の画像→動画生成だけを、永続ストレージなしのRunPod Podで起動する構成です。
-公式ComfyUI I2Vワークフロー、ネイティブステレオ音声、開始／終了フレーム制御に対応します。
+MiniMax H3の画像→動画とマルチモーダル参照→動画を、永続ストレージなしのRunPod Podで起動する構成です。
+I2V、開始／終了フレーム、複数画像、参照動画の動き・カメラ・付随音声、ネイティブステレオ音声に対応します。
 
-モデルをDockerイメージへ埋め込まず、Pod起動時にHugging Face Xetから約42.5GBを高速取得します。
+モデルをDockerイメージへ埋め込まず、Pod起動時にHugging Face Xetから約63.4GBを高速取得します。
 Podを破棄するとモデルと出力は消えます。
 
 ## 構成
 
 - ComfyUI `v0.30.0`をコミットまで固定
-- MiniMax H3 `FL2VA`のpruned INT8モデルのみ
+- MiniMax H3 `FL2VA`と`REF2VA`のpruned INT8モデル
 - Qwen3-VL-32B NVFP4/AWQテキストエンコーダー
 - Video VAEと32kHzステレオAudio VAE
 - Hugging Face `hf_xet`のRAM連動High Performance／Adaptive切替
-- 4ファイルの並列取得、3回の再試行、途中再開
+- 5ファイルの並列取得、3回の再試行、途中再開
 - Xet失敗時のaria2並列Range Downloadフォールバック
 - 公式LFS SHA256による完全検証
 - GPU、VRAM、RAM、空き容量の起動前診断
 - GPU VRAMに応じた解像度プロファイルの提案
-- 公式I2Vワークフローの全モデルと全ノードをビルド時に照合
+- I2V/R2VのQuality版とEasyCache Fast版を収録
+- 全モデル、全ノード、EasyCache配線、動画・音声参照配線をビルド時に照合
 
 モデルの正確なリビジョン、サイズ、SHA256は
-[`manifests/minimax_h3_i2v.json`](manifests/minimax_h3_i2v.json)に固定しています。
+[`manifests/minimax_h3_all.json`](manifests/minimax_h3_all.json)に固定しています。
+モード別の厳密な検証用manifestも同じディレクトリに収録しています。
 
 ## 必要容量
 
 | ファイル | 容量 |
 |---|---:|
 | FL2VA pruned INT8 | 20.97 GB |
+| REF2VA pruned INT8 | 20.97 GB |
 | Qwen3-VL-32B NVFP4/AWQ | 15.69 GB |
 | Video VAE | 5.21 GB |
 | Audio VAE | 0.61 GB |
-| 合計 | 42.47 GB（39.55 GiB） |
+| 合計 | 63.44 GB（59.08 GiB） |
 
-RunPodのContainer Diskは、再構築バッファと出力領域を含めて90GBを推奨します。
+RunPodのContainer Diskは、再構築バッファ、入力動画、出力領域を含めて120GBを推奨します。
 Volume DiskやNetwork Volumeは使用しません。
 
 ## 初回セットアップ
@@ -68,8 +71,8 @@ RunPod以外で`RUNPOD_DC_ID`が存在しない場合は、計算場所を確認
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.1.0 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.1.0
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.2.0 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.2.0
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
@@ -79,7 +82,7 @@ docker push ghcr.io/OWNER/minimax-h3-i2v:0.1.0
 
 [`runpod-template.example.json`](runpod-template.example.json)を基準にCustom Templateを作成します。
 
-- Container Disk: 90GB
+- Container Disk: 120GB
 - Volume Disk: 0GB
 - Expose HTTP Port: `8188`
 - Docker image: 上で公開した固定タグ
@@ -99,7 +102,12 @@ Podログには次の順で状態が表示されます。
 5. ComfyUI `8188`起動
 
 RunPodの`Connect to HTTP Service [Port 8188]`からComfyUIを開き、
-`MiniMax_H3_I2V`ワークフローをロードします。
+次の4ワークフローから選びます。
+
+- `MiniMax_H3_I2V_Quality`
+- `MiniMax_H3_I2V_Fast_EasyCache`
+- `MiniMax_H3_R2V_Quality`
+- `MiniMax_H3_R2V_Fast_EasyCache`
 
 ## 高速ダウンロード
 
@@ -118,7 +126,7 @@ MODEL_VERIFY=sha256
 ```
 
 新規ファイルだけを毎回取得する用途では、Xet chunk cacheを無効にした方が高速です。
-4つの大型ファイルは同時に取得され、各ファイル内部でもXetがRange Downloadを並列化します。
+5つの大型ファイルは同時に取得され、各ファイル内部でもXetがRange Downloadを並列化します。
 `auto`では64GB級以上のRAMを検出した場合だけHigh Performanceを有効にし、
 それ未満ではメモリ効率のよいAdaptive Concurrencyを使います。強制する場合は`1`または`0`を指定できます。
 
@@ -128,12 +136,12 @@ RunPodのsecret環境変数`HF_TOKEN`として設定することを推奨しま�
 
 理論上のモデル取得時間は次の通りです。実測値はPodのネットワーク、NVMe、Hugging Face側の混雑で変わります。
 
-| 実効回線速度 | 42.47GBの理論時間 |
+| 実効回線速度 | 63.44GBの理論時間 |
 |---:|---:|
-| 1 Gbit/s | 約5分40秒 |
-| 2 Gbit/s | 約2分50秒 |
-| 5 Gbit/s | 約1分08秒 |
-| 10 Gbit/s | 約34秒 |
+| 1 Gbit/s | 約8分28秒 |
+| 2 Gbit/s | 約4分14秒 |
+| 5 Gbit/s | 約1分42秒 |
+| 10 Gbit/s | 約51秒 |
 
 完全SHA256検証には追加でローカルNVMeの読み取り時間がかかります。速度優先なら
 `MODEL_VERIFY=size`を指定できますが、既定は安全側の`sha256`です。
@@ -164,6 +172,19 @@ Comfy-Org公式I2Vテンプレートを固定コミットから無変更で収�
 - 映像とステレオ音声を同時生成
 - 既定20 steps、`res_multistep`
 
+[`workflows/minimax_h3_r2v.json`](workflows/minimax_h3_r2v.json)は、公式R2Vテンプレートへ
+ComfyUI標準の`LoadVideo → GetVideoComponents`を接続したマルチモーダル版です。
+
+- 2枚の参照画像を`<Picture 1>`、`<Picture 2>`として使用
+- 参照動画の全フレームを`<Video 1>`として使用
+- 参照動画の付随音声も同時にH3へ入力
+- `res_multistep`、20 steps、`normal` scheduler
+- `ref_image_size=match`を既定にして速度とVRAMを優先
+
+`*_easycache.json`はComfyUI標準EasyCacheを使用するFast版です。既定値は
+`reuse_threshold=0.20`、`start_percent=0.15`、`end_percent=0.95`、`verbose=true`です。
+近似キャッシュにより一部のdiffusion stepを省略するため、最終品質ではQuality版と同一seedで比較してください。
+
 入力画像と出力のアスペクト比が一致しない場合、H3コアノードでは開始画像が引き伸ばされるため、
 公式ワークフローの画像サイズ連動を維持してください。
 
@@ -177,17 +198,18 @@ Comfy-Org公式I2Vテンプレートを固定コミットから無変更で収�
 
 ```bash
 python -m unittest discover -s tests -v
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v.json --manifest manifests/minimax_h3_i2v.json --comfyui-root /path/to/ComfyUI
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v.json --manifest manifests/minimax_h3_i2v.json --mode i2v --comfyui-root /path/to/ComfyUI
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_r2v_easycache.json --manifest manifests/minimax_h3_r2v.json --mode r2v --expect-easycache --require-video-reference --comfyui-root /path/to/ComfyUI
 bash -n scripts/entrypoint.sh scripts/download_models.sh
-python -m json.tool manifests/minimax_h3_i2v.json >/dev/null
-python -m json.tool workflows/minimax_h3_i2v.json >/dev/null
+python -m json.tool manifests/minimax_h3_all.json >/dev/null
+python -m json.tool workflows/minimax_h3_r2v_easycache.json >/dev/null
 ```
 
-実際の生成テストにはNVIDIA GPUと約42.5GBのモデル取得が必要です。
+実際の生成テストにはNVIDIA GPUと約63.4GBのモデル取得が必要です。
 
 ## 調査根拠
 
-- [ComfyUI公式MiniMax H3 I2Vガイド](https://docs.comfy.org/tutorials/video/minimax/minimax-h3)
+- [ComfyUI公式MiniMax H3 I2V/R2Vガイド](https://docs.comfy.org/tutorials/video/minimax/minimax-h3)
 - [ComfyUI v0.30.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.30.0)
 - [Comfy-Org公式モデル配布](https://huggingface.co/Comfy-Org/MiniMax-H3)
 - [Hugging Face Xetの性能設定](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
