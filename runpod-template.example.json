@@ -1,0 +1,17 @@
+{
+  "name": "MiniMax-H3-I2V-Ephemeral-Xet",
+  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.1.0",
+  "containerDiskInGb": 90,
+  "volumeInGb": 0,
+  "volumeMountPath": "/workspace",
+  "ports": [
+    "8188/http"
+  ],
+  "env": {
+    "ACCEPT_MINIMAX_H3_LICENSE": "0",
+    "MINIMAX_H3_SEPARATE_LICENSE": "0",
+    "HF_XET_HIGH_PERFORMANCE": "auto",
+    "HF_DOWNLOAD_WORKERS": "4",
+    "MODEL_VERIFY": "sha256"
+  }
+}
