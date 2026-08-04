@@ -52,28 +52,33 @@ Volume DiskやNetwork Volumeは使用しません。
 
 ```text
 ACCEPT_MINIMAX_H3_LICENSE=1
+MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1
 ```
 
-`1`でなければモデルはダウンロードされません。
+`ACCEPT_MINIMAX_H3_LICENSE=1`はライセンスを確認・承諾したこと、
+`MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1`は利用者本人または組織が
+Applicable Territoryを拠点としていることの自己確認です。いずれも`1`でなければモデルは
+ダウンロードされません。
 
-Podは物理的な計算場所が許可地域にある必要があります。RunPodが自動設定する
-`RUNPOD_DC_ID`を起動時に検査し、`US-*`、`EU-*`、英国・韓国の識別子では停止します。
-現在のRunPod候補では、たとえば`AP-JP-1`、`CA-MTL-*`、`OC-AU-1`、
-`EUR-IS-*`、`EUR-NO-1`が除外地域外です。実際に表示される所在地と最新のライセンスを必ず確認してください。
+MiniMaxの[公式License Q&A](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/QA-about-License.md)は、
+個別許諾が必要な対象を`persons based in these regions`と説明しています。ライセンス本文は
+クラウド計算機の物理所在地を明示的に定義していないため、RunPodが自動設定する
+`RUNPOD_DC_ID`は診断情報として表示します。米国、EU、英国、韓国の識別子では注意を表示しますが、
+利用者所在地の自己確認後は停止しません。
 
-RunPod以外で`RUNPOD_DC_ID`が存在しない場合は、計算場所を確認したうえで
-`MINIMAX_H3_DEPLOYMENT_ALLOWED=1`を設定します。除外地域についてMiniMaxから別途許諾を
-得ている場合だけ`MINIMAX_H3_SEPARATE_LICENSE=1`を使用できます。
+利用者本人または組織が除外地域を拠点としている場合は、MiniMaxから別途許諾を得た場合だけ
+`MINIMAX_H3_SEPARATE_LICENSE=1`を使用できます。この場合、
+`MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1`は設定しません。
 
-このガードで確認できるのは計算場所だけです。利用者、配信先、Outputの利用も許可地域内に
-限定されます。第三者へ生成サービスを提供する場合の利用規約・安全対策・AI生成表示、
+このガードは法的判断を自動化するものではありません。利用者、配信先、Outputの利用にも
+ライセンス条件が適用されます。第三者へ生成サービスを提供する場合の利用規約・安全対策・AI生成表示、
 商用利用時の表示や一定規模以上の事前許諾など、ライセンス本文の追加条件も適用されます。
 
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.3.1 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.3.1
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.3.2 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.3.2
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
@@ -88,7 +93,7 @@ docker push ghcr.io/OWNER/minimax-h3-i2v:0.3.1
 - Expose HTTP Port: `8188`
 - Docker image: 上で公開した固定タグ
 - `ACCEPT_MINIMAX_H3_LICENSE=1`
-- Data center: MiniMax H3ライセンスの除外地域外
+- 日本など許可地域を拠点とする利用者は`MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1`
 
 GPUは起動のたびに変更できます。CUDA 13.0の公式カーネルを使うため、NVIDIA Driver
 `r580`以上のホストを選択してください。古いドライバーやCUDA 12.8へフォールバックしたPodは、

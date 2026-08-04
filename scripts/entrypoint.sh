@@ -14,28 +14,29 @@ if [[ "${ACCEPT_MINIMAX_H3_LICENSE:-0}" != "1" ]]; then
   exit 64
 fi
 
-check_deployment_territory() {
+check_licensee_territory() {
   local dc_id="${RUNPOD_DC_ID:-}"
   dc_id="${dc_id^^}"
 
+  if [[ "${MINIMAX_H3_SEPARATE_LICENSE:-0}" == "1" ]]; then
+    echo "[license] separate MiniMax authorization declared"
+  elif [[ "${MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY:-0}" == "1" ]]; then
+    echo "[license] licensee confirmed as based in the Applicable Territory"
+  else
+    echo "MiniMax H3 model download was not started."
+    echo "Confirm that the licensee is based in the Applicable Territory and set MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1."
+    echo "If the licensee is based in an Excluded Territory, use MINIMAX_H3_SEPARATE_LICENSE=1 only after MiniMax grants separate authorization."
+    exit 65
+  fi
+
   case "${dc_id}" in
     US-*|EU-*|UK-*|GB-*|KR-*|KOR-*|*-KR-*|*-KOR-*)
-      if [[ "${MINIMAX_H3_SEPARATE_LICENSE:-0}" != "1" ]]; then
-        echo "MiniMax H3 model download was not started."
-        echo "RunPod data center ${RUNPOD_DC_ID} is in a territory excluded by the community license."
-        echo "Choose an eligible data center, or set MINIMAX_H3_SEPARATE_LICENSE=1 only if MiniMax has granted you separate authorization."
-        exit 65
-      fi
-      echo "[license] separate territory authorization declared for ${RUNPOD_DC_ID}"
+      echo "[license] WARNING: RunPod data center ${RUNPOD_DC_ID} is physically in an Excluded Territory."
+      echo "[license] The official Q&A describes authorization in terms of where the licensee is based; the license does not explicitly define cloud compute location."
+      echo "[license] Continuing from the licensee declaration above. Review the current license for your deployment."
       ;;
     "")
-      if [[ "${MINIMAX_H3_DEPLOYMENT_ALLOWED:-0}" != "1" ]]; then
-        echo "MiniMax H3 model download was not started."
-        echo "RUNPOD_DC_ID is unavailable, so the deployment territory cannot be checked."
-        echo "After confirming the physical compute location is permitted, set MINIMAX_H3_DEPLOYMENT_ALLOWED=1."
-        exit 66
-      fi
-      echo "[license] deployment territory manually confirmed"
+      echo "[license] RunPod data center is unavailable; continuing from the licensee declaration above"
       ;;
     *)
       echo "[license] RunPod data center: ${RUNPOD_DC_ID}"
@@ -43,7 +44,7 @@ check_deployment_territory() {
   esac
 }
 
-check_deployment_territory
+check_licensee_territory
 
 mkdir -p "${MODEL_DIR}" "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
