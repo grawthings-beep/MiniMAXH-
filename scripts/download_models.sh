@@ -59,6 +59,36 @@ for item in json.load(open(sys.argv[1], encoding="utf-8"))["files"]:
     print(item["path"])
 PY
 )
+readarray -t HF_FILES < <(python - "${MANIFEST}" <<'PY'
+import json
+import sys
+for item in json.load(open(sys.argv[1], encoding="utf-8"))["files"]:
+    if "source_url" not in item:
+        print(item["path"])
+PY
+)
+readarray -t EXTERNAL_RECORDS < <(python - "${MANIFEST}" <<'PY'
+import json
+import sys
+for item in json.load(open(sys.argv[1], encoding="utf-8"))["files"]:
+    if "source_url" in item:
+        print(f'{item["path"]}\t{item["source_url"]}')
+PY
+)
+readarray -t ARIA_RECORDS < <(python - "${MANIFEST}" <<'PY'
+import json
+import sys
+manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+for item in manifest["files"]:
+    url = item.get("source_url")
+    if url is None:
+        url = (
+            f'https://huggingface.co/{manifest["repo_id"]}/resolve/'
+            f'{manifest["revision"]}/{item["path"]}?download=true'
+        )
+    print(f'{item["path"]}\t{url}')
+PY
+)
 
 mkdir -p "${MODEL_DIR}" "${HF_HOME}"
 
@@ -72,8 +102,11 @@ verify() {
 }
 
 download_with_xet() {
+  if ((${#HF_FILES[@]} == 0)); then
+    return 0
+  fi
   echo "[download] hf_xet with ${HF_DOWNLOAD_WORKERS} file workers"
-  hf download "${REPO_ID}" "${FILES[@]}" \
+  hf download "${REPO_ID}" "${HF_FILES[@]}" \
     --revision "${REVISION}" \
     --local-dir "${MODEL_DIR}" \
     --max-workers "${HF_DOWNLOAD_WORKERS}"
@@ -81,6 +114,7 @@ download_with_xet() {
 
 download_one_with_aria2() {
   local relative="$1"
+  local url="$2"
   local destination="${MODEL_DIR}/${relative}"
   local directory
   directory="$(dirname -- "${destination}")"
@@ -98,15 +132,23 @@ download_one_with_aria2() {
     --allow-overwrite=true \
     --dir="${directory}" \
     --out="$(basename -- "${relative}")" \
-    "https://huggingface.co/${REPO_ID}/resolve/${REVISION}/${relative}?download=true"
+    "${url}"
 }
 
-download_with_aria2() {
-  echo "[download] Xet retries exhausted; using parallel aria2 range fallback"
+download_records() {
+  local label="$1"
+  shift
+  local records=("$@")
+  if ((${#records[@]} == 0)); then
+    return 0
+  fi
+  echo "[download] ${label}: ${#records[@]} file(s) with parallel aria2 ranges"
   local pids=()
   local status=0
-  for relative in "${FILES[@]}"; do
-    download_one_with_aria2 "${relative}" &
+  local record relative url
+  for record in "${records[@]}"; do
+    IFS=$'\t' read -r relative url <<< "${record}"
+    download_one_with_aria2 "${relative}" "${url}" &
     pids+=("$!")
   done
   for pid in "${pids[@]}"; do
@@ -115,12 +157,21 @@ download_with_aria2() {
   return "${status}"
 }
 
+download_external_files() {
+  download_records "external model source" "${EXTERNAL_RECORDS[@]}"
+}
+
+download_with_aria2() {
+  echo "[download] Xet retries exhausted; using parallel aria2 range fallback"
+  download_records "complete manifest fallback" "${ARIA_RECORDS[@]}"
+}
+
 start_epoch="$(date +%s)"
 echo "[download] MiniMax H3 I2V+R2V: ${TOTAL_BYTES} bytes from ${REPO_ID}@${REVISION}"
 
 for ((attempt = 1; attempt <= DOWNLOAD_RETRIES; attempt++)); do
   echo "[download] Xet attempt ${attempt}/${DOWNLOAD_RETRIES}"
-  if download_with_xet && verify; then
+  if download_with_xet && download_external_files && verify; then
     success=1
     break
   fi

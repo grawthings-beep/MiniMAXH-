@@ -47,10 +47,18 @@ RUN chmod +x /opt/minimax-h3/scripts/*.sh /opt/minimax-h3/scripts/*.py \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality.json" \
     && cp /opt/minimax-h3/workflows/minimax_h3_i2v_easycache.json \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_i2v_upscale.json \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_i2v_easycache_upscale.json \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x.json" \
     && cp /opt/minimax-h3/workflows/minimax_h3_r2v.json \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json" \
     && cp /opt/minimax-h3/workflows/minimax_h3_r2v_easycache.json \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_r2v_upscale.json \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_r2v_easycache_upscale.json \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x.json" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_i2v.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v.json \
@@ -63,6 +71,19 @@ RUN chmod +x /opt/minimax-h3/scripts/*.sh /opt/minimax-h3/scripts/*.py \
       --expect-easycache \
       --comfyui-root "${COMFYUI_ROOT}" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_i2v_upscale.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
+      --mode i2v \
+      --expect-upscale \
+      --comfyui-root "${COMFYUI_ROOT}" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_i2v_easycache_upscale.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
+      --mode i2v \
+      --expect-easycache \
+      --expect-upscale \
+      --comfyui-root "${COMFYUI_ROOT}" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_r2v.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_r2v.json \
       --mode r2v \
@@ -73,6 +94,21 @@ RUN chmod +x /opt/minimax-h3/scripts/*.sh /opt/minimax-h3/scripts/*.py \
       --manifest /opt/minimax-h3/manifests/minimax_h3_r2v.json \
       --mode r2v \
       --expect-easycache \
+      --require-video-reference \
+      --comfyui-root "${COMFYUI_ROOT}" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_r2v_upscale.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_r2v_upscale.json \
+      --mode r2v \
+      --expect-upscale \
+      --require-video-reference \
+      --comfyui-root "${COMFYUI_ROOT}" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_r2v_easycache_upscale.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_r2v_upscale.json \
+      --mode r2v \
+      --expect-easycache \
+      --expect-upscale \
       --require-video-reference \
       --comfyui-root "${COMFYUI_ROOT}"
 

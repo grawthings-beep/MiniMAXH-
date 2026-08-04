@@ -3,7 +3,7 @@
 MiniMax H3の画像→動画とマルチモーダル参照→動画を、永続ストレージなしのRunPod Podで起動する構成です。
 I2V、開始／終了フレーム、複数画像、参照動画の動き・カメラ・付随音声、ネイティブステレオ音声に対応します。
 
-モデルをDockerイメージへ埋め込まず、Pod起動時にHugging Face Xetから約63.4GBを高速取得します。
+モデルをDockerイメージへ埋め込まず、Pod起動時にHugging Face Xetと公式GitHub Releaseから約63.51GBを高速取得します。
 Podを破棄するとモデルと出力は消えます。
 
 ## 構成
@@ -13,14 +13,15 @@ Podを破棄するとモデルと出力は消えます。
 - MiniMax H3 `FL2VA`と`REF2VA`のpruned INT8モデル
 - Qwen3-VL-32B NVFP4/AWQテキストエンコーダー
 - Video VAEと32kHzステレオAudio VAE
+- Real-ESRGAN x2plusによる動画フレーム2倍化
 - Hugging Face `hf_xet`のRAM連動High Performance／Adaptive切替
 - 5ファイルの並列取得、3回の再試行、途中再開
 - Xet失敗時のaria2並列Range Downloadフォールバック
 - 公式LFS SHA256による完全検証
 - GPU、ドライバー、VRAM、RAM、空き容量、ComfyKitchen CUDAの起動前診断
 - GPU VRAMに応じた解像度プロファイルの提案
-- I2V/R2VのQuality版とEasyCache Fast版を収録
-- 全モデル、全ノード、EasyCache配線、動画・音声参照配線をビルド時に照合
+- I2V/R2VのQuality版、EasyCache Fast版、それぞれの2x版の計8ワークフローを収録
+- 全モデル、全ノード、EasyCache、2xアップスケール、動画・音声参照配線をビルド時に照合
 
 モデルの正確なリビジョン、サイズ、SHA256は
 [`manifests/minimax_h3_all.json`](manifests/minimax_h3_all.json)に固定しています。
@@ -35,7 +36,8 @@ Podを破棄するとモデルと出力は消えます。
 | Qwen3-VL-32B NVFP4/AWQ | 15.69 GB |
 | Video VAE | 5.21 GB |
 | Audio VAE | 0.61 GB |
-| 合計 | 63.44 GB（59.08 GiB） |
+| Real-ESRGAN x2plus | 0.067 GB |
+| 合計 | 63.51 GB（59.15 GiB） |
 
 RunPodのContainer Diskは、再構築バッファ、入力動画、出力領域を含めて120GBを推奨します。
 Volume DiskやNetwork Volumeは使用しません。
@@ -77,8 +79,8 @@ MiniMaxの[公式License Q&A](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/m
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.3.2 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.3.2
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.4.0 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.4.0
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
@@ -97,7 +99,7 @@ docker push ghcr.io/OWNER/minimax-h3-i2v:0.3.2
 
 GPUは起動のたびに変更できます。CUDA 13.0の公式カーネルを使うため、NVIDIA Driver
 `r580`以上のホストを選択してください。古いドライバーやCUDA 12.8へフォールバックしたPodは、
-63.4GBのモデル取得前に起動を停止します。
+63.51GBのモデル取得前に起動を停止します。
 
 ### 4. 起動
 
@@ -110,12 +112,17 @@ Podログには次の順で状態が表示されます。
 5. ComfyUI `8188`起動
 
 RunPodの`Connect to HTTP Service [Port 8188]`からComfyUIを開き、
-次の4ワークフローから選びます。
+次の8ワークフローから選びます。高速化と2倍化の両方が必要なら
+`MiniMax_H3_I2V_Fast_EasyCache_2x`を選びます。
 
 - `MiniMax_H3_I2V_Quality`
 - `MiniMax_H3_I2V_Fast_EasyCache`
+- `MiniMax_H3_I2V_Quality_2x`
+- `MiniMax_H3_I2V_Fast_EasyCache_2x`
 - `MiniMax_H3_R2V_Quality`
 - `MiniMax_H3_R2V_Fast_EasyCache`
+- `MiniMax_H3_R2V_Quality_2x`
+- `MiniMax_H3_R2V_Fast_EasyCache_2x`
 
 ## 高速ダウンロード
 
@@ -144,7 +151,7 @@ RunPodのsecret環境変数`HF_TOKEN`として設定することを推奨しま�
 
 理論上のモデル取得時間は次の通りです。実測値はPodのネットワーク、NVMe、Hugging Face側の混雑で変わります。
 
-| 実効回線速度 | 63.44GBの理論時間 |
+| 実効回線速度 | 63.51GBの理論時間 |
 |---:|---:|
 | 1 Gbit/s | 約8分28秒 |
 | 2 Gbit/s | 約4分14秒 |
@@ -218,6 +225,12 @@ ComfyUI標準の`LoadVideo → GetVideoComponents`を接続したマルチモー
 `reuse_threshold=0.20`、`start_percent=0.15`、`end_percent=0.95`、`verbose=true`です。
 近似キャッシュにより一部のdiffusion stepを省略するため、最終品質ではQuality版と同一seedで比較してください。
 
+`*_upscale.json`は、VAEデコード後の全フレームをComfyUI標準ノード
+`UpscaleModelLoader → ImageUpscaleWithModel`に通し、`RealESRGAN_x2plus.pth`で2倍化する版です。
+例えば768×1344は1536×2688になります。サンプリング後の処理なので、シャープさは改善しますが、
+動きの破綻、人体の形、時間的なちらつきを修復するものではありません。フレーム数、fps、ステレオ音声は維持します。
+また、2倍化の追加時間は必要なので、H3本体の生成速度そのものはEasyCacheで比較してください。
+
 入力画像と出力のアスペクト比が一致しない場合、H3コアノードでは開始画像が引き伸ばされるため、
 公式ワークフローの画像サイズ連動を維持してください。
 
@@ -225,20 +238,20 @@ ComfyUI標準の`LoadVideo → GetVideoComponents`を接続したマルチモー
 
 公開されているローカルモデルはH3-Baseです。MiniMax公式品質の2Kは非公開の
 `H3-Regenerate-2K`を使用するため、このリポジトリはローカル768p生成を正規ルートとします。
-将来ローカル2Kを追加する場合は、H3本体とは別のアップスケール工程として明示します。
+このリポジトリの2x版は、H3本体とは別のReal-ESRGANアップスケール工程として明示しています。
 
 ## ローカル検証
 
 ```bash
 python -m unittest discover -s tests -v
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v.json --manifest manifests/minimax_h3_i2v.json --mode i2v --comfyui-root /path/to/ComfyUI
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_r2v_easycache.json --manifest manifests/minimax_h3_r2v.json --mode r2v --expect-easycache --require-video-reference --comfyui-root /path/to/ComfyUI
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v_easycache_upscale.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-easycache --expect-upscale --comfyui-root /path/to/ComfyUI
 bash -n scripts/entrypoint.sh scripts/download_models.sh
 python -m json.tool manifests/minimax_h3_all.json >/dev/null
-python -m json.tool workflows/minimax_h3_r2v_easycache.json >/dev/null
+python -m json.tool workflows/minimax_h3_i2v_easycache_upscale.json >/dev/null
 ```
 
-実際の生成テストにはNVIDIA GPUと約63.4GBのモデル取得が必要です。
+実際の生成テストにはNVIDIA GPUと約63.51GBのモデル取得が必要です。
 
 ## 調査根拠
 
@@ -251,3 +264,5 @@ python -m json.tool workflows/minimax_h3_r2v_easycache.json >/dev/null
 - [RunPodの自動環境変数](https://docs.runpod.io/pods/templates/environment-variables)
 - [RunPodのHTTPポート公開](https://docs.runpod.io/pods/configuration/expose-ports)
 - [MiniMax H3 Community License Agreement](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE)
+- [ComfyUI公式アップスケールガイド](https://docs.comfy.org/tutorials/basic/upscale)
+- [Real-ESRGAN公式リポジトリ](https://github.com/xinntao/Real-ESRGAN)

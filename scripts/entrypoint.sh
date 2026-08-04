@@ -52,10 +52,18 @@ cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache.json"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_upscale.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x.json"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache_upscale.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_upscale.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x.json"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache_upscale.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x.json"
 
 PREFLIGHT_ARGS=(
   --manifest "${MANIFEST}"

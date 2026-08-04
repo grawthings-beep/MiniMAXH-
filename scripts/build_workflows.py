@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the mixed-reference R2V and native EasyCache workflow variants."""
+"""Build mixed-reference, EasyCache, and 2x upscale workflow variants."""
 
 from __future__ import annotations
 
@@ -12,6 +12,11 @@ from typing import Any
 
 
 EASYCACHE_VALUES = [0.2, 0.15, 0.95, True]
+UPSCALER_MODEL = "RealESRGAN_x2plus.pth"
+UPSCALER_URL = (
+    "https://github.com/xinntao/Real-ESRGAN/releases/download/"
+    "v0.2.1/RealESRGAN_x2plus.pth"
+)
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -158,6 +163,15 @@ def set_link_origin(link: Any, node_id: int) -> None:
         link[1] = node_id
 
 
+def set_link_target(link: Any, node_id: int, slot: int) -> None:
+    if isinstance(link, dict):
+        link["target_id"] = node_id
+        link["target_slot"] = slot
+    else:
+        link[3] = node_id
+        link[4] = slot
+
+
 def add_easycache(workflow: dict[str, Any], label: str) -> dict[str, Any]:
     fast = copy.deepcopy(workflow)
     fast["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f'{fast["id"]}:easycache'))
@@ -251,6 +265,169 @@ def add_easycache(workflow: dict[str, Any], label: str) -> dict[str, Any]:
     return fast
 
 
+def add_upscale(workflow: dict[str, Any], label: str) -> dict[str, Any]:
+    """Insert a conservative 2x frame upscaler before the final video mux."""
+    upscaled = copy.deepcopy(workflow)
+    upscaled["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f'{upscaled["id"]}:upscale-2x'))
+    graph = next(
+        candidate
+        for candidate in graph_candidates(upscaled)
+        if any(node["type"] == "VAEDecode" for node in candidate.get("nodes", []))
+        and any(node["type"] == "CreateVideo" for node in candidate.get("nodes", []))
+    )
+    nodes = graph["nodes"]
+    links = graph["links"]
+    vae_decode = next(node for node in nodes if node["type"] == "VAEDecode")
+    create_video = next(node for node in nodes if node["type"] == "CreateVideo")
+    image_link = next(
+        link
+        for link in links
+        if link_origin(link) == int(vae_decode["id"])
+        and link_target(link) == int(create_video["id"])
+        and str(link["type"] if isinstance(link, dict) else link[5]) == "IMAGE"
+    )
+
+    loader_id = next_numeric_id(nodes)
+    upscaler_id = loader_id + 1
+    first_link_id = max(link_id(link) for link in links) + 1
+    model_link_id = first_link_id
+    output_link_id = first_link_id + 1
+
+    original_x = float(create_video["pos"][0])
+    original_y = float(create_video["pos"][1])
+    for node in nodes:
+        if float(node.get("pos", [0])[0]) >= original_x:
+            node["pos"][0] = float(node["pos"][0]) + 800
+
+    create_order = int(create_video["order"])
+    shift_orders(nodes, create_order, 2)
+    set_link_target(image_link, upscaler_id, 1)
+    next(item for item in create_video["inputs"] if item["name"] == "images")["link"] = output_link_id
+
+    loader = {
+        "id": loader_id,
+        "type": "UpscaleModelLoader",
+        "pos": [original_x, original_y - 210],
+        "size": [300, 80],
+        "flags": {},
+        "order": create_order,
+        "mode": 0,
+        "inputs": [],
+        "outputs": [
+            {
+                "name": "UPSCALE_MODEL",
+                "type": "UPSCALE_MODEL",
+                "links": [model_link_id],
+            }
+        ],
+        "title": "Real-ESRGAN 2x (all decoded frames)",
+        "properties": {
+            "cnr_id": "comfy-core",
+            "ver": "0.10.0",
+            "Node name for S&R": "UpscaleModelLoader",
+            "models": [
+                {
+                    "name": UPSCALER_MODEL,
+                    "url": UPSCALER_URL,
+                    "directory": "upscale_models",
+                }
+            ],
+        },
+        "widgets_values": [UPSCALER_MODEL],
+    }
+    upscaler = {
+        "id": upscaler_id,
+        "type": "ImageUpscaleWithModel",
+        "pos": [original_x + 380, original_y],
+        "size": [340, 80],
+        "flags": {},
+        "order": create_order + 1,
+        "mode": 0,
+        "inputs": [
+            {
+                "name": "upscale_model",
+                "type": "UPSCALE_MODEL",
+                "link": model_link_id,
+            },
+            {
+                "name": "image",
+                "type": "IMAGE",
+                "link": link_id(image_link),
+            },
+        ],
+        "outputs": [
+            {"name": "IMAGE", "type": "IMAGE", "links": [output_link_id]}
+        ],
+        "title": "Upscale decoded video frames 2x",
+        "properties": {
+            "cnr_id": "comfy-core",
+            "ver": "0.10.0",
+            "Node name for S&R": "ImageUpscaleWithModel",
+        },
+        "widgets_values": [],
+    }
+    nodes.extend([loader, upscaler])
+
+    if isinstance(links[0], dict):
+        links.extend(
+            [
+                {
+                    "id": model_link_id,
+                    "origin_id": loader_id,
+                    "origin_slot": 0,
+                    "target_id": upscaler_id,
+                    "target_slot": 0,
+                    "type": "UPSCALE_MODEL",
+                },
+                {
+                    "id": output_link_id,
+                    "origin_id": upscaler_id,
+                    "origin_slot": 0,
+                    "target_id": int(create_video["id"]),
+                    "target_slot": 0,
+                    "type": "IMAGE",
+                },
+            ]
+        )
+        state = graph.setdefault("state", {})
+        state["lastNodeId"] = max(int(state.get("lastNodeId", 0)), upscaler_id)
+        state["lastLinkId"] = max(int(state.get("lastLinkId", 0)), output_link_id)
+        graph["name"] = f'{graph.get("name", label)} - Real-ESRGAN 2x'
+    else:
+        links.extend(
+            [
+                [model_link_id, loader_id, 0, upscaler_id, 0, "UPSCALE_MODEL"],
+                [output_link_id, upscaler_id, 0, int(create_video["id"]), 0, "IMAGE"],
+            ]
+        )
+        upscaled["last_node_id"] = max(
+            int(upscaled.get("last_node_id", 0)), upscaler_id
+        )
+        upscaled["last_link_id"] = max(
+            int(upscaled.get("last_link_id", 0)), output_link_id
+        )
+
+    note = next(
+        (
+            node
+            for node in graph_candidates(upscaled)[0].get("nodes", [])
+            if node["type"] == "MarkdownNote"
+            and "About this workflow" in node.get("widgets_values", [""])[0]
+        ),
+        None,
+    )
+    if note:
+        note["widgets_values"][0] += (
+            "\n\n## Real-ESRGAN 2x output\n"
+            "Every decoded frame is tiled through the official RealESRGAN x2 model before "
+            "`CreateVideo`; generated stereo audio and 24fps timing remain unchanged. The "
+            "short edge doubles from H3's native 768px to 1536px. This is a conservative "
+            "frame upscaler, so it improves sharpness and detail but does not repair motion "
+            "or anatomy errors already present in the generated frames."
+        )
+    return upscaled
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--i2v-source", type=Path, required=True)
@@ -260,9 +437,21 @@ def main() -> int:
 
     i2v = read_json(args.i2v_source)
     r2v = prepare_r2v(read_json(args.r2v_upstream))
+    i2v_fast = add_easycache(i2v, "I2V")
+    r2v_fast = add_easycache(r2v, "R2V")
     write_json(args.output_dir / "minimax_h3_r2v.json", r2v)
-    write_json(args.output_dir / "minimax_h3_i2v_easycache.json", add_easycache(i2v, "I2V"))
-    write_json(args.output_dir / "minimax_h3_r2v_easycache.json", add_easycache(r2v, "R2V"))
+    write_json(args.output_dir / "minimax_h3_i2v_easycache.json", i2v_fast)
+    write_json(args.output_dir / "minimax_h3_r2v_easycache.json", r2v_fast)
+    write_json(args.output_dir / "minimax_h3_i2v_upscale.json", add_upscale(i2v, "I2V"))
+    write_json(
+        args.output_dir / "minimax_h3_i2v_easycache_upscale.json",
+        add_upscale(i2v_fast, "I2V EasyCache Fast"),
+    )
+    write_json(args.output_dir / "minimax_h3_r2v_upscale.json", add_upscale(r2v, "R2V"))
+    write_json(
+        args.output_dir / "minimax_h3_r2v_easycache_upscale.json",
+        add_upscale(r2v_fast, "R2V EasyCache Fast"),
+    )
     return 0
 
 
