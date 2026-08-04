@@ -56,16 +56,27 @@ cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v.json" \
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json"
 
-python "${SCRIPT_DIR}/preflight.py" \
-  --manifest "${MANIFEST}" \
-  --model-dir "${MODEL_DIR}" \
+PREFLIGHT_ARGS=(
+  --manifest "${MANIFEST}"
+  --model-dir "${MODEL_DIR}"
   --json-out "${COMFYUI_ROOT}/user/default/minimax_h3_runtime_profile.json"
+)
+if [[ "${REQUIRE_COMFY_KITCHEN_CUDA:-1}" == "1" ]]; then
+  PREFLIGHT_ARGS+=(--require-comfy-kitchen-cuda)
+fi
+python "${SCRIPT_DIR}/preflight.py" "${PREFLIGHT_ARGS[@]}"
 
 "${SCRIPT_DIR}/download_models.sh"
 
 cd "${COMFYUI_ROOT}"
 read -r -a EXTRA_ARGS <<< "${COMFYUI_ARGS:-}"
+for arg in "${EXTRA_ARGS[@]}"; do
+  if [[ "${arg}" == "--fast-disk" ]]; then
+    echo "[comfyui] WARNING: --fast-disk can make H3 model offload much slower; use it only when system RAM is insufficient."
+  fi
+done
 echo "[comfyui] http://0.0.0.0:${COMFYUI_PORT:-8188}"
+echo "[comfyui] extra args: ${EXTRA_ARGS[*]:-(none)}"
 exec python main.py \
   --listen 0.0.0.0 \
   --port "${COMFYUI_PORT:-8188}" \

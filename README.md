@@ -9,6 +9,7 @@ Podを破棄するとモデルと出力は消えます。
 ## 構成
 
 - ComfyUI `v0.30.0`をコミットまで固定
+- PyTorch `2.10.0+cu130`をイメージdigestまで固定
 - MiniMax H3 `FL2VA`と`REF2VA`のpruned INT8モデル
 - Qwen3-VL-32B NVFP4/AWQテキストエンコーダー
 - Video VAEと32kHzステレオAudio VAE
@@ -16,7 +17,7 @@ Podを破棄するとモデルと出力は消えます。
 - 5ファイルの並列取得、3回の再試行、途中再開
 - Xet失敗時のaria2並列Range Downloadフォールバック
 - 公式LFS SHA256による完全検証
-- GPU、VRAM、RAM、空き容量の起動前診断
+- GPU、ドライバー、VRAM、RAM、空き容量、ComfyKitchen CUDAの起動前診断
 - GPU VRAMに応じた解像度プロファイルの提案
 - I2V/R2VのQuality版とEasyCache Fast版を収録
 - 全モデル、全ノード、EasyCache配線、動画・音声参照配線をビルド時に照合
@@ -71,8 +72,8 @@ RunPod以外で`RUNPOD_DC_ID`が存在しない場合は、計算場所を確認
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.2.0 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.2.0
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.3.0 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.3.0
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
@@ -89,13 +90,15 @@ docker push ghcr.io/OWNER/minimax-h3-i2v:0.2.0
 - `ACCEPT_MINIMAX_H3_LICENSE=1`
 - Data center: MiniMax H3ライセンスの除外地域外
 
-GPUは起動のたびに変更できます。CUDA 12.8対応イメージなので、対応ドライバーがあるNVIDIA GPUを選択してください。
+GPUは起動のたびに変更できます。CUDA 13.0の公式カーネルを使うため、NVIDIA Driver
+`r580`以上のホストを選択してください。古いドライバーやCUDA 12.8へフォールバックしたPodは、
+63.4GBのモデル取得前に起動を停止します。
 
 ### 4. 起動
 
 Podログには次の順で状態が表示されます。
 
-1. GPU・RAM・空き容量診断
+1. GPU・ドライバー・RAM・空き容量・ComfyKitchen CUDA診断
 2. Xet並列ダウンロード
 3. SHA256検証
 4. 実効ダウンロード速度
@@ -160,6 +163,31 @@ RunPodのsecret環境変数`HF_TOKEN`として設定することを推奨しま�
 
 ComfyUIのDynamic VRAMをそのまま使用します。`--novram`、`--disable-smart-memory`、
 `--disable-pinned-memory`などはH3のDay-0実装で問題を起こし得るため、既定では付けません。
+RunPodテンプレートでは`COMFYUI_ARGS=--vram-headroom 2`を設定し、デコード時のVRAM圧迫用に
+2GBを余分に空けます。サンプリング側が遅くなるGPUでは、同じseedでこの値を外してA/B比較してください。
+
+## INT8高速化とAttention
+
+H3のpruned INT8 ConvRot重みはComfyUI標準の量子化形式です。別のINT8ローダーは追加せず、
+ComfyKitchen `0.2.26`のCUDAバックエンドを使用します。従来のCUDA 12.8イメージではこの
+バックエンドが`available: true, disabled: true`になり、INT8演算が低速なeager実装へ落ちていました。
+このイメージはPyTorch `2.10.0+cu130`へ更新し、起動前診断で次を必須にします。
+
+```text
+acceleration.ready: true
+comfy_kitchen_cuda.available: true
+comfy_kitchen_cuda.disabled: false
+```
+
+`REQUIRE_COMFY_KITCHEN_CUDA=0`なら診断失敗を警告扱いにできますが、低速なため通常は使いません。
+`--fast-disk`も既定では使用しません。これはモデル退避先をRAMよりディスク優先にするフラグで、
+十分なシステムRAMがあるL40S Podではモデルの往復I/Oが増えて逆効果になり得ます。
+
+[ComfyUI-INT8-Fast](https://github.com/BobJohnson24/ComfyUI-INT8-Fast)は、公式ComfyUIの
+INT8対応後は作者自身が実質的にretireと案内しているため同梱しません。
+[ComfyUI_sol-attn_Blackwell](https://github.com/KingGore/ComfyUI_sol-attn_Blackwell)は
+現行版の高速化対象がRTX 5090などのSM120に限定され、L40SではSDPAフォールバックになるため
+同梱しません。5090用はL40S版とは分離して、実機検証後に専用ワークフローとして追加します。
 
 ## ワークフロー
 
@@ -211,6 +239,8 @@ python -m json.tool workflows/minimax_h3_r2v_easycache.json >/dev/null
 
 - [ComfyUI公式MiniMax H3 I2V/R2Vガイド](https://docs.comfy.org/tutorials/video/minimax/minimax-h3)
 - [ComfyUI v0.30.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.30.0)
+- [PyTorch 2.10 CUDA 13.0公式イメージ](https://hub.docker.com/layers/pytorch/pytorch/2.10.0-cuda13.0-cudnn9-runtime/images/sha256-1f57418aedd9a4d0d3a59646619e1d4f82cacc33817247cead4f749e1f452d4b)
+- [ComfyKitchen 0.2.26のバックエンド要件](https://pypi.org/project/comfy-kitchen/0.2.26/)
 - [Comfy-Org公式モデル配布](https://huggingface.co/Comfy-Org/MiniMax-H3)
 - [Hugging Face Xetの性能設定](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
 - [RunPodの自動環境変数](https://docs.runpod.io/pods/templates/environment-variables)
