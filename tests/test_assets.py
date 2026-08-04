@@ -143,21 +143,27 @@ class AssetTests(unittest.TestCase):
         self.assertIn("REQUIRE_COMFY_KITCHEN_CUDA=1", dockerfile)
         self.assertIn("--start-period=30m", dockerfile)
 
-    def test_entrypoint_checks_runpod_territory_before_download(self) -> None:
+    def test_entrypoint_checks_licensee_territory_before_download(self) -> None:
         entrypoint = (ROOT / "scripts" / "entrypoint.sh").read_text(encoding="utf-8")
-        territory_check = entrypoint.index("check_deployment_territory")
+        territory_check = entrypoint.index("check_licensee_territory")
         download = entrypoint.index('"${SCRIPT_DIR}/download_models.sh"')
         self.assertLess(territory_check, download)
         self.assertIn("RUNPOD_DC_ID", entrypoint)
+        self.assertIn("MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY", entrypoint)
         self.assertIn("MINIMAX_H3_SEPARATE_LICENSE", entrypoint)
         self.assertIn("US-*|EU-*", entrypoint)
+        self.assertIn("WARNING: RunPod data center", entrypoint)
+        self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", entrypoint)
+        self.assertNotIn("Choose an eligible data center", entrypoint)
         self.assertIn("manifests/minimax_h3_all.json", entrypoint)
         self.assertIn("--require-comfy-kitchen-cuda", entrypoint)
         self.assertIn("--fast-disk can make H3 model offload much slower", entrypoint)
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.3.1")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.3.2")
+        self.assertEqual(template["env"]["MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY"], "0")
+        self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", template["env"])
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
         self.assertEqual(template["env"]["COMFYUI_ARGS"], "--vram-headroom 2")
         self.assertNotIn("--fast-disk", template["env"]["COMFYUI_ARGS"])
