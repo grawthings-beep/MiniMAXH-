@@ -139,6 +139,7 @@ class AssetTests(unittest.TestCase):
         self.assertNotIn("HF_HUB_ENABLE_HF_TRANSFER", dockerfile)
         self.assertNotIn("ComfyUI-INT8-Fast", dockerfile)
         self.assertNotIn("ComfyUI_sol-attn_Blackwell", dockerfile)
+        self.assertIn("PIP_BREAK_SYSTEM_PACKAGES=1", dockerfile)
         self.assertIn("REQUIRE_COMFY_KITCHEN_CUDA=1", dockerfile)
         self.assertIn("--start-period=30m", dockerfile)
 
@@ -156,7 +157,7 @@ class AssetTests(unittest.TestCase):
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.3.0")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.3.1")
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
         self.assertEqual(template["env"]["COMFYUI_ARGS"], "--vram-headroom 2")
         self.assertNotIn("--fast-disk", template["env"]["COMFYUI_ARGS"])

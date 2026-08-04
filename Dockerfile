@@ -6,6 +6,7 @@ ARG COMFYUI_COMMIT=b1693ecba9f5b65f8c80ab36b195ab963ec92413
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
     COMFYUI_ROOT=/opt/ComfyUI \
     COMFYUI_MODEL_DIR=/opt/ComfyUI/models \
     MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_all.json \
