@@ -72,8 +72,8 @@ RunPod以外で`RUNPOD_DC_ID`が存在しない場合は、計算場所を確認
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.3.0 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.3.0
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.3.1 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.3.1
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
