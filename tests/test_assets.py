@@ -21,21 +21,41 @@ class AssetTests(unittest.TestCase):
     def test_manifests_cover_i2v_r2v_and_combined_download(self) -> None:
         i2v = self.load_manifest("minimax_h3_i2v.json")
         r2v = self.load_manifest("minimax_h3_r2v.json")
+        i2v_upscale = self.load_manifest("minimax_h3_i2v_upscale.json")
+        r2v_upscale = self.load_manifest("minimax_h3_r2v_upscale.json")
         combined = self.load_manifest("minimax_h3_all.json")
         sets = {
             "i2v": {item["path"] for item in i2v["files"]},
             "r2v": {item["path"] for item in r2v["files"]},
+            "i2v_upscale": {item["path"] for item in i2v_upscale["files"]},
+            "r2v_upscale": {item["path"] for item in r2v_upscale["files"]},
             "combined": {item["path"] for item in combined["files"]},
         }
+        upscaler = "upscale_models/RealESRGAN_x2plus.pth"
         self.assertEqual(len(sets["i2v"]), 4)
         self.assertEqual(len(sets["r2v"]), 4)
-        self.assertEqual(len(sets["combined"]), 5)
+        self.assertEqual(len(sets["i2v_upscale"]), 5)
+        self.assertEqual(len(sets["r2v_upscale"]), 5)
+        self.assertEqual(len(sets["combined"]), 6)
         self.assertTrue(any("fl2va" in path for path in sets["i2v"]))
         self.assertFalse(any("ref2va" in path for path in sets["i2v"]))
         self.assertTrue(any("ref2va" in path for path in sets["r2v"]))
         self.assertFalse(any("fl2va" in path for path in sets["r2v"]))
-        self.assertEqual(sets["combined"], sets["i2v"] | sets["r2v"])
-        for manifest in (i2v, r2v, combined):
+        self.assertEqual(sets["i2v_upscale"], sets["i2v"] | {upscaler})
+        self.assertEqual(sets["r2v_upscale"], sets["r2v"] | {upscaler})
+        self.assertEqual(sets["combined"], sets["i2v"] | sets["r2v"] | {upscaler})
+        upscale_item = next(item for item in combined["files"] if item["path"] == upscaler)
+        self.assertEqual(
+            upscale_item["source_url"],
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/"
+            "v0.2.1/RealESRGAN_x2plus.pth",
+        )
+        self.assertEqual(upscale_item["size"], 67_061_725)
+        self.assertEqual(
+            upscale_item["sha256"],
+            "49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb",
+        )
+        for manifest in (i2v, r2v, i2v_upscale, r2v_upscale, combined):
             self.assertEqual(
                 manifest["total_bytes"], sum(item["size"] for item in manifest["files"])
             )
@@ -57,6 +77,10 @@ class AssetTests(unittest.TestCase):
             "minimax_h3_r2v.json",
             "minimax_h3_i2v_easycache.json",
             "minimax_h3_r2v_easycache.json",
+            "minimax_h3_i2v_upscale.json",
+            "minimax_h3_i2v_easycache_upscale.json",
+            "minimax_h3_r2v_upscale.json",
+            "minimax_h3_r2v_easycache_upscale.json",
         )
         with tempfile.TemporaryDirectory() as temp:
             result = subprocess.run(
@@ -88,6 +112,18 @@ class AssetTests(unittest.TestCase):
                 ["--expect-easycache"],
             ),
             (
+                "minimax_h3_i2v_upscale.json",
+                "minimax_h3_i2v_upscale.json",
+                "i2v",
+                ["--expect-upscale"],
+            ),
+            (
+                "minimax_h3_i2v_easycache_upscale.json",
+                "minimax_h3_i2v_upscale.json",
+                "i2v",
+                ["--expect-easycache", "--expect-upscale"],
+            ),
+            (
                 "minimax_h3_r2v.json",
                 "minimax_h3_r2v.json",
                 "r2v",
@@ -98,6 +134,18 @@ class AssetTests(unittest.TestCase):
                 "minimax_h3_r2v.json",
                 "r2v",
                 ["--expect-easycache", "--require-video-reference"],
+            ),
+            (
+                "minimax_h3_r2v_upscale.json",
+                "minimax_h3_r2v_upscale.json",
+                "r2v",
+                ["--expect-upscale", "--require-video-reference"],
+            ),
+            (
+                "minimax_h3_r2v_easycache_upscale.json",
+                "minimax_h3_r2v_upscale.json",
+                "r2v",
+                ["--expect-easycache", "--expect-upscale", "--require-video-reference"],
             ),
         )
         for workflow, manifest, mode, extra in cases:
@@ -121,7 +169,7 @@ class AssetTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(mode.upper(), result.stdout)
 
-    def test_dockerfile_pins_comfyui_and_installs_four_workflows(self) -> None:
+    def test_dockerfile_pins_comfyui_and_installs_eight_workflows(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn(
             "pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime@sha256:"
@@ -135,6 +183,10 @@ class AssetTests(unittest.TestCase):
         self.assertIn("MiniMax_H3_I2V_Fast_EasyCache.json", dockerfile)
         self.assertIn("MiniMax_H3_R2V_Quality.json", dockerfile)
         self.assertIn("MiniMax_H3_R2V_Fast_EasyCache.json", dockerfile)
+        self.assertIn("MiniMax_H3_I2V_Quality_2x.json", dockerfile)
+        self.assertIn("MiniMax_H3_I2V_Fast_EasyCache_2x.json", dockerfile)
+        self.assertIn("MiniMax_H3_R2V_Quality_2x.json", dockerfile)
+        self.assertIn("MiniMax_H3_R2V_Fast_EasyCache_2x.json", dockerfile)
         self.assertIn("HF_XET_HIGH_PERFORMANCE=auto", dockerfile)
         self.assertNotIn("HF_HUB_ENABLE_HF_TRANSFER", dockerfile)
         self.assertNotIn("ComfyUI-INT8-Fast", dockerfile)
@@ -142,6 +194,13 @@ class AssetTests(unittest.TestCase):
         self.assertIn("PIP_BREAK_SYSTEM_PACKAGES=1", dockerfile)
         self.assertIn("REQUIRE_COMFY_KITCHEN_CUDA=1", dockerfile)
         self.assertIn("--start-period=30m", dockerfile)
+
+    def test_downloader_supports_pinned_external_upscaler(self) -> None:
+        downloader = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
+        self.assertIn('if "source_url" in item', downloader)
+        self.assertIn("EXTERNAL_RECORDS", downloader)
+        self.assertIn("download_external_files", downloader)
+        self.assertIn("complete manifest fallback", downloader)
 
     def test_entrypoint_checks_licensee_territory_before_download(self) -> None:
         entrypoint = (ROOT / "scripts" / "entrypoint.sh").read_text(encoding="utf-8")
@@ -161,7 +220,7 @@ class AssetTests(unittest.TestCase):
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.3.2")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.4.0")
         self.assertEqual(template["env"]["MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY"], "0")
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", template["env"])
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
@@ -174,6 +233,8 @@ class AssetTests(unittest.TestCase):
             "MiniMax H3 is licensed under the MiniMax H3 Community License Agreement",
             notice,
         )
+        self.assertIn("Real-ESRGAN_x2plus", notice)
+        self.assertIn("BSD 3-Clause License", notice)
 
     def test_verifier_accepts_a_matching_file(self) -> None:
         payload = b"minimax-h3-test"

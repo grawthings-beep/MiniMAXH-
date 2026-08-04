@@ -15,4 +15,9 @@ Source:
 https://github.com/Comfy-Org/workflow_templates/blob/5c75d9f137bb27706a70dd337dac6249b2e51ded/templates/video_minimax_h3_r2v.json
 
 `scripts/build_workflows.py` deterministically derives the mixed video-reference
-R2V workflow and both EasyCache Fast variants from these pinned upstream assets.
+R2V workflow, both EasyCache Fast variants, and four Real-ESRGAN 2x post-process
+variants from these pinned upstream assets.
+
+The 2x variants use ComfyUI's built-in `UpscaleModelLoader` and
+`ImageUpscaleWithModel` nodes with the official `RealESRGAN_x2plus.pth` release:
+https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.1

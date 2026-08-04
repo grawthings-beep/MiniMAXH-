@@ -74,6 +74,10 @@ def link_target(link: object) -> int:
     return int(link["target_id"] if isinstance(link, dict) else link[3])
 
 
+def link_type(link: object) -> str:
+    return str(link["type"] if isinstance(link, dict) else link[5])
+
+
 def verify_easycache_wiring(workflow: dict[str, object]) -> None:
     graph = next(
         (
@@ -132,6 +136,41 @@ def verify_video_reference_wiring(workflow: dict[str, object]) -> None:
         raise RuntimeError(f"Native video-reference wiring is incomplete: {sorted(expected - actual)}")
 
 
+def verify_upscale_wiring(workflow: dict[str, object]) -> None:
+    graph = next(
+        (
+            candidate
+            for candidate in graph_candidates(workflow)
+            if any(node["type"] == "UpscaleModelLoader" for node in candidate.get("nodes", []))
+            and any(node["type"] == "ImageUpscaleWithModel" for node in candidate.get("nodes", []))
+        ),
+        None,
+    )
+    if graph is None:
+        raise RuntimeError("The 2x upscale nodes are missing")
+    nodes = graph["nodes"]
+    links = graph["links"]
+    vae_decode = next(node for node in nodes if node["type"] == "VAEDecode")
+    loader = next(node for node in nodes if node["type"] == "UpscaleModelLoader")
+    upscaler = next(node for node in nodes if node["type"] == "ImageUpscaleWithModel")
+    create_video = next(node for node in nodes if node["type"] == "CreateVideo")
+    expected = {
+        (int(loader["id"]), int(upscaler["id"]), "UPSCALE_MODEL"),
+        (int(vae_decode["id"]), int(upscaler["id"]), "IMAGE"),
+        (int(upscaler["id"]), int(create_video["id"]), "IMAGE"),
+    }
+    actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
+    if not expected <= actual:
+        raise RuntimeError(f"2x upscale wiring is incomplete: {sorted(expected - actual)}")
+    if (int(vae_decode["id"]), int(create_video["id"]), "IMAGE") in actual:
+        raise RuntimeError("VAEDecode still bypasses the 2x upscaler")
+    if loader.get("widgets_values") != ["RealESRGAN_x2plus.pth"]:
+        raise RuntimeError("The 2x upscaler model selection has changed")
+    model_entries = loader.get("properties", {}).get("models", [])
+    if len(model_entries) != 1 or model_entries[0].get("directory") != "upscale_models":
+        raise RuntimeError("The 2x upscaler model metadata is incomplete")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workflow", type=Path, required=True)
@@ -139,6 +178,7 @@ def main() -> int:
     parser.add_argument("--comfyui-root", type=Path)
     parser.add_argument("--mode", choices=("i2v", "r2v"), required=True)
     parser.add_argument("--expect-easycache", action="store_true")
+    parser.add_argument("--expect-upscale", action="store_true")
     parser.add_argument("--require-video-reference", action="store_true")
     args = parser.parse_args()
 
@@ -173,14 +213,19 @@ def main() -> int:
         raise RuntimeError("EasyCache is enabled in a Quality workflow")
     if args.require_video_reference:
         verify_video_reference_wiring(workflow)
+    if args.expect_upscale:
+        verify_upscale_wiring(workflow)
+    elif {"UpscaleModelLoader", "ImageUpscaleWithModel"} & node_types:
+        raise RuntimeError("Upscale nodes are enabled in a non-upscale workflow")
 
     if args.comfyui_root:
         verify_comfyui_nodes(args.comfyui_root, node_types, subgraph_ids)
 
     native_count = len(node_types - subgraph_ids)
     speed = "EasyCache Fast" if args.expect_easycache else "Quality"
+    output = " + Real-ESRGAN 2x" if args.expect_upscale else ""
     print(
-        f"Verified {args.mode.upper()} {speed} workflow: "
+        f"Verified {args.mode.upper()} {speed}{output} workflow: "
         f"{len(actual_models)} models, {native_count} native node types."
     )
     return 0

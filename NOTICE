@@ -1,1 +1,6 @@
 MiniMax H3 is licensed under the MiniMax H3 Community License Agreement, Copyright © 2026 MiniMax. All Rights Reserved.
+
+Real-ESRGAN_x2plus is downloaded at runtime from the official Real-ESRGAN v0.2.1
+release and is used under the BSD 3-Clause License.
+Source: https://github.com/xinntao/Real-ESRGAN
+License: https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE
