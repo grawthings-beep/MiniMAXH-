@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.9.1-cuda12.8-cudnn9-runtime@sha256:7b324d212a4450795b49edba9949b7cdc72429148a64e974334bfe5774d51385
+FROM pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime@sha256:1f57418aedd9a4d0d3a59646619e1d4f82cacc33817247cead4f749e1f452d4b
 
 ARG COMFYUI_VERSION=v0.30.0
 ARG COMFYUI_COMMIT=b1693ecba9f5b65f8c80ab36b195ab963ec92413
@@ -17,7 +17,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HUB_DISABLE_TELEMETRY=1 \
     HF_HUB_DISABLE_UPDATE_CHECK=1 \
     HF_DOWNLOAD_WORKERS=4 \
-    MODEL_VERIFY=sha256
+    MODEL_VERIFY=sha256 \
+    REQUIRE_COMFY_KITCHEN_CUDA=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       aria2 \
