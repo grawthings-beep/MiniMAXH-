@@ -79,8 +79,8 @@ MiniMaxの[公式License Q&A](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/m
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.4.0 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.4.0
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.5.0 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.5.0
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
@@ -118,11 +118,37 @@ RunPodの`Connect to HTTP Service [Port 8188]`からComfyUIを開き、
 - `MiniMax_H3_I2V_Quality`
 - `MiniMax_H3_I2V_Fast_EasyCache`
 - `MiniMax_H3_I2V_Quality_2x`
+- `MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x`
 - `MiniMax_H3_I2V_Fast_EasyCache_2x`
 - `MiniMax_H3_R2V_Quality`
 - `MiniMax_H3_R2V_Fast_EasyCache`
 - `MiniMax_H3_R2V_Quality_2x`
 - `MiniMax_H3_R2V_Fast_EasyCache_2x`
+
+### HMMotion LoRA版
+
+`MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x`は、正常動作を確認した
+`MiniMax_H3_I2V_Quality_2x`から派生したプリセットです。H3のINT8 ConvRotモデルを
+ComfyUI標準の`LoraLoaderModelOnly`へ通し、その出力を`BasicScheduler`と
+`BasicGuider`の両方へ接続しています。初期強度は`1.0`です。LoRAノードの強度を
+`0.0`にすると、配線を変えずに効果だけ無効化できます。
+
+LoRAはコンテナへ同梱しません。Pod起動時にベースモデルと並列で次の非公開
+Hugging Faceリポジトリから取得します。
+
+```text
+H3_LORA_REPO_ID=uwgm/nikke-civitai-backup
+H3_LORA_SOURCE_PATH=hmmotion_minimax-h3_epoch12.safetensors
+H3_LORA_REVISION=main
+H3_LORA_REQUIRED=1
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+`HF_TOKEN`には対象リポジトリを読めるread tokenが必要です。トークンはログへ
+出力しません。起動時には`main`を実際のコミットSHAへ解決してからダウンロードし、
+safetensorsヘッダー、tensor領域、ファイルサイズを検査します。厳密な固定ハッシュが
+分かる場合は`H3_LORA_SHA256`も設定できます。LoRA取得に失敗した場合はComfyUIを
+起動しないため、モデル不足のワークフローだけが開く状態にはなりません。
 
 ## 高速ダウンロード
 
@@ -246,6 +272,7 @@ ComfyUI標準の`LoadVideo → GetVideoComponents`を接続したマルチモー
 python -m unittest discover -s tests -v
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v.json --manifest manifests/minimax_h3_i2v.json --mode i2v --comfyui-root /path/to/ComfyUI
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v_easycache_upscale.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-easycache --expect-upscale --comfyui-root /path/to/ComfyUI
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v_hmmotion_lora_upscale.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-lora --comfyui-root /path/to/ComfyUI
 bash -n scripts/entrypoint.sh scripts/download_models.sh
 python -m json.tool manifests/minimax_h3_all.json >/dev/null
 python -m json.tool workflows/minimax_h3_i2v_easycache_upscale.json >/dev/null

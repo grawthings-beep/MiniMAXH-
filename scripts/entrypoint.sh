@@ -54,6 +54,8 @@ cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_upscale.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x.json"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_hmmotion_lora_upscale.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache_upscale.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v.json" \
@@ -75,7 +77,18 @@ if [[ "${REQUIRE_COMFY_KITCHEN_CUDA:-1}" == "1" ]]; then
 fi
 python "${SCRIPT_DIR}/preflight.py" "${PREFLIGHT_ARGS[@]}"
 
-"${SCRIPT_DIR}/download_models.sh"
+python "${SCRIPT_DIR}/download_lora.py" &
+LORA_DOWNLOAD_PID=$!
+"${SCRIPT_DIR}/download_models.sh" &
+MODEL_DOWNLOAD_PID=$!
+
+if ! wait "${LORA_DOWNLOAD_PID}"; then
+  echo "[download] HMMotion LoRA failed; stopping the base-model download"
+  kill "${MODEL_DOWNLOAD_PID}" 2>/dev/null || true
+  wait "${MODEL_DOWNLOAD_PID}" 2>/dev/null || true
+  exit 1
+fi
+wait "${MODEL_DOWNLOAD_PID}"
 
 cd "${COMFYUI_ROOT}"
 read -r -a EXTRA_ARGS <<< "${COMFYUI_ARGS:-}"

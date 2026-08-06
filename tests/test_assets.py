@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -78,6 +79,7 @@ class AssetTests(unittest.TestCase):
             "minimax_h3_i2v_easycache.json",
             "minimax_h3_r2v_easycache.json",
             "minimax_h3_i2v_upscale.json",
+            "minimax_h3_i2v_hmmotion_lora_upscale.json",
             "minimax_h3_i2v_easycache_upscale.json",
             "minimax_h3_r2v_upscale.json",
             "minimax_h3_r2v_easycache_upscale.json",
@@ -116,6 +118,12 @@ class AssetTests(unittest.TestCase):
                 "minimax_h3_i2v_upscale.json",
                 "i2v",
                 ["--expect-upscale"],
+            ),
+            (
+                "minimax_h3_i2v_hmmotion_lora_upscale.json",
+                "minimax_h3_i2v_upscale.json",
+                "i2v",
+                ["--expect-upscale", "--expect-lora"],
             ),
             (
                 "minimax_h3_i2v_easycache_upscale.json",
@@ -169,7 +177,7 @@ class AssetTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(mode.upper(), result.stdout)
 
-    def test_dockerfile_pins_comfyui_and_installs_eight_workflows(self) -> None:
+    def test_dockerfile_pins_comfyui_and_installs_nine_workflows(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn(
             "pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime@sha256:"
@@ -184,6 +192,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("MiniMax_H3_R2V_Quality.json", dockerfile)
         self.assertIn("MiniMax_H3_R2V_Fast_EasyCache.json", dockerfile)
         self.assertIn("MiniMax_H3_I2V_Quality_2x.json", dockerfile)
+        self.assertIn("MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json", dockerfile)
         self.assertIn("MiniMax_H3_I2V_Fast_EasyCache_2x.json", dockerfile)
         self.assertIn("MiniMax_H3_R2V_Quality_2x.json", dockerfile)
         self.assertIn("MiniMax_H3_R2V_Fast_EasyCache_2x.json", dockerfile)
@@ -194,6 +203,8 @@ class AssetTests(unittest.TestCase):
         self.assertIn("PIP_BREAK_SYSTEM_PACKAGES=1", dockerfile)
         self.assertIn("REQUIRE_COMFY_KITCHEN_CUDA=1", dockerfile)
         self.assertIn("--start-period=30m", dockerfile)
+        self.assertIn("H3_LORA_REQUIRED=1", dockerfile)
+        self.assertIn("H3_LORA_REPO_ID=uwgm/nikke-civitai-backup", dockerfile)
 
     def test_downloader_supports_pinned_external_upscaler(self) -> None:
         downloader = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
@@ -217,15 +228,26 @@ class AssetTests(unittest.TestCase):
         self.assertIn("manifests/minimax_h3_all.json", entrypoint)
         self.assertIn("--require-comfy-kitchen-cuda", entrypoint)
         self.assertIn("--fast-disk can make H3 model offload much slower", entrypoint)
+        self.assertIn("download_lora.py", entrypoint)
+        self.assertIn("LORA_DOWNLOAD_PID", entrypoint)
+        self.assertIn("MODEL_DOWNLOAD_PID", entrypoint)
+        self.assertIn("MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json", entrypoint)
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.4.0")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.5.0")
         self.assertEqual(template["env"]["MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY"], "0")
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", template["env"])
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
         self.assertEqual(template["env"]["COMFYUI_ARGS"], "--vram-headroom 2")
         self.assertNotIn("--fast-disk", template["env"]["COMFYUI_ARGS"])
+        self.assertEqual(template["env"]["HF_TOKEN"], "")
+        self.assertEqual(template["env"]["H3_LORA_REQUIRED"], "1")
+        self.assertEqual(template["env"]["H3_LORA_REPO_ID"], "uwgm/nikke-civitai-backup")
+        self.assertEqual(
+            template["env"]["H3_LORA_SOURCE_PATH"],
+            "hmmotion_minimax-h3_epoch12.safetensors",
+        )
 
     def test_required_minimax_notice_is_present(self) -> None:
         notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
@@ -235,6 +257,30 @@ class AssetTests(unittest.TestCase):
         )
         self.assertIn("Real-ESRGAN_x2plus", notice)
         self.assertIn("BSD 3-Clause License", notice)
+        self.assertIn("hmmotion_minimax-h3_epoch12.safetensors", notice)
+
+    def test_lora_downloader_validates_safetensors_without_exposing_token(self) -> None:
+        script_path = ROOT / "scripts" / "download_lora.py"
+        source = script_path.read_text(encoding="utf-8")
+        self.assertIn('os.environ.get("HF_TOKEN"', source)
+        self.assertNotIn("print(token", source)
+        self.assertIn("resolved_revision", source)
+        self.assertIn("inspect_safetensors", source)
+        self.assertIn("H3_LORA_SHA256", source)
+
+        spec = importlib.util.spec_from_file_location("download_lora", script_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        header = json.dumps(
+            {"lora.weight": {"dtype": "F32", "shape": [1], "data_offsets": [0, 4]}},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "test.safetensors"
+            model.write_bytes(len(header).to_bytes(8, "little") + header + b"\0\0\0\0")
+            self.assertEqual(module.inspect_safetensors(model), (model.stat().st_size, 1))
 
     def test_verifier_accepts_a_matching_file(self) -> None:
         payload = b"minimax-h3-test"

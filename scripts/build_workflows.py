@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build mixed-reference, EasyCache, and 2x upscale workflow variants."""
+"""Build mixed-reference, EasyCache, LoRA, and 2x upscale workflow variants."""
 
 from __future__ import annotations
 
@@ -17,6 +17,12 @@ UPSCALER_URL = (
     "https://github.com/xinntao/Real-ESRGAN/releases/download/"
     "v0.2.1/RealESRGAN_x2plus.pth"
 )
+LORA_MODEL = "hmmotion_minimax-h3_epoch12.safetensors"
+LORA_URL = (
+    "https://huggingface.co/uwgm/nikke-civitai-backup/resolve/"
+    f"main/{LORA_MODEL}"
+)
+LORA_STRENGTH = 1.0
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -265,6 +271,134 @@ def add_easycache(workflow: dict[str, Any], label: str) -> dict[str, Any]:
     return fast
 
 
+def add_lora(workflow: dict[str, Any], label: str) -> dict[str, Any]:
+    """Apply the HMMotion diffusion LoRA before scheduling and guidance."""
+    lora_workflow = copy.deepcopy(workflow)
+    lora_workflow["id"] = str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f'{lora_workflow["id"]}:hmmotion-lora')
+    )
+    graph = next(
+        candidate
+        for candidate in graph_candidates(lora_workflow)
+        if any(node["type"] == "UNETLoader" for node in candidate.get("nodes", []))
+        and any(node["type"] == "BasicGuider" for node in candidate.get("nodes", []))
+    )
+    nodes = graph["nodes"]
+    links = graph["links"]
+    unet = next(node for node in nodes if node["type"] == "UNETLoader")
+    consumers = {
+        int(node["id"])
+        for node in nodes
+        if node["type"] in {"BasicScheduler", "BasicGuider"}
+    }
+    patched_links = [
+        link
+        for link in links
+        if link_origin(link) == int(unet["id"]) and link_target(link) in consumers
+    ]
+    if len(patched_links) != 2:
+        raise RuntimeError(
+            f"Expected UNET to feed scheduler and guider, got {len(patched_links)} links"
+        )
+
+    lora_id = next_numeric_id(nodes)
+    new_link_id = max(link_id(link) for link in links) + 1
+    lora_order = int(unet["order"]) + 1
+    shift_orders(nodes, lora_order, 1)
+    for link in patched_links:
+        set_link_origin(link, lora_id)
+
+    old_link_ids = {link_id(link) for link in patched_links}
+    unet_output = unet["outputs"][0]
+    unet_output["links"] = [
+        current
+        for current in (unet_output.get("links") or [])
+        if int(current) not in old_link_ids
+    ] + [new_link_id]
+    lora = {
+        "id": lora_id,
+        "type": "LoraLoaderModelOnly",
+        "pos": [float(unet["pos"][0]) + 690, float(unet["pos"][1])],
+        "size": [430, 110],
+        "flags": {},
+        "order": lora_order,
+        "mode": 0,
+        "inputs": [
+            {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": new_link_id,
+            }
+        ],
+        "outputs": [
+            {
+                "localized_name": "MODEL",
+                "name": "MODEL",
+                "type": "MODEL",
+                "links": sorted(old_link_ids),
+            }
+        ],
+        "title": "HMMotion MiniMax H3 LoRA (model only)",
+        "properties": {
+            "Node name for S&R": "LoraLoaderModelOnly",
+            "models": [
+                {
+                    "name": LORA_MODEL,
+                    "url": LORA_URL,
+                    "directory": "loras",
+                }
+            ],
+        },
+        "widgets_values": [LORA_MODEL, LORA_STRENGTH],
+    }
+    nodes.append(lora)
+    if isinstance(links[0], dict):
+        links.append(
+            {
+                "id": new_link_id,
+                "origin_id": int(unet["id"]),
+                "origin_slot": 0,
+                "target_id": lora_id,
+                "target_slot": 0,
+                "type": "MODEL",
+            }
+        )
+        state = graph.setdefault("state", {})
+        state["lastNodeId"] = max(int(state.get("lastNodeId", 0)), lora_id)
+        state["lastLinkId"] = max(int(state.get("lastLinkId", 0)), new_link_id)
+        graph["name"] = f'{graph.get("name", label)} - HMMotion LoRA'
+    else:
+        links.append([new_link_id, int(unet["id"]), 0, lora_id, 0, "MODEL"])
+        lora_workflow["last_node_id"] = max(
+            int(lora_workflow.get("last_node_id", 0)), lora_id
+        )
+        lora_workflow["last_link_id"] = max(
+            int(lora_workflow.get("last_link_id", 0)), new_link_id
+        )
+
+    note = next(
+        (
+            node
+            for node in graph_candidates(lora_workflow)[0].get("nodes", [])
+            if node["type"] == "MarkdownNote"
+            and "About this workflow" in node.get("widgets_values", [""])[0]
+        ),
+        None,
+    )
+    if note:
+        note["widgets_values"][0] += (
+            "\n\n## HMMotion LoRA\n"
+            f"`{LORA_MODEL}` is applied to the diffusion model with the built-in "
+            f"`LoraLoaderModelOnly` node at strength `{LORA_STRENGTH:.2f}`. The base "
+            "INT8 ConvRot model feeds the LoRA loader, and the patched MODEL feeds both "
+            "`BasicScheduler` and `BasicGuider`. Change the strength on the LoRA node for "
+            "A/B tests; `0.0` disables its effect without rewiring the graph. The private "
+            "Hugging Face asset is downloaded at Pod startup using `HF_TOKEN`."
+        )
+    return lora_workflow
+
+
 def add_upscale(workflow: dict[str, Any], label: str) -> dict[str, Any]:
     """Insert a conservative 2x frame upscaler before the final video mux."""
     upscaled = copy.deepcopy(workflow)
@@ -443,6 +577,10 @@ def main() -> int:
     write_json(args.output_dir / "minimax_h3_i2v_easycache.json", i2v_fast)
     write_json(args.output_dir / "minimax_h3_r2v_easycache.json", r2v_fast)
     write_json(args.output_dir / "minimax_h3_i2v_upscale.json", add_upscale(i2v, "I2V"))
+    write_json(
+        args.output_dir / "minimax_h3_i2v_hmmotion_lora_upscale.json",
+        add_upscale(add_lora(i2v, "I2V"), "I2V HMMotion LoRA"),
+    )
     write_json(
         args.output_dir / "minimax_h3_i2v_easycache_upscale.json",
         add_upscale(i2v_fast, "I2V EasyCache Fast"),
