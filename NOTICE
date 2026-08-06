@@ -4,3 +4,11 @@ Real-ESRGAN_x2plus is downloaded at runtime from the official Real-ESRGAN v0.2.1
 release and is used under the BSD 3-Clause License.
 Source: https://github.com/xinntao/Real-ESRGAN
 License: https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE
+
+hmmotion_minimax-h3_epoch12.safetensors is downloaded at runtime from the
+Hugging Face repository selected by H3_LORA_REPO_ID (default:
+uwgm/nikke-civitai-backup). It is not included in this container image or
+repository. The upstream repository is private and did not expose license
+metadata during this integration; access and use remain the operator's
+responsibility.
+Source: https://huggingface.co/uwgm/nikke-civitai-backup

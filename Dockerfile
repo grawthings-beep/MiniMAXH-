@@ -19,6 +19,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HUB_DISABLE_UPDATE_CHECK=1 \
     HF_DOWNLOAD_WORKERS=4 \
     MODEL_VERIFY=sha256 \
+    H3_LORA_REQUIRED=1 \
+    H3_LORA_REPO_ID=uwgm/nikke-civitai-backup \
+    H3_LORA_SOURCE_PATH=hmmotion_minimax-h3_epoch12.safetensors \
+    H3_LORA_REVISION=main \
     REQUIRE_COMFY_KITCHEN_CUDA=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -49,6 +53,8 @@ RUN chmod +x /opt/minimax-h3/scripts/*.sh /opt/minimax-h3/scripts/*.py \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache.json" \
     && cp /opt/minimax-h3/workflows/minimax_h3_i2v_upscale.json \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_i2v_hmmotion_lora_upscale.json \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json" \
     && cp /opt/minimax-h3/workflows/minimax_h3_i2v_easycache_upscale.json \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x.json" \
     && cp /opt/minimax-h3/workflows/minimax_h3_r2v.json \
@@ -75,6 +81,13 @@ RUN chmod +x /opt/minimax-h3/scripts/*.sh /opt/minimax-h3/scripts/*.py \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
       --mode i2v \
       --expect-upscale \
+      --comfyui-root "${COMFYUI_ROOT}" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_i2v_hmmotion_lora_upscale.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
+      --mode i2v \
+      --expect-upscale \
+      --expect-lora \
       --comfyui-root "${COMFYUI_ROOT}" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_i2v_easycache_upscale.json \

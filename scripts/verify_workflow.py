@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 FRONTEND_BUILTINS = {"MarkdownNote"}
+HMMOTION_LORA = "hmmotion_minimax-h3_epoch12.safetensors"
 
 
 def all_nodes(workflow: dict[str, object]) -> list[dict[str, object]]:
@@ -171,6 +172,47 @@ def verify_upscale_wiring(workflow: dict[str, object]) -> None:
         raise RuntimeError("The 2x upscaler model metadata is incomplete")
 
 
+def verify_lora_wiring(workflow: dict[str, object]) -> None:
+    graph = next(
+        (
+            candidate
+            for candidate in graph_candidates(workflow)
+            if any(
+                node["type"] == "LoraLoaderModelOnly"
+                for node in candidate.get("nodes", [])
+            )
+        ),
+        None,
+    )
+    if graph is None:
+        raise RuntimeError("The HMMotion LoRA loader is missing")
+    nodes = graph["nodes"]
+    links = graph["links"]
+    unet = next(node for node in nodes if node["type"] == "UNETLoader")
+    lora = next(node for node in nodes if node["type"] == "LoraLoaderModelOnly")
+    scheduler = next(node for node in nodes if node["type"] == "BasicScheduler")
+    guider = next(node for node in nodes if node["type"] == "BasicGuider")
+    actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
+    expected = {
+        (int(unet["id"]), int(lora["id"]), "MODEL"),
+        (int(lora["id"]), int(scheduler["id"]), "MODEL"),
+        (int(lora["id"]), int(guider["id"]), "MODEL"),
+    }
+    if not expected <= actual:
+        raise RuntimeError(f"HMMotion LoRA wiring is incomplete: {sorted(expected - actual)}")
+    bypasses = {
+        (int(unet["id"]), int(scheduler["id"]), "MODEL"),
+        (int(unet["id"]), int(guider["id"]), "MODEL"),
+    }
+    if bypasses & actual:
+        raise RuntimeError("UNETLoader bypasses the HMMotion LoRA loader")
+    if lora.get("widgets_values") != [HMMOTION_LORA, 1.0]:
+        raise RuntimeError("The HMMotion LoRA defaults have changed")
+    model_entries = lora.get("properties", {}).get("models", [])
+    if len(model_entries) != 1 or model_entries[0].get("directory") != "loras":
+        raise RuntimeError("The HMMotion LoRA model metadata is incomplete")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workflow", type=Path, required=True)
@@ -179,6 +221,7 @@ def main() -> int:
     parser.add_argument("--mode", choices=("i2v", "r2v"), required=True)
     parser.add_argument("--expect-easycache", action="store_true")
     parser.add_argument("--expect-upscale", action="store_true")
+    parser.add_argument("--expect-lora", action="store_true")
     parser.add_argument("--require-video-reference", action="store_true")
     args = parser.parse_args()
 
@@ -192,6 +235,8 @@ def main() -> int:
     }
 
     expected_models = {str(item["path"]) for item in manifest["files"]}
+    if args.expect_lora:
+        expected_models.add(f"loras/{HMMOTION_LORA}")
     actual_models = workflow_models(nodes)
     if actual_models != expected_models:
         missing = sorted(expected_models - actual_models)
@@ -217,6 +262,10 @@ def main() -> int:
         verify_upscale_wiring(workflow)
     elif {"UpscaleModelLoader", "ImageUpscaleWithModel"} & node_types:
         raise RuntimeError("Upscale nodes are enabled in a non-upscale workflow")
+    if args.expect_lora:
+        verify_lora_wiring(workflow)
+    elif "LoraLoaderModelOnly" in node_types:
+        raise RuntimeError("LoRA is enabled in a non-LoRA workflow")
 
     if args.comfyui_root:
         verify_comfyui_nodes(args.comfyui_root, node_types, subgraph_ids)
@@ -224,6 +273,7 @@ def main() -> int:
     native_count = len(node_types - subgraph_ids)
     speed = "EasyCache Fast" if args.expect_easycache else "Quality"
     output = " + Real-ESRGAN 2x" if args.expect_upscale else ""
+    output += " + HMMotion LoRA" if args.expect_lora else ""
     print(
         f"Verified {args.mode.upper()} {speed}{output} workflow: "
         f"{len(actual_models)} models, {native_count} native node types."
