@@ -38,6 +38,11 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(len(sets["i2v_upscale"]), 5)
         self.assertEqual(len(sets["r2v_upscale"]), 5)
         self.assertEqual(len(sets["combined"]), 6)
+        self.assertEqual(i2v_upscale["total_bytes"], 42_537_647_196)
+        self.assertEqual(
+            combined["total_bytes"] - i2v_upscale["total_bytes"],
+            20_970_379_616,
+        )
         self.assertTrue(any("fl2va" in path for path in sets["i2v"]))
         self.assertFalse(any("ref2va" in path for path in sets["i2v"]))
         self.assertTrue(any("ref2va" in path for path in sets["r2v"]))
@@ -186,7 +191,8 @@ class AssetTests(unittest.TestCase):
         )
         self.assertIn("ARG COMFYUI_VERSION=v0.30.0", dockerfile)
         self.assertRegex(dockerfile, r"ARG COMFYUI_COMMIT=[0-9a-f]{40}")
-        self.assertIn("manifests/minimax_h3_all.json", dockerfile)
+        self.assertIn("manifests/minimax_h3_i2v_upscale.json", dockerfile)
+        self.assertIn("MODEL_VERIFY=size", dockerfile)
         self.assertIn("MiniMax_H3_I2V_Quality.json", dockerfile)
         self.assertIn("MiniMax_H3_I2V_Fast_EasyCache.json", dockerfile)
         self.assertIn("MiniMax_H3_R2V_Quality.json", dockerfile)
@@ -208,6 +214,8 @@ class AssetTests(unittest.TestCase):
 
     def test_downloader_supports_pinned_external_upscaler(self) -> None:
         downloader = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
+        self.assertIn("manifests/minimax_h3_i2v_upscale.json", downloader)
+        self.assertIn('VERIFY_MODE="${MODEL_VERIFY:-size}"', downloader)
         self.assertIn('if "source_url" in item', downloader)
         self.assertIn("EXTERNAL_RECORDS", downloader)
         self.assertIn("download_external_files", downloader)
@@ -225,7 +233,9 @@ class AssetTests(unittest.TestCase):
         self.assertIn("WARNING: RunPod data center", entrypoint)
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", entrypoint)
         self.assertNotIn("Choose an eligible data center", entrypoint)
-        self.assertIn("manifests/minimax_h3_all.json", entrypoint)
+        self.assertIn("manifests/minimax_h3_i2v_upscale.json", entrypoint)
+        self.assertIn('any("ref2va" in item["path"]', entrypoint)
+        self.assertIn("I2V-only manifest selected", entrypoint)
         self.assertIn("--require-comfy-kitchen-cuda", entrypoint)
         self.assertIn("--fast-disk can make H3 model offload much slower", entrypoint)
         self.assertIn("download_lora.py", entrypoint)
@@ -235,7 +245,7 @@ class AssetTests(unittest.TestCase):
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.5.0")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.5.1")
         self.assertEqual(template["env"]["MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY"], "0")
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", template["env"])
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
@@ -244,6 +254,11 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(template["env"]["HF_TOKEN"], "")
         self.assertEqual(template["env"]["H3_LORA_REQUIRED"], "1")
         self.assertEqual(template["env"]["H3_LORA_REPO_ID"], "uwgm/nikke-civitai-backup")
+        self.assertEqual(
+            template["env"]["MODEL_MANIFEST"],
+            "/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json",
+        )
+        self.assertEqual(template["env"]["MODEL_VERIFY"], "size")
         self.assertEqual(
             template["env"]["H3_LORA_SOURCE_PATH"],
             "hmmotion_minimax-h3_epoch12.safetensors",

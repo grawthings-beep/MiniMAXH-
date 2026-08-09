@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 COMFYUI_ROOT="${COMFYUI_ROOT:-/opt/ComfyUI}"
 MODEL_DIR="${COMFYUI_MODEL_DIR:-${COMFYUI_ROOT}/models}"
-MANIFEST="${MODEL_MANIFEST:-${PROJECT_DIR}/manifests/minimax_h3_all.json}"
+MANIFEST="${MODEL_MANIFEST:-${PROJECT_DIR}/manifests/minimax_h3_i2v_upscale.json}"
 
 if [[ "${ACCEPT_MINIMAX_H3_LICENSE:-0}" != "1" ]]; then
   echo "MiniMax H3 model download was not started."
@@ -58,14 +58,31 @@ cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_hmmotion_lora_upscale.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache_upscale.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x.json"
-cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json"
-cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json"
-cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_upscale.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x.json"
-cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache_upscale.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x.json"
+
+if python - "${MANIFEST}" <<'PY'
+import json
+import sys
+manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+raise SystemExit(0 if any("ref2va" in item["path"] for item in manifest["files"]) else 1)
+PY
+then
+  echo "[workflow] REF2VA model selected; installing R2V workflows"
+  cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json"
+  cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json"
+  cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_upscale.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x.json"
+  cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache_upscale.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x.json"
+else
+  echo "[workflow] I2V-only manifest selected; hiding R2V workflows with missing models"
+  rm -f \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x.json"
+fi
 
 PREFLIGHT_ARGS=(
   --manifest "${MANIFEST}"

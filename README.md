@@ -1,43 +1,47 @@
-# MiniMax H3 I2V + R2V for ephemeral RunPod Pods
+# MiniMax H3 I2V-first for ephemeral RunPod Pods
 
 MiniMax H3の画像→動画とマルチモーダル参照→動画を、永続ストレージなしのRunPod Podで起動する構成です。
 I2V、開始／終了フレーム、複数画像、参照動画の動き・カメラ・付随音声、ネイティブステレオ音声に対応します。
 
-モデルをDockerイメージへ埋め込まず、Pod起動時にHugging Face Xetと公式GitHub Releaseから約63.51GBを高速取得します。
+モデルをDockerイメージへ埋め込まず、Pod起動時にHugging Face Xetと公式GitHub Releaseから
+I2Vに必要な42.54GBを高速取得します。R2Vは必要な場合だけ20.97GBを追加できます。
 Podを破棄するとモデルと出力は消えます。
 
 ## 構成
 
 - ComfyUI `v0.30.0`をコミットまで固定
 - PyTorch `2.10.0+cu130`をイメージdigestまで固定
-- MiniMax H3 `FL2VA`と`REF2VA`のpruned INT8モデル
+- MiniMax H3 `FL2VA` pruned INT8モデル（`REF2VA`は任意）
 - Qwen3-VL-32B NVFP4/AWQテキストエンコーダー
 - Video VAEと32kHzステレオAudio VAE
 - Real-ESRGAN x2plusによる動画フレーム2倍化
 - Hugging Face `hf_xet`のRAM連動High Performance／Adaptive切替
-- 5ファイルの並列取得、3回の再試行、途中再開
+- 4つの大型Hugging Faceファイルの並列取得、3回の再試行、途中再開
 - Xet失敗時のaria2並列Range Downloadフォールバック
-- 公式LFS SHA256による完全検証
+- manifest固定サイズによる高速検証（公式LFS SHA256の完全検証も選択可能）
 - GPU、ドライバー、VRAM、RAM、空き容量、ComfyKitchen CUDAの起動前診断
 - GPU VRAMに応じた解像度プロファイルの提案
-- I2V/R2VのQuality版、EasyCache Fast版、それぞれの2x版の計8ワークフローを収録
+- I2VのQuality版、HMMotion LoRA版、EasyCache Fast版、それぞれの2x版を収録
+- R2Vを選択した場合だけR2Vワークフローも自動表示
 - 全モデル、全ノード、EasyCache、2xアップスケール、動画・音声参照配線をビルド時に照合
 
-モデルの正確なリビジョン、サイズ、SHA256は
-[`manifests/minimax_h3_all.json`](manifests/minimax_h3_all.json)に固定しています。
-モード別の厳密な検証用manifestも同じディレクトリに収録しています。
+既定のI2Vモデルの正確なリビジョン、サイズ、SHA256は
+[`manifests/minimax_h3_i2v_upscale.json`](manifests/minimax_h3_i2v_upscale.json)に固定しています。
+R2Vを含む[`manifests/minimax_h3_all.json`](manifests/minimax_h3_all.json)など、
+モード別manifestも同じディレクトリに収録しています。
 
 ## 必要容量
 
 | ファイル | 容量 |
 |---|---:|
 | FL2VA pruned INT8 | 20.97 GB |
-| REF2VA pruned INT8 | 20.97 GB |
 | Qwen3-VL-32B NVFP4/AWQ | 15.69 GB |
 | Video VAE | 5.21 GB |
 | Audio VAE | 0.61 GB |
 | Real-ESRGAN x2plus | 0.067 GB |
-| 合計 | 63.51 GB（59.15 GiB） |
+| I2V既定合計 | 42.54 GB（39.62 GiB） |
+| REF2VA pruned INT8（任意） | +20.97 GB |
+| I2V + R2V合計 | 63.51 GB（59.15 GiB） |
 
 RunPodのContainer Diskは、再構築バッファ、入力動画、出力領域を含めて120GBを推奨します。
 Volume DiskやNetwork Volumeは使用しません。
@@ -79,8 +83,8 @@ MiniMaxの[公式License Q&A](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/m
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.5.0 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.5.0
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.5.1 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.5.1
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
@@ -99,7 +103,7 @@ docker push ghcr.io/OWNER/minimax-h3-i2v:0.5.0
 
 GPUは起動のたびに変更できます。CUDA 13.0の公式カーネルを使うため、NVIDIA Driver
 `r580`以上のホストを選択してください。古いドライバーやCUDA 12.8へフォールバックしたPodは、
-63.51GBのモデル取得前に起動を停止します。
+42.54GBのモデル取得前に起動を停止します。
 
 ### 4. 起動
 
@@ -107,12 +111,12 @@ Podログには次の順で状態が表示されます。
 
 1. GPU・ドライバー・RAM・空き容量・ComfyKitchen CUDA診断
 2. Xet並列ダウンロード
-3. SHA256検証
+3. manifest固定サイズ検証
 4. 実効ダウンロード速度
 5. ComfyUI `8188`起動
 
 RunPodの`Connect to HTTP Service [Port 8188]`からComfyUIを開き、
-次の8ワークフローから選びます。高速化と2倍化の両方が必要なら
+次の5ワークフローから選びます。高速化と2倍化の両方が必要なら
 `MiniMax_H3_I2V_Fast_EasyCache_2x`を選びます。
 
 - `MiniMax_H3_I2V_Quality`
@@ -120,6 +124,15 @@ RunPodの`Connect to HTTP Service [Port 8188]`からComfyUIを開き、
 - `MiniMax_H3_I2V_Quality_2x`
 - `MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x`
 - `MiniMax_H3_I2V_Fast_EasyCache_2x`
+
+R2Vも使用する場合は、RunPodテンプレートのmanifestを次へ変更します。
+
+```text
+MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_all.json
+```
+
+追加のREF2VA 20.97GBを取得し、次の4ワークフローも表示します。
+
 - `MiniMax_H3_R2V_Quality`
 - `MiniMax_H3_R2V_Fast_EasyCache`
 - `MiniMax_H3_R2V_Quality_2x`
@@ -163,11 +176,12 @@ HF_XET_CHUNK_CACHE_SIZE_BYTES=0
 HF_DOWNLOAD_WORKERS=4
 HF_HUB_DOWNLOAD_TIMEOUT=120
 DOWNLOAD_RETRIES=3
-MODEL_VERIFY=sha256
+MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json
+MODEL_VERIFY=size
 ```
 
 新規ファイルだけを毎回取得する用途では、Xet chunk cacheを無効にした方が高速です。
-5つの大型ファイルは同時に取得され、各ファイル内部でもXetがRange Downloadを並列化します。
+4つの大型ファイルは同時に取得され、各ファイル内部でもXetがRange Downloadを並列化します。
 `auto`では64GB級以上のRAMを検出した場合だけHigh Performanceを有効にし、
 それ未満ではメモリ効率のよいAdaptive Concurrencyを使います。強制する場合は`1`または`0`を指定できます。
 
@@ -177,15 +191,16 @@ RunPodのsecret環境変数`HF_TOKEN`として設定することを推奨しま�
 
 理論上のモデル取得時間は次の通りです。実測値はPodのネットワーク、NVMe、Hugging Face側の混雑で変わります。
 
-| 実効回線速度 | 63.51GBの理論時間 |
+| 実効回線速度 | 42.54GBの理論時間 |
 |---:|---:|
-| 1 Gbit/s | 約8分28秒 |
-| 2 Gbit/s | 約4分14秒 |
-| 5 Gbit/s | 約1分42秒 |
-| 10 Gbit/s | 約51秒 |
+| 1 Gbit/s | 約5分40秒 |
+| 2 Gbit/s | 約2分50秒 |
+| 5 Gbit/s | 約1分08秒 |
+| 10 Gbit/s | 約34秒 |
 
-完全SHA256検証には追加でローカルNVMeの読み取り時間がかかります。速度優先なら
-`MODEL_VERIFY=size`を指定できますが、既定は安全側の`sha256`です。
+既定の`MODEL_VERIFY=size`はmanifestへ固定した正確なファイルサイズを確認し、
+42.54GBの全量再読込を省きます。Xet側の転送整合性検査も有効です。公式LFS SHA256まで
+再検証したい場合は`MODEL_VERIFY=sha256`を指定できますが、ローカルNVMeの読み取り時間が追加されます。
 
 ## GPU別の初期値
 
@@ -278,7 +293,7 @@ python -m json.tool manifests/minimax_h3_all.json >/dev/null
 python -m json.tool workflows/minimax_h3_i2v_easycache_upscale.json >/dev/null
 ```
 
-実際の生成テストにはNVIDIA GPUと約63.51GBのモデル取得が必要です。
+実際のI2V生成テストにはNVIDIA GPUと約42.54GBのモデル取得が必要です。
 
 ## 調査根拠
 

@@ -1,6 +1,6 @@
 {
-  "name": "MiniMax-H3-I2V-R2V-Ephemeral-Xet",
-  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.5.0",
+  "name": "MiniMax-H3-I2V-Ephemeral-Xet",
+  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.5.1",
   "containerDiskInGb": 120,
   "volumeInGb": 0,
   "volumeMountPath": "/workspace",
@@ -22,7 +22,8 @@
     "HF_DOWNLOAD_WORKERS": "4",
     "HF_HUB_DOWNLOAD_TIMEOUT": "120",
     "DOWNLOAD_RETRIES": "3",
-    "MODEL_VERIFY": "sha256",
+    "MODEL_MANIFEST": "/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json",
+    "MODEL_VERIFY": "size",
     "REQUIRE_COMFY_KITCHEN_CUDA": "1",
     "COMFYUI_ARGS": "--vram-headroom 2"
   }
