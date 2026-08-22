@@ -85,6 +85,7 @@ class AssetTests(unittest.TestCase):
             "minimax_h3_r2v_easycache.json",
             "minimax_h3_i2v_upscale.json",
             "minimax_h3_i2v_hmmotion_lora_upscale.json",
+            "minimax_h3_i2v_selectable_lora_upscale.json",
             "minimax_h3_i2v_easycache_upscale.json",
             "minimax_h3_r2v_upscale.json",
             "minimax_h3_r2v_easycache_upscale.json",
@@ -129,6 +130,18 @@ class AssetTests(unittest.TestCase):
                 "minimax_h3_i2v_upscale.json",
                 "i2v",
                 ["--expect-upscale", "--expect-lora"],
+            ),
+            (
+                "minimax_h3_i2v_selectable_lora_upscale.json",
+                "minimax_h3_i2v_upscale.json",
+                "i2v",
+                [
+                    "--expect-upscale",
+                    "--expect-lora",
+                    "HMNSFW_AIO_V2.safetensors",
+                    "--expect-lora-strength",
+                    "0.5",
+                ],
             ),
             (
                 "minimax_h3_i2v_easycache_upscale.json",
@@ -182,7 +195,7 @@ class AssetTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(mode.upper(), result.stdout)
 
-    def test_dockerfile_pins_comfyui_and_installs_nine_workflows(self) -> None:
+    def test_dockerfile_pins_comfyui_and_installs_ten_workflows(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn(
             "pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime@sha256:"
@@ -199,6 +212,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("MiniMax_H3_R2V_Fast_EasyCache.json", dockerfile)
         self.assertIn("MiniMax_H3_I2V_Quality_2x.json", dockerfile)
         self.assertIn("MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json", dockerfile)
+        self.assertIn("MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json", dockerfile)
         self.assertIn("MiniMax_H3_I2V_Fast_EasyCache_2x.json", dockerfile)
         self.assertIn("MiniMax_H3_R2V_Quality_2x.json", dockerfile)
         self.assertIn("MiniMax_H3_R2V_Fast_EasyCache_2x.json", dockerfile)
@@ -210,7 +224,9 @@ class AssetTests(unittest.TestCase):
         self.assertIn("REQUIRE_COMFY_KITCHEN_CUDA=1", dockerfile)
         self.assertIn("--start-period=30m", dockerfile)
         self.assertIn("H3_LORA_REQUIRED=1", dockerfile)
+        self.assertIn("H3_LORA_SELECTION=all", dockerfile)
         self.assertIn("H3_LORA_REPO_ID=uwgm/nikke-civitai-backup", dockerfile)
+        self.assertIn("civitai.red/api/download/models/3206518?fileId=3088013", dockerfile)
 
     def test_downloader_supports_pinned_external_upscaler(self) -> None:
         downloader = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
@@ -239,20 +255,26 @@ class AssetTests(unittest.TestCase):
         self.assertIn("--require-comfy-kitchen-cuda", entrypoint)
         self.assertIn("--fast-disk can make H3 model offload much slower", entrypoint)
         self.assertIn("download_lora.py", entrypoint)
-        self.assertIn("LORA_DOWNLOAD_PID", entrypoint)
+        self.assertIn("download_civitai_lora.py", entrypoint)
+        self.assertIn("HMMOTION_DOWNLOAD_PID", entrypoint)
+        self.assertIn("CIVITAI_DOWNLOAD_PID", entrypoint)
         self.assertIn("MODEL_DOWNLOAD_PID", entrypoint)
         self.assertIn("MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json", entrypoint)
+        self.assertIn("MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json", entrypoint)
+        self.assertIn('${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors', entrypoint)
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.5.1")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.6.0")
         self.assertEqual(template["env"]["MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY"], "0")
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", template["env"])
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
         self.assertEqual(template["env"]["COMFYUI_ARGS"], "--vram-headroom 2")
         self.assertNotIn("--fast-disk", template["env"]["COMFYUI_ARGS"])
         self.assertEqual(template["env"]["HF_TOKEN"], "")
+        self.assertEqual(template["env"]["CIVITAI_TOKEN"], "")
         self.assertEqual(template["env"]["H3_LORA_REQUIRED"], "1")
+        self.assertEqual(template["env"]["H3_LORA_SELECTION"], "all")
         self.assertEqual(template["env"]["H3_LORA_REPO_ID"], "uwgm/nikke-civitai-backup")
         self.assertEqual(
             template["env"]["MODEL_MANIFEST"],
@@ -273,6 +295,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("Real-ESRGAN_x2plus", notice)
         self.assertIn("BSD 3-Clause License", notice)
         self.assertIn("hmmotion_minimax-h3_epoch12.safetensors", notice)
+        self.assertIn("HMNSFW_AIO_V2.safetensors", notice)
 
     def test_lora_downloader_validates_safetensors_without_exposing_token(self) -> None:
         script_path = ROOT / "scripts" / "download_lora.py"
@@ -296,6 +319,57 @@ class AssetTests(unittest.TestCase):
             model = Path(temp) / "test.safetensors"
             model.write_bytes(len(header).to_bytes(8, "little") + header + b"\0\0\0\0")
             self.assertEqual(module.inspect_safetensors(model), (model.stat().st_size, 1))
+
+            scripts_path = str(ROOT / "scripts")
+            sys.path.insert(0, scripts_path)
+            sys.modules["download_lora"] = module
+            try:
+                civitai_path = ROOT / "scripts" / "download_civitai_lora.py"
+                civitai_spec = importlib.util.spec_from_file_location(
+                    "download_civitai_lora", civitai_path
+                )
+                self.assertIsNotNone(civitai_spec)
+                self.assertIsNotNone(civitai_spec.loader)
+                civitai = importlib.util.module_from_spec(civitai_spec)
+                civitai_spec.loader.exec_module(civitai)
+            finally:
+                sys.path.remove(scripts_path)
+            self.assertEqual(civitai.EXPECTED_SIZE, 310_168_344)
+            self.assertEqual(
+                civitai.EXPECTED_SHA256,
+                "608e4212f2788b6063330ff1196fc1f4b4228cfd9a413a63c198a09d7e4a61cb",
+            )
+            self.assertEqual(
+                civitai.validate_source_url(civitai.DEFAULT_SOURCE_URL),
+                civitai.DEFAULT_SOURCE_URL,
+            )
+            with self.assertRaises(ValueError):
+                civitai.validate_source_url(
+                    civitai.DEFAULT_SOURCE_URL + "&token=test-secret"
+                )
+            request = civitai.build_civitai_request(
+                civitai.DEFAULT_SOURCE_URL, "test-secret", 1024
+            )
+            self.assertNotIn("test-secret", request.full_url)
+            self.assertEqual(
+                request.unredirected_hdrs["Authorization"], "Bearer test-secret"
+            )
+            self.assertEqual(request.headers["Range"], "bytes=1024-")
+            redirected = civitai.urllib.request.HTTPRedirectHandler().redirect_request(
+                request,
+                None,
+                302,
+                "Found",
+                {},
+                "https://signed-storage.example/model.safetensors",
+            )
+            self.assertIsNotNone(redirected)
+            self.assertIsNone(redirected.get_header("Authorization"))
+            self.assertEqual(redirected.get_header("Range"), "bytes=1024-")
+            size, tensors = civitai.verify_download(
+                model, model.stat().st_size, hashlib.sha256(model.read_bytes()).hexdigest()
+            )
+            self.assertEqual((size, tensors), (model.stat().st_size, 1))
 
     def test_verifier_accepts_a_matching_file(self) -> None:
         payload = b"minimax-h3-test"

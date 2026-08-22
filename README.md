@@ -21,7 +21,7 @@ Podを破棄するとモデルと出力は消えます。
 - manifest固定サイズによる高速検証（公式LFS SHA256の完全検証も選択可能）
 - GPU、ドライバー、VRAM、RAM、空き容量、ComfyKitchen CUDAの起動前診断
 - GPU VRAMに応じた解像度プロファイルの提案
-- I2VのQuality版、HMMotion LoRA版、EasyCache Fast版、それぞれの2x版を収録
+- I2VのQuality版、旧V1 LoRA版、V1/V2選択式LoRA版、EasyCache Fast版、それぞれの2x版を収録
 - R2Vを選択した場合だけR2Vワークフローも自動表示
 - 全モデル、全ノード、EasyCache、2xアップスケール、動画・音声参照配線をビルド時に照合
 
@@ -40,8 +40,11 @@ R2Vを含む[`manifests/minimax_h3_all.json`](manifests/minimax_h3_all.json)な�
 | Audio VAE | 0.61 GB |
 | Real-ESRGAN x2plus | 0.067 GB |
 | I2V既定合計 | 42.54 GB（39.62 GiB） |
+| HMMotion V1 LoRA | +0.310 GB |
+| HMNSFW AIO V2 LoRA | +0.310 GB |
+| I2V + LoRA 2本 | 43.16 GB |
 | REF2VA pruned INT8（任意） | +20.97 GB |
-| I2V + R2V合計 | 63.51 GB（59.15 GiB） |
+| I2V + R2V + LoRA 2本 | 64.13 GB |
 
 RunPodのContainer Diskは、再構築バッファ、入力動画、出力領域を含めて120GBを推奨します。
 Volume DiskやNetwork Volumeは使用しません。
@@ -83,8 +86,8 @@ MiniMaxの[公式License Q&A](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/m
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.5.1 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.5.1
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.6.0 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.6.0
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
@@ -116,13 +119,14 @@ Podログには次の順で状態が表示されます。
 5. ComfyUI `8188`起動
 
 RunPodの`Connect to HTTP Service [Port 8188]`からComfyUIを開き、
-次の5ワークフローから選びます。高速化と2倍化の両方が必要なら
+次の6ワークフローから選びます。高速化と2倍化の両方が必要なら
 `MiniMax_H3_I2V_Fast_EasyCache_2x`を選びます。
 
 - `MiniMax_H3_I2V_Quality`
 - `MiniMax_H3_I2V_Fast_EasyCache`
 - `MiniMax_H3_I2V_Quality_2x`
 - `MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x`
+- `MiniMax_H3_I2V_Quality_Selectable_LoRA_2x`
 - `MiniMax_H3_I2V_Fast_EasyCache_2x`
 
 R2Vも使用する場合は、RunPodテンプレートのmanifestを次へ変更します。
@@ -138,7 +142,7 @@ MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_all.json
 - `MiniMax_H3_R2V_Quality_2x`
 - `MiniMax_H3_R2V_Fast_EasyCache_2x`
 
-### HMMotion LoRA版
+### LoRA選択
 
 `MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x`は、正常動作を確認した
 `MiniMax_H3_I2V_Quality_2x`から派生したプリセットです。H3のINT8 ConvRotモデルを
@@ -146,22 +150,44 @@ ComfyUI標準の`LoraLoaderModelOnly`へ通し、その出力を`BasicScheduler`
 `BasicGuider`の両方へ接続しています。初期強度は`1.0`です。LoRAノードの強度を
 `0.0`にすると、配線を変えずに効果だけ無効化できます。
 
-LoRAはコンテナへ同梱しません。Pod起動時にベースモデルと並列で次の非公開
-Hugging Faceリポジトリから取得します。
+`MiniMax_H3_I2V_Quality_Selectable_LoRA_2x`は同じ配線で、新しい
+`HMNSFW_AIO_V2.safetensors`を既定にした選択式プリセットです。LoRAノードの
+`lora_name`プルダウンには起動時に取得した次のファイルが表示されます。
+
+- `hmmotion_minimax-h3_epoch12.safetensors`: 旧V1、既定強度`1.0`
+- `HMNSFW_AIO_V2.safetensors`: 新V2、既定強度`0.5`
+
+V2のトリガーワードは`hmmotion`です。作者は強度`0.5`以下を推奨し、BF16モデルで
+学習・生成したと説明しています。この構成のINT8 ConvRotモデルでの結果は同一seedで
+Quality版と比較してください。
+
+LoRAはコンテナへ同梱しません。Pod起動時にベースモデル、旧V1、新V2を並列取得します。
+既定では両方を取得するため、Hugging FaceとCivitaiのread tokenをRunPod secretへ設定します。
 
 ```text
 H3_LORA_REPO_ID=uwgm/nikke-civitai-backup
 H3_LORA_SOURCE_PATH=hmmotion_minimax-h3_epoch12.safetensors
 H3_LORA_REVISION=main
 H3_LORA_REQUIRED=1
+H3_LORA_SELECTION=all
 HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+CIVITAI_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-`HF_TOKEN`には対象リポジトリを読めるread tokenが必要です。トークンはログへ
-出力しません。起動時には`main`を実際のコミットSHAへ解決してからダウンロードし、
-safetensorsヘッダー、tensor領域、ファイルサイズを検査します。厳密な固定ハッシュが
-分かる場合は`H3_LORA_SHA256`も設定できます。LoRA取得に失敗した場合はComfyUIを
-起動しないため、モデル不足のワークフローだけが開く状態にはなりません。
+`HF_TOKEN`には非公開バックアップを読めるtoken、`CIVITAI_TOKEN`にはCivitai API tokenが
+必要です。V2の作者がログイン必須ダウンロードを指定しているため、匿名取得はできません。
+Bearer tokenはURLやログへ出さず、短命CDN URLへのリダイレクトにも転送しません。
+
+```text
+H3_LORA_SELECTION=all             # V1とV2を取得し、両方をプルダウン表示
+H3_LORA_SELECTION=hmmotion_v1     # V1のみ。CIVITAI_TOKEN不要
+H3_LORA_SELECTION=hmnsfw_aio_v2   # V2のみ。HF_TOKEN不要
+H3_LORA_SELECTION=none            # LoRAを取得せずLoRAワークフローも非表示
+```
+
+両ファイルとも固定サイズ、固定SHA256、safetensorsヘッダー、tensor領域を検査してから
+ワークフローを表示します。取得または検証に失敗した場合は、`H3_LORA_REQUIRED=1`なら
+ComfyUIを起動しません。
 
 ## 高速ダウンロード
 
@@ -178,6 +204,7 @@ HF_HUB_DOWNLOAD_TIMEOUT=120
 DOWNLOAD_RETRIES=3
 MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json
 MODEL_VERIFY=size
+H3_LORA_SELECTION=all
 ```
 
 新規ファイルだけを毎回取得する用途では、Xet chunk cacheを無効にした方が高速です。
@@ -185,9 +212,9 @@ MODEL_VERIFY=size
 `auto`では64GB級以上のRAMを検出した場合だけHigh Performanceを有効にし、
 それ未満ではメモリ効率のよいAdaptive Concurrencyを使います。強制する場合は`1`または`0`を指定できます。
 
-公開モデルなのでトークンなしでも取得できますが、レート制限を避けるため、Hugging Faceのread tokenを
-RunPodのsecret環境変数`HF_TOKEN`として設定することを推奨します。トークンをリポジトリや
-テンプレートJSONへ直接書かないでください。
+ベースモデルは公開されていますが、LoRAを`all`で取得する場合は`HF_TOKEN`と
+`CIVITAI_TOKEN`が必要です。トークンをリポジトリやテンプレートJSONへ直接書かず、
+RunPodのsecret環境変数として設定してください。約296MiBのLoRA 2本はベースモデルと並列取得します。
 
 理論上のモデル取得時間は次の通りです。実測値はPodのネットワーク、NVMe、Hugging Face側の混雑で変わります。
 
@@ -288,6 +315,7 @@ python -m unittest discover -s tests -v
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v.json --manifest manifests/minimax_h3_i2v.json --mode i2v --comfyui-root /path/to/ComfyUI
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v_easycache_upscale.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-easycache --expect-upscale --comfyui-root /path/to/ComfyUI
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v_hmmotion_lora_upscale.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-lora --comfyui-root /path/to/ComfyUI
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v_selectable_lora_upscale.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --comfyui-root /path/to/ComfyUI
 bash -n scripts/entrypoint.sh scripts/download_models.sh
 python -m json.tool manifests/minimax_h3_all.json >/dev/null
 python -m json.tool workflows/minimax_h3_i2v_easycache_upscale.json >/dev/null
@@ -308,3 +336,5 @@ python -m json.tool workflows/minimax_h3_i2v_easycache_upscale.json >/dev/null
 - [MiniMax H3 Community License Agreement](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE)
 - [ComfyUI公式アップスケールガイド](https://docs.comfy.org/tutorials/basic/upscale)
 - [Real-ESRGAN公式リポジトリ](https://github.com/xinntao/Real-ESRGAN)
+- [Civitai V2モデル情報](https://civitai.com/api/v1/model-versions/3206518)
+- [Civitai API認証](https://github.com/civitai/civitai-developer-docs/blob/main/site/guide/authentication.md)

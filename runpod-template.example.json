@@ -1,6 +1,6 @@
 {
   "name": "MiniMax-H3-I2V-Ephemeral-Xet",
-  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.5.1",
+  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.6.0",
   "containerDiskInGb": 120,
   "volumeInGb": 0,
   "volumeMountPath": "/workspace",
@@ -9,10 +9,13 @@
   ],
   "env": {
     "HF_TOKEN": "",
+    "CIVITAI_TOKEN": "",
     "H3_LORA_REQUIRED": "1",
+    "H3_LORA_SELECTION": "all",
     "H3_LORA_REPO_ID": "uwgm/nikke-civitai-backup",
     "H3_LORA_SOURCE_PATH": "hmmotion_minimax-h3_epoch12.safetensors",
     "H3_LORA_REVISION": "main",
+    "H3_CIVITAI_LORA_URL": "https://civitai.red/api/download/models/3206518?fileId=3088013",
     "ACCEPT_MINIMAX_H3_LICENSE": "0",
     "MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY": "0",
     "MINIMAX_H3_SEPARATE_LICENSE": "0",
