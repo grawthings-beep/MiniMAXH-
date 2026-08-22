@@ -22,6 +22,8 @@ Podを破棄するとモデルと出力は消えます。
 - GPU、ドライバー、VRAM、RAM、空き容量、ComfyKitchen CUDAの起動前診断
 - GPU VRAMに応じた解像度プロファイルの提案
 - I2VのQuality版、旧V1 LoRA版、V1/V2選択式LoRA版、EasyCache Fast版、それぞれの2x版を収録
+- 2〜100枚を自由に追加・削除・並べ替えできる長尺Storyboard Quality/Fast版を収録
+- 長尺2x出力は区間ごとに処理・一時MKV化してからffmpeg結合し、2x全フレームの同時RAM保持を回避
 - R2Vを選択した場合だけR2Vワークフローも自動表示
 - 全モデル、全ノード、EasyCache、2xアップスケール、動画・音声参照配線をビルド時に照合
 
@@ -86,8 +88,8 @@ MiniMaxの[公式License Q&A](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/m
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.6.0 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.6.0
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.7.0 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.7.0
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
@@ -119,7 +121,7 @@ Podログには次の順で状態が表示されます。
 5. ComfyUI `8188`起動
 
 RunPodの`Connect to HTTP Service [Port 8188]`からComfyUIを開き、
-次の6ワークフローから選びます。高速化と2倍化の両方が必要なら
+次の8ワークフローから選びます。高速化と2倍化の両方が必要なら
 `MiniMax_H3_I2V_Fast_EasyCache_2x`を選びます。
 
 - `MiniMax_H3_I2V_Quality`
@@ -128,6 +130,8 @@ RunPodの`Connect to HTTP Service [Port 8188]`からComfyUIを開き、
 - `MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x`
 - `MiniMax_H3_I2V_Quality_Selectable_LoRA_2x`
 - `MiniMax_H3_I2V_Fast_EasyCache_2x`
+- `MiniMax_H3_Story_Quality_Selectable_LoRA_2x`
+- `MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x`
 
 R2Vも使用する場合は、RunPodテンプレートのmanifestを次へ変更します。
 
@@ -188,6 +192,44 @@ H3_LORA_SELECTION=none            # LoRAを取得せずLoRAワークフローも
 両ファイルとも固定サイズ、固定SHA256、safetensorsヘッダー、tensor領域を検査してから
 ワークフローを表示します。取得または検証に失敗した場合は、`H3_LORA_REQUIRED=1`なら
 ComfyUIを起動しません。
+
+### 任意枚数の長尺Storyboard
+
+`MiniMax_H3_Story_Quality_Selectable_LoRA_2x`と
+`MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x`は、任意枚数のキーフレームを
+順番どおりにつなぐI2V専用ワークフローです。既定LoRAはV2の強度`0.5`で、LoRAノードの
+プルダウンから起動時に取得したV1/V2を選べます。
+
+1. `MiniMax H3 Ordered Storyboard`の`＋ 画像を追加`で2〜100枚を一括アップロードします。
+2. `↑`、`↓`、`×`で順番と枚数を変更します。
+3. 各画像の下で、その画像から次の画像へ移る区間のプロンプトと秒数を設定します。
+4. 必要なら`最後→最初を追加（ループ）`を有効にします。
+5. Queueすると、通常はN枚からN−1区間、ループ時はN区間を順次生成し、最終2x MP4を保存します。
+
+画像枚数は2〜100枚で可変ですが、Directorが全区間の元解像度tensorを保持するため、合計生成尺は
+メモリ安全策として24fps・`17k+5`整列後で90秒までです。UI右上に実尺を表示し、超過時はQueue前に止めます。
+
+既定の区間長`6.5秒`はH3の`17k+5`制約で158フレーム（約6.58秒）になります。
+10枚・非ループなら9区間で、結合前は約59.25秒です。出力ノードは2区間目以降の重複境界を
+1フレームずつ除くため、完成尺は約58.9秒になります。ループでは最後→最初の追加区間を生成し、
+プレイヤーのループ時に同一フレームが二重にならないよう終端も処理します。
+生成は9区間を順番に実行するため、所要時間は概ね「単一区間の時間×9＋2x処理」です。
+5秒が142秒の環境ならQuality版の約1分は最低でも約21分に2x処理時間を加えた目安になります。
+
+現行Directorはseedを全区間で1つだけ使用します。Storyboard内の区間Seedは将来互換用として
+保存されますが、現在の生成を変えるのはDirectorノードの全体seedです。区間プロンプトと秒数は
+個別に反映されます。
+
+長尺版はDirectorを`segments`出力に固定し、各区間を16フレームずつ2x化して即一時MKVへ書き、解放してから
+ffmpegで結合します。また、固定したDirectorへ全区間fp32 tensorの冗長結合を避けるローカルパッチを
+適用しています。これにより2x全フレームを一括保持しませんが、モデルと元解像度の区間tensorは
+必要です。映像は再圧縮せず結合し、区間音声はPCMで保持して最終段でAACへ1回だけ圧縮し、timestampも補正します。
+約1分の0.4MP→2xではシステムRAM 64GBを下限、96GB以上を推奨します。
+入力キーフレームはメモリ保持前に長辺1536pxへ縮小し、40MPを超える画像はQueue時に拒否します。
+
+Directorの現行FL2V continuityには未修正のクラッシュ報告があるため、このプリセットは
+`continuityEnabled=false`です。各隣接区間は同じ境界画像（A→B、B→C）を共有し、出力時に
+重複フレームを除去します。continuityを手動でONにしないでください。
 
 ## 高速ダウンロード
 
@@ -316,6 +358,7 @@ python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v.json --man
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v_easycache_upscale.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-easycache --expect-upscale --comfyui-root /path/to/ComfyUI
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v_hmmotion_lora_upscale.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-lora --comfyui-root /path/to/ComfyUI
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_i2v_selectable_lora_upscale.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --comfyui-root /path/to/ComfyUI
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_story_quality_lora_2x.json --manifest manifests/minimax_h3_i2v_upscale.json --mode story --expect-upscale --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --comfyui-root /path/to/ComfyUI --custom-node-root /path/to/ComfyUI_MiniMaxH3_Director --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
 bash -n scripts/entrypoint.sh scripts/download_models.sh
 python -m json.tool manifests/minimax_h3_all.json >/dev/null
 python -m json.tool workflows/minimax_h3_i2v_easycache_upscale.json >/dev/null
@@ -338,3 +381,6 @@ python -m json.tool workflows/minimax_h3_i2v_easycache_upscale.json >/dev/null
 - [Real-ESRGAN公式リポジトリ](https://github.com/xinntao/Real-ESRGAN)
 - [Civitai V2モデル情報](https://civitai.com/api/v1/model-versions/3206518)
 - [Civitai API認証](https://github.com/civitai/civitai-developer-docs/blob/main/site/guide/authentication.md)
+- [AIMixer MiniMax H3 Director（固定元）](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director/commit/a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7)
+- [Director FL2V continuity既知不具合 #26](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director/issues/26)
+- [Director長尺結合OOM報告 #32](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director/issues/32)

@@ -6,6 +6,8 @@ PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 COMFYUI_ROOT="${COMFYUI_ROOT:-/opt/ComfyUI}"
 MODEL_DIR="${COMFYUI_MODEL_DIR:-${COMFYUI_ROOT}/models}"
 MANIFEST="${MODEL_MANIFEST:-${PROJECT_DIR}/manifests/minimax_h3_i2v_upscale.json}"
+DIRECTOR_ROOT="${MINIMAX_H3_DIRECTOR_ROOT:-${COMFYUI_ROOT}/custom_nodes/ComfyUI_MiniMaxH3_Director}"
+STORY_NODE_ROOT="${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard"
 
 lora_selected() {
   local requested="${H3_LORA_SELECTION:-all}"
@@ -54,6 +56,18 @@ check_licensee_territory() {
 
 check_licensee_territory
 
+if [[ ! -f "${DIRECTOR_ROOT}/nodes/director.py" ]] \
+  || [[ ! -f "${STORY_NODE_ROOT}/storyboard.py" ]] \
+  || [[ ! -f "${STORY_NODE_ROOT}/exporter.py" ]]; then
+  echo "[workflow] required ordered-story custom nodes are missing from the image"
+  exit 68
+fi
+if ! grep -Fq "MiniMAXH- local modification (2026)" \
+  "${DIRECTOR_ROOT}/director/executor_core.py"; then
+  echo "[workflow] required Director segments-mode memory patch is missing"
+  exit 69
+fi
+
 LORA_REQUIRED="${H3_LORA_REQUIRED:-1}"
 LORA_REQUIRED="${LORA_REQUIRED,,}"
 if [[ "${LORA_REQUIRED}" =~ ^(1|true|yes|on)$ ]]; then
@@ -79,7 +93,9 @@ cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache_upscale.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x.json"
 rm -f \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json"
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json"
 
 if python - "${MANIFEST}" <<'PY'
 import json
@@ -149,6 +165,14 @@ if lora_selected "hmnsfw_aio_v2" \
   && [[ -f "${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors" ]]; then
   cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_selectable_lora_upscale.json" \
     "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json"
+  if [[ -f "${MODEL_DIR}/upscale_models/RealESRGAN_x2plus.pth" ]]; then
+    cp -f "${PROJECT_DIR}/workflows/minimax_h3_story_quality_lora_2x.json" \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json"
+    cp -f "${PROJECT_DIR}/workflows/minimax_h3_story_easycache_lora_2x.json" \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json"
+  else
+    echo "[workflow] Storyboard workflows skipped: RealESRGAN_x2plus.pth is unavailable"
+  fi
 fi
 
 cd "${COMFYUI_ROOT}"

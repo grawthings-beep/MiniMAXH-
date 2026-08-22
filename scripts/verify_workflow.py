@@ -47,9 +47,16 @@ def source_has_node(source: str, node_type: str) -> bool:
 
 
 def verify_comfyui_nodes(
-    comfyui_root: Path, node_types: set[str], subgraph_ids: set[str]
+    comfyui_root: Path,
+    node_types: set[str],
+    subgraph_ids: set[str],
+    custom_node_roots: list[Path] | None = None,
 ) -> None:
     source_files = [comfyui_root / "nodes.py", *sorted((comfyui_root / "comfy_extras").glob("*.py"))]
+    for root in custom_node_roots or []:
+        if not root.is_dir():
+            raise RuntimeError(f"Custom-node source root does not exist: {root}")
+        source_files.extend(sorted(root.rglob("*.py")))
     source = "\n".join(path.read_text(encoding="utf-8") for path in source_files)
     required_backend = node_types - subgraph_ids - FRONTEND_BUILTINS
     missing = sorted(node for node in required_backend if not source_has_node(source, node))
@@ -218,12 +225,137 @@ def verify_lora_wiring(
         raise RuntimeError("The LoRA model metadata is incomplete")
 
 
+def graph_with_types(
+    workflow: dict[str, object], required: set[str]
+) -> dict[str, object]:
+    graph = next(
+        (
+            candidate
+            for candidate in graph_candidates(workflow)
+            if required <= {
+                str(node["type"]) for node in candidate.get("nodes", [])
+            }
+        ),
+        None,
+    )
+    if graph is None:
+        raise RuntimeError(
+            f"No workflow graph contains required nodes: {', '.join(sorted(required))}"
+        )
+    return graph
+
+
+def verify_story_wiring(
+    workflow: dict[str, object], *, expect_easycache: bool
+) -> None:
+    required = {
+        "UNETLoader",
+        "LoraLoaderModelOnly",
+        "MiniMaxH3OrderedStoryboard",
+        "MiniMaxH3Director",
+        "UpscaleModelLoader",
+        "MiniMaxH3StoryExport2x",
+    }
+    if expect_easycache:
+        required.add("EasyCache")
+    graph = graph_with_types(workflow, required)
+    nodes = graph["nodes"]
+    links = graph["links"]
+    by_type = {str(node["type"]): node for node in nodes}
+    actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
+
+    unet = by_type["UNETLoader"]
+    lora = by_type["LoraLoaderModelOnly"]
+    storyboard = by_type["MiniMaxH3OrderedStoryboard"]
+    director = by_type["MiniMaxH3Director"]
+    loader = by_type["UpscaleModelLoader"]
+    exporter = by_type["MiniMaxH3StoryExport2x"]
+
+    model_chain = {
+        (int(unet["id"]), int(lora["id"]), "MODEL"),
+    }
+    if expect_easycache:
+        cache = by_type["EasyCache"]
+        model_chain |= {
+            (int(lora["id"]), int(cache["id"]), "MODEL"),
+            (int(cache["id"]), int(director["id"]), "MODEL"),
+        }
+        if cache.get("widgets_values") != [0.2, 0.15, 0.95, True]:
+            raise RuntimeError("Story EasyCache fast defaults have changed")
+    else:
+        model_chain.add((int(lora["id"]), int(director["id"]), "MODEL"))
+
+    data_chain = {
+        (int(storyboard["id"]), int(director["id"]), "MMX_DIR_GROUP"),
+        (int(director["id"]), int(exporter["id"]), "IMAGE"),
+        (int(director["id"]), int(exporter["id"]), "AUDIO"),
+        (int(director["id"]), int(exporter["id"]), "FLOAT"),
+        (int(storyboard["id"]), int(exporter["id"]), "STRING"),
+        (int(loader["id"]), int(exporter["id"]), "UPSCALE_MODEL"),
+    }
+    missing = (model_chain | data_chain) - actual
+    if missing:
+        raise RuntimeError(f"Ordered-story wiring is incomplete: {sorted(missing)}")
+
+    direct_unet = (int(unet["id"]), int(director["id"]), "MODEL")
+    direct_lora = (int(lora["id"]), int(director["id"]), "MODEL")
+    if direct_unet in actual or (expect_easycache and direct_lora in actual):
+        raise RuntimeError("The ordered-story model chain bypasses LoRA or EasyCache")
+
+    timeline = None
+    for value in director.get("widgets_values", []):
+        if not isinstance(value, str) or not value.lstrip().startswith("{"):
+            continue
+        try:
+            candidate = json.loads(value)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(candidate, dict) and isinstance(candidate.get("output"), dict):
+            timeline = candidate
+            break
+    if timeline is None:
+        raise RuntimeError("Director timeline_data JSON is missing")
+    output = timeline["output"]
+    if output.get("exportMode") != "segments":
+        raise RuntimeError("Long story Director must use per-segment export mode")
+    if output.get("continuityEnabled") is not False:
+        raise RuntimeError("Director continuity must stay disabled until the FL2V crash is fixed")
+    if float(timeline.get("frameRate", 0)) != 24.0:
+        raise RuntimeError("Long story workflow must remain at 24 fps")
+
+    storyboard_values = storyboard.get("widgets_values", ["{}"])
+    storyboard_state = json.loads(str(storyboard_values[0]))
+    if float(storyboard_state.get("defaults", {}).get("duration_sec", 0)) != 6.5:
+        raise RuntimeError("Ordered Storyboard default duration must remain 6.5 seconds")
+    if storyboard_state.get("images") != []:
+        raise RuntimeError("Published Ordered Storyboard must not contain user input images")
+
+    if loader.get("widgets_values") != ["RealESRGAN_x2plus.pth"]:
+        raise RuntimeError("The story 2x upscaler model selection has changed")
+    loader_models = loader.get("properties", {}).get("models", [])
+    if len(loader_models) != 1 or loader_models[0].get("directory") != "upscale_models":
+        raise RuntimeError("The story 2x upscaler model metadata is incomplete")
+
+    exporter_values = exporter.get("widgets_values", [])
+    if len(exporter_values) < 6:
+        raise RuntimeError("Story Export 2x widgets are incomplete")
+    if exporter_values[-2:] != [True, True]:
+        raise RuntimeError("Story Export must remove boundary and loop duplicate frames")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workflow", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--comfyui-root", type=Path)
-    parser.add_argument("--mode", choices=("i2v", "r2v"), required=True)
+    parser.add_argument("--mode", choices=("i2v", "r2v", "story"), required=True)
+    parser.add_argument(
+        "--custom-node-root",
+        type=Path,
+        action="append",
+        default=[],
+        help="Additional custom-node source tree used to verify non-core node types.",
+    )
     parser.add_argument("--expect-easycache", action="store_true")
     parser.add_argument("--expect-upscale", action="store_true")
     parser.add_argument(
@@ -258,33 +390,77 @@ def main() -> int:
             raise RuntimeError("MiniMaxH3ImageToVideo is missing from the I2V workflow")
         if "MiniMaxH3ReferenceToVideo" in node_types or any("ref2va" in path for path in actual_models):
             raise RuntimeError("Reference-to-video assets are not allowed in an I2V workflow")
-    else:
+    elif args.mode == "r2v":
         if "MiniMaxH3ReferenceToVideo" not in node_types:
             raise RuntimeError("MiniMaxH3ReferenceToVideo is missing from the R2V workflow")
         if "MiniMaxH3ImageToVideo" in node_types or any("fl2va" in path for path in actual_models):
             raise RuntimeError("FL2VA assets are not allowed in an R2V workflow")
-    if args.expect_easycache:
+    else:
+        required_story = {
+            "MiniMaxH3OrderedStoryboard",
+            "MiniMaxH3Director",
+            "MiniMaxH3StoryExport2x",
+        }
+        if not required_story <= node_types:
+            raise RuntimeError(
+                f"Ordered-story nodes are missing: {sorted(required_story - node_types)}"
+            )
+        if "MiniMaxH3ReferenceToVideo" in node_types or any(
+            "ref2va" in path for path in actual_models
+        ):
+            raise RuntimeError("Reference-to-video assets are not allowed in an I2V story workflow")
+
+    if args.mode == "story":
+        verify_story_wiring(workflow, expect_easycache=args.expect_easycache)
+    elif args.expect_easycache:
         verify_easycache_wiring(workflow)
     elif "EasyCache" in node_types:
         raise RuntimeError("EasyCache is enabled in a Quality workflow")
     if args.require_video_reference:
         verify_video_reference_wiring(workflow)
-    if args.expect_upscale:
+    if args.mode == "story":
+        pass
+    elif args.expect_upscale:
         verify_upscale_wiring(workflow)
     elif {"UpscaleModelLoader", "ImageUpscaleWithModel"} & node_types:
         raise RuntimeError("Upscale nodes are enabled in a non-upscale workflow")
-    if args.expect_lora:
+    if args.expect_lora and args.mode != "story":
         expected_strength = (
             args.expect_lora_strength
             if args.expect_lora_strength is not None
             else 1.0
         )
         verify_lora_wiring(workflow, args.expect_lora, expected_strength)
-    elif "LoraLoaderModelOnly" in node_types:
+    elif not args.expect_lora and "LoraLoaderModelOnly" in node_types:
         raise RuntimeError("LoRA is enabled in a non-LoRA workflow")
 
+    if args.mode == "story":
+        if not args.expect_upscale:
+            raise RuntimeError("Ordered-story workflows must enable memory-bounded 2x export")
+        if not args.expect_lora:
+            raise RuntimeError("Ordered-story workflows must declare their selectable LoRA")
+        graph = graph_with_types(workflow, {"LoraLoaderModelOnly"})
+        lora = next(node for node in graph["nodes"] if node["type"] == "LoraLoaderModelOnly")
+        expected_strength = (
+            args.expect_lora_strength
+            if args.expect_lora_strength is not None
+            else 1.0
+        )
+        if lora.get("widgets_values") != [args.expect_lora, expected_strength]:
+            raise RuntimeError(
+                f"Story LoRA defaults changed; expected {args.expect_lora} at {expected_strength}"
+            )
+        model_entries = lora.get("properties", {}).get("models", [])
+        if len(model_entries) != 1 or model_entries[0].get("directory") != "loras":
+            raise RuntimeError("The story LoRA model metadata is incomplete")
+
     if args.comfyui_root:
-        verify_comfyui_nodes(args.comfyui_root, node_types, subgraph_ids)
+        verify_comfyui_nodes(
+            args.comfyui_root,
+            node_types,
+            subgraph_ids,
+            args.custom_node_root,
+        )
 
     native_count = len(node_types - subgraph_ids)
     speed = "EasyCache Fast" if args.expect_easycache else "Quality"

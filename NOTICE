@@ -18,3 +18,11 @@ HMNSFW_AIO_V2.safetensors is downloaded at runtime from Civitai model version
 Access requires the operator's Civitai account token. Use is subject to the asset
 creator's current Civitai permissions and terms as well as the MiniMax H3 license.
 Source: https://civitai.com/models/2834417?modelVersionId=3206518
+
+ComfyUI_MiniMaxH3_Director is installed from AIMixer commit
+a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7 under the Apache License 2.0.
+The container modifies director/executor_core.py with the patch
+patches/minimax_h3_director_segments_no_concat.patch to skip redundant
+full-timeline concatenation in per-segment export mode.
+Source: https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director
+License: https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director/blob/a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7/LICENSE
