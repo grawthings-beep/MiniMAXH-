@@ -7,6 +7,14 @@ COMFYUI_ROOT="${COMFYUI_ROOT:-/opt/ComfyUI}"
 MODEL_DIR="${COMFYUI_MODEL_DIR:-${COMFYUI_ROOT}/models}"
 MANIFEST="${MODEL_MANIFEST:-${PROJECT_DIR}/manifests/minimax_h3_i2v_upscale.json}"
 
+lora_selected() {
+  local requested="${H3_LORA_SELECTION:-all}"
+  requested="${requested,,}"
+  requested="${requested//[[:space:]]/}"
+  requested=",${requested},"
+  [[ "${requested}" == ",all," || "${requested}" == *",$1,"* ]]
+}
+
 if [[ "${ACCEPT_MINIMAX_H3_LICENSE:-0}" != "1" ]]; then
   echo "MiniMax H3 model download was not started."
   echo "Review the license and set ACCEPT_MINIMAX_H3_LICENSE=1:"
@@ -46,6 +54,19 @@ check_licensee_territory() {
 
 check_licensee_territory
 
+LORA_REQUIRED="${H3_LORA_REQUIRED:-1}"
+LORA_REQUIRED="${LORA_REQUIRED,,}"
+if [[ "${LORA_REQUIRED}" =~ ^(1|true|yes|on)$ ]]; then
+  if lora_selected "hmmotion_v1" && [[ -z "${HF_TOKEN:-}" ]]; then
+    echo "[lora] HF_TOKEN is required for the selected HMMotion V1 LoRA"
+    exit 66
+  fi
+  if lora_selected "hmnsfw_aio_v2" && [[ -z "${CIVITAI_TOKEN:-}" ]]; then
+    echo "[lora] CIVITAI_TOKEN is required for the selected Civitai V2 LoRA"
+    exit 67
+  fi
+fi
+
 mkdir -p "${MODEL_DIR}" "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v.json" \
@@ -54,10 +75,11 @@ cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_upscale.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x.json"
-cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_hmmotion_lora_upscale.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache_upscale.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x.json"
+rm -f \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json"
 
 if python - "${MANIFEST}" <<'PY'
 import json
@@ -95,17 +117,39 @@ fi
 python "${SCRIPT_DIR}/preflight.py" "${PREFLIGHT_ARGS[@]}"
 
 python "${SCRIPT_DIR}/download_lora.py" &
-LORA_DOWNLOAD_PID=$!
+HMMOTION_DOWNLOAD_PID=$!
+python "${SCRIPT_DIR}/download_civitai_lora.py" &
+CIVITAI_DOWNLOAD_PID=$!
 "${SCRIPT_DIR}/download_models.sh" &
 MODEL_DOWNLOAD_PID=$!
 
-if ! wait "${LORA_DOWNLOAD_PID}"; then
-  echo "[download] HMMotion LoRA failed; stopping the base-model download"
+LORA_DOWNLOAD_FAILED=0
+if ! wait "${HMMOTION_DOWNLOAD_PID}"; then
+  echo "[download] HMMotion V1 LoRA failed"
+  LORA_DOWNLOAD_FAILED=1
+fi
+if ! wait "${CIVITAI_DOWNLOAD_PID}"; then
+  echo "[download] Civitai V2 LoRA failed"
+  LORA_DOWNLOAD_FAILED=1
+fi
+if [[ "${LORA_DOWNLOAD_FAILED}" == "1" ]]; then
+  echo "[download] required LoRA failed; stopping the base-model download"
   kill "${MODEL_DOWNLOAD_PID}" 2>/dev/null || true
   wait "${MODEL_DOWNLOAD_PID}" 2>/dev/null || true
   exit 1
 fi
 wait "${MODEL_DOWNLOAD_PID}"
+
+if lora_selected "hmmotion_v1" \
+  && [[ -f "${MODEL_DIR}/loras/hmmotion_minimax-h3_epoch12.safetensors" ]]; then
+  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_hmmotion_lora_upscale.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json"
+fi
+if lora_selected "hmnsfw_aio_v2" \
+  && [[ -f "${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors" ]]; then
+  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_selectable_lora_upscale.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json"
+fi
 
 cd "${COMFYUI_ROOT}"
 read -r -a EXTRA_ARGS <<< "${COMFYUI_ARGS:-}"

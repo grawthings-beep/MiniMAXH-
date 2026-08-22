@@ -46,6 +46,14 @@ jobs:
             --expect-lora \
             --comfyui-root .ci-ComfyUI
           python scripts/verify_workflow.py \
+            --workflow workflows/minimax_h3_i2v_selectable_lora_upscale.json \
+            --manifest manifests/minimax_h3_i2v_upscale.json \
+            --mode i2v \
+            --expect-upscale \
+            --expect-lora HMNSFW_AIO_V2.safetensors \
+            --expect-lora-strength 0.5 \
+            --comfyui-root .ci-ComfyUI
+          python scripts/verify_workflow.py \
             --workflow workflows/minimax_h3_i2v_easycache_upscale.json \
             --manifest manifests/minimax_h3_i2v_upscale.json \
             --mode i2v \

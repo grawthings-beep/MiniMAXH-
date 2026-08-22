@@ -12,3 +12,9 @@ repository. The upstream repository is private and did not expose license
 metadata during this integration; access and use remain the operator's
 responsibility.
 Source: https://huggingface.co/uwgm/nikke-civitai-backup
+
+HMNSFW_AIO_V2.safetensors is downloaded at runtime from Civitai model version
+3206518, file 3088013. It is not included in this container image or repository.
+Access requires the operator's Civitai account token. Use is subject to the asset
+creator's current Civitai permissions and terms as well as the MiniMax H3 license.
+Source: https://civitai.com/models/2834417?modelVersionId=3206518

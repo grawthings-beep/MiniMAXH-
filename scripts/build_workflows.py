@@ -23,6 +23,11 @@ LORA_URL = (
     f"main/{LORA_MODEL}"
 )
 LORA_STRENGTH = 1.0
+HMNSFW_V2_MODEL = "HMNSFW_AIO_V2.safetensors"
+HMNSFW_V2_URL = (
+    "https://civitai.red/api/download/models/3206518?fileId=3088013"
+)
+HMNSFW_V2_STRENGTH = 0.5
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -271,11 +276,24 @@ def add_easycache(workflow: dict[str, Any], label: str) -> dict[str, Any]:
     return fast
 
 
-def add_lora(workflow: dict[str, Any], label: str) -> dict[str, Any]:
-    """Apply the HMMotion diffusion LoRA before scheduling and guidance."""
+def add_lora(
+    workflow: dict[str, Any],
+    label: str,
+    *,
+    model: str = LORA_MODEL,
+    url: str = LORA_URL,
+    strength: float = LORA_STRENGTH,
+    variant_id: str = "hmmotion-lora",
+    display_name: str = "HMMotion LoRA",
+    node_title: str = "HMMotion MiniMax H3 LoRA (model only)",
+    source_note: str = (
+        "The private Hugging Face asset is downloaded at Pod startup using `HF_TOKEN`."
+    ),
+) -> dict[str, Any]:
+    """Apply a selectable diffusion LoRA before scheduling and guidance."""
     lora_workflow = copy.deepcopy(workflow)
     lora_workflow["id"] = str(
-        uuid.uuid5(uuid.NAMESPACE_URL, f'{lora_workflow["id"]}:hmmotion-lora')
+        uuid.uuid5(uuid.NAMESPACE_URL, f'{lora_workflow["id"]}:{variant_id}')
     )
     graph = next(
         candidate
@@ -339,18 +357,18 @@ def add_lora(workflow: dict[str, Any], label: str) -> dict[str, Any]:
                 "links": sorted(old_link_ids),
             }
         ],
-        "title": "HMMotion MiniMax H3 LoRA (model only)",
+        "title": node_title,
         "properties": {
             "Node name for S&R": "LoraLoaderModelOnly",
             "models": [
                 {
-                    "name": LORA_MODEL,
-                    "url": LORA_URL,
+                    "name": model,
+                    "url": url,
                     "directory": "loras",
                 }
             ],
         },
-        "widgets_values": [LORA_MODEL, LORA_STRENGTH],
+        "widgets_values": [model, strength],
     }
     nodes.append(lora)
     if isinstance(links[0], dict):
@@ -367,7 +385,7 @@ def add_lora(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         state = graph.setdefault("state", {})
         state["lastNodeId"] = max(int(state.get("lastNodeId", 0)), lora_id)
         state["lastLinkId"] = max(int(state.get("lastLinkId", 0)), new_link_id)
-        graph["name"] = f'{graph.get("name", label)} - HMMotion LoRA'
+        graph["name"] = f'{graph.get("name", label)} - {display_name}'
     else:
         links.append([new_link_id, int(unet["id"]), 0, lora_id, 0, "MODEL"])
         lora_workflow["last_node_id"] = max(
@@ -388,13 +406,13 @@ def add_lora(workflow: dict[str, Any], label: str) -> dict[str, Any]:
     )
     if note:
         note["widgets_values"][0] += (
-            "\n\n## HMMotion LoRA\n"
-            f"`{LORA_MODEL}` is applied to the diffusion model with the built-in "
-            f"`LoraLoaderModelOnly` node at strength `{LORA_STRENGTH:.2f}`. The base "
+            f"\n\n## {display_name}\n"
+            f"`{model}` is applied to the diffusion model with the built-in "
+            f"`LoraLoaderModelOnly` node at strength `{strength:.2f}`. The base "
             "INT8 ConvRot model feeds the LoRA loader, and the patched MODEL feeds both "
             "`BasicScheduler` and `BasicGuider`. Change the strength on the LoRA node for "
-            "A/B tests; `0.0` disables its effect without rewiring the graph. The private "
-            "Hugging Face asset is downloaded at Pod startup using `HF_TOKEN`."
+            "A/B tests; `0.0` disables its effect without rewiring the graph. "
+            f"{source_note}"
         )
     return lora_workflow
 
@@ -580,6 +598,28 @@ def main() -> int:
     write_json(
         args.output_dir / "minimax_h3_i2v_hmmotion_lora_upscale.json",
         add_upscale(add_lora(i2v, "I2V"), "I2V HMMotion LoRA"),
+    )
+    write_json(
+        args.output_dir / "minimax_h3_i2v_selectable_lora_upscale.json",
+        add_upscale(
+            add_lora(
+                i2v,
+                "I2V",
+                model=HMNSFW_V2_MODEL,
+                url=HMNSFW_V2_URL,
+                strength=HMNSFW_V2_STRENGTH,
+                variant_id="hmnsfw-aio-v2-lora",
+                display_name="Selectable MiniMax H3 LoRA (V2 default)",
+                node_title="Selectable MiniMax H3 LoRA (V2 default; choose LoRA here)",
+                source_note=(
+                    "Both installed LoRAs appear in this node's dropdown when "
+                    "`H3_LORA_SELECTION=all`. The Civitai V2 asset is downloaded at Pod "
+                    "startup using `CIVITAI_TOKEN`; its author recommends strength 0.5 or "
+                    "lower and trained it against BF16, so compare INT8 output carefully."
+                ),
+            ),
+            "I2V Selectable LoRA",
+        ),
     )
     write_json(
         args.output_dir / "minimax_h3_i2v_easycache_upscale.json",

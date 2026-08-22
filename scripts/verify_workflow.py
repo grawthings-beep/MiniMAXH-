@@ -11,6 +11,7 @@ from pathlib import Path
 
 FRONTEND_BUILTINS = {"MarkdownNote"}
 HMMOTION_LORA = "hmmotion_minimax-h3_epoch12.safetensors"
+HMNSFW_V2_LORA = "HMNSFW_AIO_V2.safetensors"
 
 
 def all_nodes(workflow: dict[str, object]) -> list[dict[str, object]]:
@@ -172,7 +173,9 @@ def verify_upscale_wiring(workflow: dict[str, object]) -> None:
         raise RuntimeError("The 2x upscaler model metadata is incomplete")
 
 
-def verify_lora_wiring(workflow: dict[str, object]) -> None:
+def verify_lora_wiring(
+    workflow: dict[str, object], expected_model: str, expected_strength: float
+) -> None:
     graph = next(
         (
             candidate
@@ -185,7 +188,7 @@ def verify_lora_wiring(workflow: dict[str, object]) -> None:
         None,
     )
     if graph is None:
-        raise RuntimeError("The HMMotion LoRA loader is missing")
+        raise RuntimeError("The LoRA loader is missing")
     nodes = graph["nodes"]
     links = graph["links"]
     unet = next(node for node in nodes if node["type"] == "UNETLoader")
@@ -199,18 +202,20 @@ def verify_lora_wiring(workflow: dict[str, object]) -> None:
         (int(lora["id"]), int(guider["id"]), "MODEL"),
     }
     if not expected <= actual:
-        raise RuntimeError(f"HMMotion LoRA wiring is incomplete: {sorted(expected - actual)}")
+        raise RuntimeError(f"LoRA wiring is incomplete: {sorted(expected - actual)}")
     bypasses = {
         (int(unet["id"]), int(scheduler["id"]), "MODEL"),
         (int(unet["id"]), int(guider["id"]), "MODEL"),
     }
     if bypasses & actual:
-        raise RuntimeError("UNETLoader bypasses the HMMotion LoRA loader")
-    if lora.get("widgets_values") != [HMMOTION_LORA, 1.0]:
-        raise RuntimeError("The HMMotion LoRA defaults have changed")
+        raise RuntimeError("UNETLoader bypasses the LoRA loader")
+    if lora.get("widgets_values") != [expected_model, expected_strength]:
+        raise RuntimeError(
+            f"LoRA defaults have changed; expected {expected_model} at {expected_strength}"
+        )
     model_entries = lora.get("properties", {}).get("models", [])
     if len(model_entries) != 1 or model_entries[0].get("directory") != "loras":
-        raise RuntimeError("The HMMotion LoRA model metadata is incomplete")
+        raise RuntimeError("The LoRA model metadata is incomplete")
 
 
 def main() -> int:
@@ -221,7 +226,13 @@ def main() -> int:
     parser.add_argument("--mode", choices=("i2v", "r2v"), required=True)
     parser.add_argument("--expect-easycache", action="store_true")
     parser.add_argument("--expect-upscale", action="store_true")
-    parser.add_argument("--expect-lora", action="store_true")
+    parser.add_argument(
+        "--expect-lora",
+        nargs="?",
+        const=HMMOTION_LORA,
+        choices=(HMMOTION_LORA, HMNSFW_V2_LORA),
+    )
+    parser.add_argument("--expect-lora-strength", type=float)
     parser.add_argument("--require-video-reference", action="store_true")
     args = parser.parse_args()
 
@@ -236,7 +247,7 @@ def main() -> int:
 
     expected_models = {str(item["path"]) for item in manifest["files"]}
     if args.expect_lora:
-        expected_models.add(f"loras/{HMMOTION_LORA}")
+        expected_models.add(f"loras/{args.expect_lora}")
     actual_models = workflow_models(nodes)
     if actual_models != expected_models:
         missing = sorted(expected_models - actual_models)
@@ -263,7 +274,12 @@ def main() -> int:
     elif {"UpscaleModelLoader", "ImageUpscaleWithModel"} & node_types:
         raise RuntimeError("Upscale nodes are enabled in a non-upscale workflow")
     if args.expect_lora:
-        verify_lora_wiring(workflow)
+        expected_strength = (
+            args.expect_lora_strength
+            if args.expect_lora_strength is not None
+            else 1.0
+        )
+        verify_lora_wiring(workflow, args.expect_lora, expected_strength)
     elif "LoraLoaderModelOnly" in node_types:
         raise RuntimeError("LoRA is enabled in a non-LoRA workflow")
 
@@ -273,7 +289,7 @@ def main() -> int:
     native_count = len(node_types - subgraph_ids)
     speed = "EasyCache Fast" if args.expect_easycache else "Quality"
     output = " + Real-ESRGAN 2x" if args.expect_upscale else ""
-    output += " + HMMotion LoRA" if args.expect_lora else ""
+    output += f" + {args.expect_lora}" if args.expect_lora else ""
     print(
         f"Verified {args.mode.upper()} {speed}{output} workflow: "
         f"{len(actual_models)} models, {native_count} native node types."
