@@ -2,6 +2,7 @@ FROM pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime@sha256:1f57418aedd9a4d0d3a59
 
 ARG COMFYUI_VERSION=v0.30.0
 ARG COMFYUI_COMMIT=b1693ecba9f5b65f8c80ab36b195ab963ec92413
+ARG MINIMAX_H3_DIRECTOR_COMMIT=a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -9,6 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     COMFYUI_ROOT=/opt/ComfyUI \
     COMFYUI_MODEL_DIR=/opt/ComfyUI/models \
+    MINIMAX_H3_DIRECTOR_ROOT=/opt/ComfyUI/custom_nodes/ComfyUI_MiniMaxH3_Director \
     MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
     HF_HOME=/tmp/huggingface \
     HF_XET_HIGH_PERFORMANCE=auto \
@@ -45,9 +47,40 @@ RUN git clone --branch "${COMFYUI_VERSION}" --depth 1 \
       "huggingface_hub==1.26.0" \
       "hf-xet==1.5.2"
 
+RUN mkdir -p "${MINIMAX_H3_DIRECTOR_ROOT}" \
+    && git -C "${MINIMAX_H3_DIRECTOR_ROOT}" init \
+    && git -C "${MINIMAX_H3_DIRECTOR_ROOT}" remote add origin \
+      https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git \
+    && git -C "${MINIMAX_H3_DIRECTOR_ROOT}" fetch --depth 1 origin \
+      "${MINIMAX_H3_DIRECTOR_COMMIT}" \
+    && git -C "${MINIMAX_H3_DIRECTOR_ROOT}" checkout --detach FETCH_HEAD \
+    && test "$(git -C "${MINIMAX_H3_DIRECTOR_ROOT}" rev-parse HEAD)" = \
+      "${MINIMAX_H3_DIRECTOR_COMMIT}" \
+    && pip install --no-cache-dir \
+      -r "${MINIMAX_H3_DIRECTOR_ROOT}/requirements.txt"
+
+COPY patches/minimax_h3_director_segments_no_concat.patch /tmp/minimax_h3_director_segments_no_concat.patch
+
+RUN git -C "${MINIMAX_H3_DIRECTOR_ROOT}" apply --check \
+      /tmp/minimax_h3_director_segments_no_concat.patch \
+    && git -C "${MINIMAX_H3_DIRECTOR_ROOT}" apply \
+      /tmp/minimax_h3_director_segments_no_concat.patch \
+    && rm /tmp/minimax_h3_director_segments_no_concat.patch
+
 COPY . /opt/minimax-h3
 
 RUN chmod +x /opt/minimax-h3/scripts/*.sh /opt/minimax-h3/scripts/*.py \
+    && cp -R /opt/minimax-h3/custom_nodes/minimax_h3_ordered_storyboard \
+      "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+    && mkdir -p /tmp/minimax-h3-story-workflows \
+    && python /opt/minimax-h3/scripts/build_story_workflows.py \
+      --director-source "${MINIMAX_H3_DIRECTOR_ROOT}/example_workflows/minimax_h3_director_fl2v.json" \
+      --output-dir /tmp/minimax-h3-story-workflows \
+    && cmp /tmp/minimax-h3-story-workflows/minimax_h3_story_quality_lora_2x.json \
+      /opt/minimax-h3/workflows/minimax_h3_story_quality_lora_2x.json \
+    && cmp /tmp/minimax-h3-story-workflows/minimax_h3_story_easycache_lora_2x.json \
+      /opt/minimax-h3/workflows/minimax_h3_story_easycache_lora_2x.json \
+    && rm -r /tmp/minimax-h3-story-workflows \
     && mkdir -p "${COMFYUI_ROOT}/user/default/workflows" \
     && cp /opt/minimax-h3/workflows/minimax_h3_i2v.json \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality.json" \
@@ -59,6 +92,10 @@ RUN chmod +x /opt/minimax-h3/scripts/*.sh /opt/minimax-h3/scripts/*.py \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json" \
     && cp /opt/minimax-h3/workflows/minimax_h3_i2v_selectable_lora_upscale.json \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_story_quality_lora_2x.json \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_story_easycache_lora_2x.json \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json" \
     && cp /opt/minimax-h3/workflows/minimax_h3_i2v_easycache_upscale.json \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x.json" \
     && cp /opt/minimax-h3/workflows/minimax_h3_r2v.json \
@@ -101,6 +138,27 @@ RUN chmod +x /opt/minimax-h3/scripts/*.sh /opt/minimax-h3/scripts/*.py \
       --expect-lora HMNSFW_AIO_V2.safetensors \
       --expect-lora-strength 0.5 \
       --comfyui-root "${COMFYUI_ROOT}" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_story_quality_lora_2x.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
+      --mode story \
+      --expect-upscale \
+      --expect-lora HMNSFW_AIO_V2.safetensors \
+      --expect-lora-strength 0.5 \
+      --comfyui-root "${COMFYUI_ROOT}" \
+      --custom-node-root "${MINIMAX_H3_DIRECTOR_ROOT}" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_story_easycache_lora_2x.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
+      --mode story \
+      --expect-easycache \
+      --expect-upscale \
+      --expect-lora HMNSFW_AIO_V2.safetensors \
+      --expect-lora-strength 0.5 \
+      --comfyui-root "${COMFYUI_ROOT}" \
+      --custom-node-root "${MINIMAX_H3_DIRECTOR_ROOT}" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_i2v_easycache_upscale.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \

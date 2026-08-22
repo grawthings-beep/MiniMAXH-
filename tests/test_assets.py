@@ -150,6 +150,31 @@ class AssetTests(unittest.TestCase):
                 ["--expect-easycache", "--expect-upscale"],
             ),
             (
+                "minimax_h3_story_quality_lora_2x.json",
+                "minimax_h3_i2v_upscale.json",
+                "story",
+                [
+                    "--expect-upscale",
+                    "--expect-lora",
+                    "HMNSFW_AIO_V2.safetensors",
+                    "--expect-lora-strength",
+                    "0.5",
+                ],
+            ),
+            (
+                "minimax_h3_story_easycache_lora_2x.json",
+                "minimax_h3_i2v_upscale.json",
+                "story",
+                [
+                    "--expect-easycache",
+                    "--expect-upscale",
+                    "--expect-lora",
+                    "HMNSFW_AIO_V2.safetensors",
+                    "--expect-lora-strength",
+                    "0.5",
+                ],
+            ),
+            (
                 "minimax_h3_r2v.json",
                 "minimax_h3_r2v.json",
                 "r2v",
@@ -195,7 +220,7 @@ class AssetTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(mode.upper(), result.stdout)
 
-    def test_dockerfile_pins_comfyui_and_installs_ten_workflows(self) -> None:
+    def test_dockerfile_pins_comfyui_director_and_installs_story_workflows(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn(
             "pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime@sha256:"
@@ -204,6 +229,14 @@ class AssetTests(unittest.TestCase):
         )
         self.assertIn("ARG COMFYUI_VERSION=v0.30.0", dockerfile)
         self.assertRegex(dockerfile, r"ARG COMFYUI_COMMIT=[0-9a-f]{40}")
+        self.assertIn(
+            "ARG MINIMAX_H3_DIRECTOR_COMMIT="
+            "a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7",
+            dockerfile,
+        )
+        self.assertIn("AIMixer/ComfyUI_MiniMaxH3_Director.git", dockerfile)
+        self.assertIn("minimax_h3_director_segments_no_concat.patch", dockerfile)
+        self.assertIn("custom_nodes/minimax_h3_ordered_storyboard", dockerfile)
         self.assertIn("manifests/minimax_h3_i2v_upscale.json", dockerfile)
         self.assertIn("MODEL_VERIFY=size", dockerfile)
         self.assertIn("MiniMax_H3_I2V_Quality.json", dockerfile)
@@ -216,6 +249,11 @@ class AssetTests(unittest.TestCase):
         self.assertIn("MiniMax_H3_I2V_Fast_EasyCache_2x.json", dockerfile)
         self.assertIn("MiniMax_H3_R2V_Quality_2x.json", dockerfile)
         self.assertIn("MiniMax_H3_R2V_Fast_EasyCache_2x.json", dockerfile)
+        self.assertIn("MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json", dockerfile)
+        self.assertIn(
+            "MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json",
+            dockerfile,
+        )
         self.assertIn("HF_XET_HIGH_PERFORMANCE=auto", dockerfile)
         self.assertNotIn("HF_HUB_ENABLE_HF_TRANSFER", dockerfile)
         self.assertNotIn("ComfyUI-INT8-Fast", dockerfile)
@@ -261,11 +299,17 @@ class AssetTests(unittest.TestCase):
         self.assertIn("MODEL_DOWNLOAD_PID", entrypoint)
         self.assertIn("MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json", entrypoint)
         self.assertIn("MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json", entrypoint)
+        self.assertIn("MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json", entrypoint)
+        self.assertIn(
+            "MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json",
+            entrypoint,
+        )
+        self.assertIn("required Director segments-mode memory patch is missing", entrypoint)
         self.assertIn('${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors', entrypoint)
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.6.0")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.7.0")
         self.assertEqual(template["env"]["MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY"], "0")
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", template["env"])
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
@@ -296,6 +340,17 @@ class AssetTests(unittest.TestCase):
         self.assertIn("BSD 3-Clause License", notice)
         self.assertIn("hmmotion_minimax-h3_epoch12.safetensors", notice)
         self.assertIn("HMNSFW_AIO_V2.safetensors", notice)
+        self.assertIn("ComfyUI_MiniMaxH3_Director", notice)
+        self.assertIn("a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7", notice)
+
+    def test_director_memory_patch_is_narrow_and_prominently_marked(self) -> None:
+        patch = (
+            ROOT / "patches" / "minimax_h3_director_segments_no_concat.patch"
+        ).read_text(encoding="utf-8")
+        self.assertIn("director/executor_core.py", patch)
+        self.assertIn("MiniMAXH- local modification (2026)", patch)
+        self.assertIn('plan.export_mode == "segments"', patch)
+        self.assertNotIn("h3_motion_context.py", patch)
 
     def test_lora_downloader_validates_safetensors_without_exposing_token(self) -> None:
         script_path = ROOT / "scripts" / "download_lora.py"

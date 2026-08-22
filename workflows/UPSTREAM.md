@@ -32,3 +32,15 @@ The selectable V2 variant also uses `LoraLoaderModelOnly`, defaults to
 `HMNSFW_AIO_V2.safetensors` at strength 0.5, and downloads the pinned Civitai
 version/file at Pod startup. The file is not redistributed here:
 https://civitai.com/models/2834417?modelVersionId=3206518
+
+The two ordered-story workflows are deterministically derived by
+`scripts/build_story_workflows.py` from AIMixer's clean FL2V Director example at
+commit `a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7`:
+https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director/blob/a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7/example_workflows/minimax_h3_director_fl2v.json
+
+The derived graphs replace the Director card editor with the local variable-length
+Ordered Storyboard input, apply the selectable V2 LoRA (and EasyCache only in the
+Fast variant), force per-segment export with continuity disabled, and stream each
+segment through Real-ESRGAN 2x into a final ffmpeg-concatenated MP4. The container
+installs the Director commit separately and applies the documented memory patch in
+`patches/minimax_h3_director_segments_no_concat.patch`.

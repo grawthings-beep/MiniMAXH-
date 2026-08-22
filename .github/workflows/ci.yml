@@ -21,6 +21,19 @@ jobs:
         run: |
           git clone --depth 1 --branch v0.30.0 https://github.com/Comfy-Org/ComfyUI.git .ci-ComfyUI
           test "$(git -C .ci-ComfyUI rev-parse HEAD)" = "b1693ecba9f5b65f8c80ab36b195ab963ec92413"
+          git init .ci-MiniMaxH3-Director
+          git -C .ci-MiniMaxH3-Director remote add origin https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git
+          git -C .ci-MiniMaxH3-Director fetch --depth 1 origin a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7
+          git -C .ci-MiniMaxH3-Director checkout --detach FETCH_HEAD
+          test "$(git -C .ci-MiniMaxH3-Director rev-parse HEAD)" = "a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7"
+          git -C .ci-MiniMaxH3-Director apply --check ../patches/minimax_h3_director_segments_no_concat.patch
+          git -C .ci-MiniMaxH3-Director apply ../patches/minimax_h3_director_segments_no_concat.patch
+          mkdir .ci-story-workflows
+          python scripts/build_story_workflows.py \
+            --director-source .ci-MiniMaxH3-Director/example_workflows/minimax_h3_director_fl2v.json \
+            --output-dir .ci-story-workflows
+          cmp .ci-story-workflows/minimax_h3_story_quality_lora_2x.json workflows/minimax_h3_story_quality_lora_2x.json
+          cmp .ci-story-workflows/minimax_h3_story_easycache_lora_2x.json workflows/minimax_h3_story_easycache_lora_2x.json
           python scripts/verify_workflow.py \
             --workflow workflows/minimax_h3_i2v.json \
             --manifest manifests/minimax_h3_i2v.json \
@@ -53,6 +66,27 @@ jobs:
             --expect-lora HMNSFW_AIO_V2.safetensors \
             --expect-lora-strength 0.5 \
             --comfyui-root .ci-ComfyUI
+          python scripts/verify_workflow.py \
+            --workflow workflows/minimax_h3_story_quality_lora_2x.json \
+            --manifest manifests/minimax_h3_i2v_upscale.json \
+            --mode story \
+            --expect-upscale \
+            --expect-lora HMNSFW_AIO_V2.safetensors \
+            --expect-lora-strength 0.5 \
+            --comfyui-root .ci-ComfyUI \
+            --custom-node-root .ci-MiniMaxH3-Director \
+            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
+          python scripts/verify_workflow.py \
+            --workflow workflows/minimax_h3_story_easycache_lora_2x.json \
+            --manifest manifests/minimax_h3_i2v_upscale.json \
+            --mode story \
+            --expect-easycache \
+            --expect-upscale \
+            --expect-lora HMNSFW_AIO_V2.safetensors \
+            --expect-lora-strength 0.5 \
+            --comfyui-root .ci-ComfyUI \
+            --custom-node-root .ci-MiniMaxH3-Director \
+            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
           python scripts/verify_workflow.py \
             --workflow workflows/minimax_h3_i2v_easycache_upscale.json \
             --manifest manifests/minimax_h3_i2v_upscale.json \
@@ -90,6 +124,8 @@ jobs:
             --comfyui-root .ci-ComfyUI
       - name: Validate shell scripts
         run: bash -n scripts/entrypoint.sh scripts/download_models.sh
+      - name: Validate custom-node JavaScript
+        run: node --check custom_nodes/minimax_h3_ordered_storyboard/web/ordered_storyboard.js
       - name: Validate JSON
         run: |
           for file in manifests/*.json workflows/*.json runpod-template.example.json; do
