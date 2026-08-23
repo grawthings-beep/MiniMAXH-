@@ -88,8 +88,8 @@ MiniMaxの[公式License Q&A](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/m
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.8.0 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.8.0
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.9.0 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.9.0
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
@@ -201,9 +201,9 @@ ComfyUIを起動しません。
 プルダウンから起動時に取得したV1/V2を選べます。
 
 1. `MiniMax H3 Ordered Storyboard`の`＋ 画像を追加`で2〜100枚を一括アップロードします。
-2. `↑`、`↓`、`×`で順番と枚数を変更します。
+2. `↑`、`↓`、`削除`で順番と枚数を変更します。
 3. 各画像の下で、その画像から次の画像へ移る区間のプロンプトと秒数を設定します。
-4. 必要なら`最後→最初を追加（ループ）`を有効にします。
+4. 必要なら`Loop（最後 → 最初）`を有効にします。
 5. Queueすると、通常はN枚からN−1区間、ループ時はN区間を順次生成し、最終2x MP4を保存します。
 
 画像枚数は2〜100枚で可変ですが、Directorが全区間の元解像度tensorを保持するため、合計生成尺は
@@ -227,9 +227,22 @@ ffmpegで結合します。また、固定したDirectorへ全区間fp32 tensor�
 約1分の0.4MP→2xではシステムRAM 64GBを下限、96GB以上を推奨します。
 入力キーフレームはメモリ保持前に長辺1536pxへ縮小し、40MPを超える画像はQueue時に拒否します。
 
-Directorの現行FL2V continuityには未修正のクラッシュ報告があるため、このプリセットは
-`continuityEnabled=false`です。各隣接区間は同じ境界画像（A→B、B→C）を共有し、出力時に
-重複フレームを除去します。continuityを手動でONにしないでください。
+Story版はDirector内蔵のMotion Contextを既定で有効にし、前区間の末尾22フレームを
+AV latentのまま次区間へ渡します。次区間の先頭へ固定された22フレームは生成後に映像・音声とも
+Trimされるため、静止画を差し込んだような硬い再スタートを減らしながら完成尺を維持します。
+FL2V終端アンカーで2区間目に失敗する[AIMixer issue #26](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director/issues/26)は
+`patches/minimax_h3_director_fl2v_motion_context.patch`で修正しています。
+
+単体の[ComfyUI-H3-Motion-Context](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context)は
+Director内蔵版と同じH3 layoutをpatchするため、二重導入していません。Story版ではDirector内蔵経路を使うことで、
+複数区間を1回のQueueで自動継承します。プロンプトにも
+`The subject passes through the key pose without pausing; motion and camera momentum continue.`
+のように「境界ポーズで停止しない」指示を入れてください。Motion Contextは運動情報を渡しますが、
+到達画像そのものに停止動作が強く描かれている場合まで完全には打ち消しません。
+
+ワークフローは左から`Models` → `Storyboard Editor` → `Director` → `2x Output`の番号付きグループに分離し、
+グループとノードの重なりをビルド時に検査します。Storyboard UIは日本語表示、4行プロンプト欄、
+大きいサムネイル、固定ツールバー、区間数・整列後秒数表示へ更新しています。
 
 ## 高速ダウンロード
 

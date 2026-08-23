@@ -13,7 +13,12 @@ This repository does not redistribute MiniMax H3 weights.
   as a separate custom-node checkout. It applies the repository patch
   `patches/minimax_h3_director_segments_no_concat.patch`, which prevents a
   redundant full-timeline tensor allocation when Director is explicitly in
-  per-segment export mode. The upstream license remains in that checkout.
+  per-segment export mode, and
+  `patches/minimax_h3_director_fl2v_motion_context.patch`, which retimes the
+  retained FL2V last-frame anchor for Director's integrated Motion Context.
+  The upstream license remains in that checkout. Director credits
+  `NikoDemon80/ComfyUI-H3-Motion-Context` for the continuation approach; the
+  standalone GPL package is not installed or redistributed here.
 - The I2V workflow and the upstream source for the derived R2V/EasyCache
   workflows come from `Comfy-Org/workflow_templates`; exact source revisions
   and local derivation are documented in `workflows/UPSTREAM.md`.

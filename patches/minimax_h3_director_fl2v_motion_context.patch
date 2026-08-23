@@ -1,0 +1,20 @@
+diff --git a/director/h3_motion_context.py b/director/h3_motion_context.py
+--- a/director/h3_motion_context.py
++++ b/director/h3_motion_context.py
+@@ -423,7 +423,16 @@ def apply_motion_context(
+             # Drop stock first-frame at 0 — replaced by context head.
+             if int(kf.get("resolved_frame_index", -1)) == 0 and CTX_FRAME_KEY not in kf:
+                 continue
+             # Avoid duplicating director context markers.
+             if CTX_FRAME_KEY in kf:
+                 continue
++            # MiniMAXH- local fix for AIMixer issue #26: FL2V retains its
++            # stock last-frame anchor. Give that anchor the same explicit
++            # pixel coordinate marker as the Motion Context frames so the
++            # layout patch can move it when audio/reference rows shift the
++            # target origin. Leaving it unmarked crashes at segment two.
++            resolved = int(kf.get("resolved_frame_index", -1))
++            if resolved >= 0:
++                kf = dict(kf)
++                kf[CTX_FRAME_KEY] = resolved
+             merged.append(kf)

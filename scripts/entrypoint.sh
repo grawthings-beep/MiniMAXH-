@@ -77,6 +77,11 @@ if ! grep -Fq "MiniMAXH- local modification (2026)" \
   echo "[workflow] required Director segments-mode memory patch is missing"
   exit 69
 fi
+if ! grep -Fq "MiniMAXH- local fix for AIMixer issue #26" \
+  "${DIRECTOR_ROOT}/director/h3_motion_context.py"; then
+  echo "[workflow] required Director FL2V Motion Context fix is missing"
+  exit 72
+fi
 
 LORA_REQUIRED="${H3_LORA_REQUIRED:-1}"
 LORA_REQUIRED="${LORA_REQUIRED,,}"

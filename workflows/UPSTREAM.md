@@ -40,7 +40,9 @@ https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director/blob/a267324a9f88141ff4e4b
 
 The derived graphs replace the Director card editor with the local variable-length
 Ordered Storyboard input, apply the selectable V2 LoRA (and EasyCache only in the
-Fast variant), force per-segment export with continuity disabled, and stream each
-segment through Real-ESRGAN 2x into a final ffmpeg-concatenated MP4. The container
-installs the Director commit separately and applies the documented memory patch in
-`patches/minimax_h3_director_segments_no_concat.patch`.
+Fast variant), force per-segment export, enable Director's integrated Motion Context
+at the recommended 22-frame window, and stream each segment through Real-ESRGAN 2x
+into a final ffmpeg-concatenated MP4. The container installs the Director commit
+separately and applies the documented memory patch in
+`patches/minimax_h3_director_segments_no_concat.patch` plus the narrow FL2V
+last-frame retiming fix in `patches/minimax_h3_director_fl2v_motion_context.patch`.

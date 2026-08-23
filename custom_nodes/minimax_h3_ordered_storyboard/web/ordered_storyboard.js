@@ -77,20 +77,39 @@ function imageViewUrl(asset) {
 }
 
 function el(tag, props = {}, children = []) {
-    const node = document.createElement(tag);
+    const element = document.createElement(tag);
     for (const [key, value] of Object.entries(props)) {
-        if (key === "className") node.className = value;
-        else if (key === "text") node.textContent = value;
-        else if (key === "style") Object.assign(node.style, value);
+        if (key === "className") element.className = value;
+        else if (key === "text") element.textContent = value;
+        else if (key === "style") Object.assign(element.style, value);
         else if (key.startsWith("on") && typeof value === "function") {
-            node.addEventListener(key.slice(2).toLowerCase(), value);
+            element.addEventListener(key.slice(2).toLowerCase(), value);
         } else if (value !== undefined) {
-            node[key] = value;
+            element[key] = value;
         }
     }
-    for (const child of children) node.append(child);
-    return node;
+    for (const child of children) element.append(child);
+    return element;
 }
+
+const inputStyle = {
+    boxSizing: "border-box",
+    minWidth: "0",
+    color: "inherit",
+    background: "#15171b",
+    border: "1px solid #515866",
+    borderRadius: "6px",
+    padding: "7px",
+};
+
+const buttonStyle = {
+    cursor: "pointer",
+    color: "#e8edf7",
+    background: "#303744",
+    border: "1px solid #566174",
+    borderRadius: "6px",
+    padding: "6px 10px",
+};
 
 function installEditor(node) {
     if (node.__h3OrderedStoryboardInstalled) return;
@@ -107,12 +126,13 @@ function installEditor(node) {
         style: {
             boxSizing: "border-box",
             width: "100%",
-            minWidth: "520px",
-            maxHeight: "720px",
+            minWidth: "700px",
+            maxHeight: "850px",
             overflowY: "auto",
-            padding: "8px",
-            color: "var(--fg-color, #ddd)",
-            font: "12px sans-serif",
+            padding: "10px",
+            color: "var(--fg-color, #e3e7ef)",
+            background: "#202329",
+            font: "13px/1.4 sans-serif",
         },
     });
     const fileInput = el("input", {
@@ -140,7 +160,7 @@ function installEditor(node) {
             const remaining = Math.max(0, MAX_IMAGES - state.images.length);
             throw new Error(`最大${MAX_IMAGES}枚です。現在あと${remaining}枚追加できます。`);
         }
-        showError("");
+        node.__h3OrderedStoryboardError = "";
         for (const file of files) {
             const body = new FormData();
             body.append("image", file, file.name);
@@ -150,10 +170,9 @@ function installEditor(node) {
             const response = await api.fetchApi("/upload/image", { method: "POST", body });
             if (!response.ok) {
                 const detail = await response.text();
-                throw new Error(`Upload failed (${response.status}): ${detail}`);
+                throw new Error(`アップロード失敗 (${response.status}): ${detail}`);
             }
             const asset = await response.json();
-            const seedBase = seedBigInt(state.defaults.seed);
             state.images.push({
                 id: freshId(),
                 name: String(asset.name || file.name),
@@ -162,11 +181,9 @@ function installEditor(node) {
                 transition: {
                     prompt: state.defaults.prompt,
                     duration_sec: state.defaults.duration_sec,
-                    seed: String(seedBase + BigInt(state.images.length)),
+                    seed: String(seedBigInt(state.defaults.seed) + BigInt(state.images.length)),
                 },
             });
-            // Persist every successful upload immediately. If a later file in
-            // the same selection fails, the visible cards and queued JSON agree.
             sync();
         }
         render();
@@ -186,39 +203,36 @@ function installEditor(node) {
         const targetIndex = index + 1 < state.images.length ? index + 1 : 0;
         const wrap = el("div", {
             style: {
-                margin: "6px 0 2px 44px",
-                padding: "7px",
-                borderLeft: "2px solid #5c8bd6",
-                background: "rgba(80,120,180,.08)",
+                margin: "10px 0 2px 76px",
+                padding: "10px",
+                borderLeft: "3px solid #6aa3ff",
+                borderRadius: "0 7px 7px 0",
+                background: "rgba(72, 116, 184, .12)",
             },
         });
         wrap.append(el("div", {
-            text: `Transition ${index + 1}: #${index + 1} → #${targetIndex + 1}`,
-            style: { marginBottom: "4px", color: "#9fc4ff", fontWeight: "600" },
+            text: `区間 ${index + 1}: 画像 #${index + 1} → #${targetIndex + 1}`,
+            style: { marginBottom: "7px", color: "#a9ceff", fontWeight: "700" },
         }));
-        const prompt = el("textarea", {
+        wrap.append(el("textarea", {
             value: image.transition.prompt,
-            placeholder: "この区間のプロンプト",
-            rows: 2,
-            style: {
-                boxSizing: "border-box",
-                width: "100%",
-                resize: "vertical",
-                color: "inherit",
-                background: "#171717",
-                border: "1px solid #555",
-                borderRadius: "4px",
-                padding: "5px",
-            },
+            placeholder: "この区間で起きる動作・カメラ・音を記述。境界で止めず、次へ続く動きを明記します。",
+            rows: 4,
+            style: { ...inputStyle, width: "100%", minHeight: "92px", resize: "vertical", lineHeight: "1.5" },
             oninput: (event) => {
                 image.transition.prompt = event.target.value;
                 sync();
             },
-        });
-        wrap.append(prompt);
+        }));
 
         const settings = el("div", {
-            style: { display: "grid", gridTemplateColumns: "45px 1fr 110px 1fr", gap: "5px", marginTop: "5px", alignItems: "center" },
+            style: {
+                display: "grid",
+                gridTemplateColumns: "70px minmax(90px, 1fr) 150px minmax(150px, 1.5fr)",
+                gap: "7px",
+                marginTop: "8px",
+                alignItems: "center",
+            },
         });
         settings.append(el("label", { text: "秒数" }));
         settings.append(el("input", {
@@ -227,7 +241,7 @@ function installEditor(node) {
             min: 0.2,
             max: 15,
             step: 0.1,
-            style: { minWidth: "0", color: "inherit", background: "#171717", border: "1px solid #555", borderRadius: "4px", padding: "4px" },
+            style: inputStyle,
             onchange: (event) => {
                 const value = Number(event.target.value);
                 if (Number.isFinite(value)) image.transition.duration_sec = value;
@@ -236,16 +250,16 @@ function installEditor(node) {
             },
         }));
         settings.append(el("label", {
-            text: "Seed（保存のみ）",
-            title: "現行AIMixer Directorは区間別seedを適用せず、Director本体の全体seedを使います。",
+            text: "区間Seed（保存用）",
+            title: "現行Directorは全区間でDirectorノード本体のseedを使います。",
         }));
         settings.append(el("input", {
             type: "text",
             inputMode: "numeric",
             value: image.transition.seed,
             pattern: "[0-9]*",
-            title: "将来の区間seed対応用に保存。現在の生成はDirector本体の全体seedです。",
-            style: { minWidth: "0", color: "inherit", background: "#171717", border: "1px solid #555", borderRadius: "4px", padding: "4px" },
+            title: "将来の区間別seed対応用。現在の生成seedはDirectorノードで変更します。",
+            style: inputStyle,
             onchange: (event) => {
                 image.transition.seed = event.target.value.trim();
                 sync();
@@ -256,15 +270,26 @@ function installEditor(node) {
     }
 
     function render() {
-        const preservedInput = fileInput;
-        root.replaceChildren(preservedInput);
+        root.replaceChildren(fileInput);
         const toolbar = el("div", {
-            style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", position: "sticky", top: "0", zIndex: "2", background: "#222", padding: "4px" },
+            style: {
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "9px",
+                marginBottom: "10px",
+                position: "sticky",
+                top: "0",
+                zIndex: "3",
+                background: "#202329",
+                borderBottom: "1px solid #414754",
+                padding: "6px 4px 10px",
+            },
         });
         toolbar.append(el("button", {
             text: "＋ 画像を追加",
             onclick: () => fileInput.click(),
-            style: { cursor: "pointer", padding: "5px 10px" },
+            style: { ...buttonStyle, background: "#315f9e", borderColor: "#5f96de", fontWeight: "700" },
         }));
         const loop = el("input", {
             type: "checkbox",
@@ -275,7 +300,11 @@ function installEditor(node) {
                 render();
             },
         });
-        toolbar.append(el("label", { style: { display: "flex", alignItems: "center", gap: "4px" } }, [loop, document.createTextNode("最後→最初を追加（ループ）")]));
+        toolbar.append(el("label", {
+            title: "最後の画像から最初の画像へ戻る区間も生成します。",
+            style: { display: "flex", alignItems: "center", gap: "5px", fontWeight: "600" },
+        }, [loop, document.createTextNode("Loop（最後 → 最初）")]));
+
         const segmentCount = Math.max(0, state.images.length - 1) + (state.loop && state.images.length >= 2 ? 1 : 0);
         let totalFrames = state.images.slice(0, Math.max(0, state.images.length - 1))
             .reduce((sum, image) => sum + alignedFrameCount(image.transition.duration_sec), 0);
@@ -285,34 +314,51 @@ function installEditor(node) {
         const totalDuration = totalFrames / STORY_FPS;
         const overDurationLimit = totalDuration > MAX_TOTAL_DURATION;
         toolbar.append(el("span", {
-            text: `${state.images.length}枚 / ${segmentCount}区間 / ${totalDuration.toFixed(1)}秒（上限${MAX_TOTAL_DURATION}秒）`,
-            title: "24fps・17k+5整列後の尺。Directorの全区間tensor保持によるRAM超過を防ぐ安全上限です。",
-            style: { marginLeft: "auto", opacity: ".9", color: overDurationLimit ? "#ff8b8b" : "inherit" },
+            text: `${state.images.length}枚 · ${segmentCount}区間 · ${totalDuration.toFixed(1)}秒 / 上限${MAX_TOTAL_DURATION}秒`,
+            title: "24fps・17k+5整列後。DirectorのRAM保護上限です。",
+            style: { marginLeft: "auto", color: overDurationLimit ? "#ff8b8b" : "#c9d3e3", fontWeight: "600" },
         }));
         root.append(toolbar);
 
+        const help = el("details", {
+            style: { marginBottom: "10px", padding: "8px 10px", background: "#191c21", borderRadius: "7px" },
+        });
+        help.append(el("summary", { text: "使い方 / Motion Context", style: { cursor: "pointer", fontWeight: "700" } }));
+        help.append(el("div", {
+            text: "上から順に画像を通過します。各プロンプトには『ポーズで停止せず動作とカメラの勢いを次へ継続』と書くのが有効です。前区間のlatent＋音声22フレームは自動で次区間へ継承されます。",
+            style: { marginTop: "7px", color: "#b9c5d8" },
+        }));
+        root.append(help);
+
         if (node.__h3OrderedStoryboardError) {
-            root.append(el("div", { text: node.__h3OrderedStoryboardError, style: { color: "#ff8b8b", padding: "5px", whiteSpace: "pre-wrap" } }));
+            root.append(el("div", {
+                text: node.__h3OrderedStoryboardError,
+                style: { color: "#ff9e9e", background: "#482629", borderRadius: "6px", padding: "8px", marginBottom: "8px", whiteSpace: "pre-wrap" },
+            }));
         }
         if (!state.images.length) {
             root.append(el("div", {
-                text: "画像を2枚以上追加してください。順番は ↑ ↓ で自由に変更できます。",
-                style: { padding: "18px 8px", textAlign: "center", opacity: ".75" },
+                text: "画像を2枚以上追加してください。追加後に ↑ / ↓ で順番を変更できます。",
+                style: { padding: "34px 12px", textAlign: "center", color: "#aeb8c8", border: "1px dashed #596273", borderRadius: "8px" },
             }));
         }
 
         state.images.forEach((image, index) => {
             const card = el("div", {
-                style: { border: "1px solid #484848", borderRadius: "6px", padding: "6px", marginBottom: "6px", background: "rgba(0,0,0,.12)" },
+                style: { border: "1px solid #4a5260", borderRadius: "8px", padding: "9px", marginBottom: "10px", background: "#242831" },
             });
-            const header = el("div", { style: { display: "flex", alignItems: "center", gap: "7px" } });
-            header.append(el("span", { text: `#${index + 1}`, style: { width: "28px", fontWeight: "700" } }));
+            const header = el("div", { style: { display: "flex", alignItems: "center", gap: "9px", minHeight: "58px" } });
+            header.append(el("span", { text: `#${index + 1}`, style: { width: "34px", fontSize: "15px", fontWeight: "800", color: "#a9ceff" } }));
             header.append(el("img", {
                 src: imageViewUrl(image),
                 alt: image.name,
-                style: { width: "58px", height: "42px", objectFit: "cover", borderRadius: "3px", background: "#111" },
+                style: { width: "76px", height: "54px", objectFit: "cover", borderRadius: "5px", background: "#111", border: "1px solid #555e6c" },
             }));
-            header.append(el("span", { text: image.subfolder ? `${image.subfolder}/${image.name}` : image.name, title: image.name, style: { flex: "1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }));
+            header.append(el("span", {
+                text: image.subfolder ? `${image.subfolder}/${image.name}` : image.name,
+                title: image.name,
+                style: { flex: "1", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: "600" },
+            }));
             const move = (delta) => {
                 const next = index + delta;
                 if (next < 0 || next >= state.images.length) return;
@@ -320,25 +366,30 @@ function installEditor(node) {
                 sync();
                 render();
             };
-            header.append(el("button", { text: "↑", title: "上へ", disabled: index === 0, onclick: () => move(-1), style: { cursor: "pointer" } }));
-            header.append(el("button", { text: "↓", title: "下へ", disabled: index === state.images.length - 1, onclick: () => move(1), style: { cursor: "pointer" } }));
+            header.append(el("button", { text: "↑", title: "上へ移動", disabled: index === 0, onclick: () => move(-1), style: buttonStyle }));
+            header.append(el("button", { text: "↓", title: "下へ移動", disabled: index === state.images.length - 1, onclick: () => move(1), style: buttonStyle }));
             header.append(el("button", {
-                text: "−",
-                title: "削除",
+                text: "削除",
+                title: "この画像を削除",
                 onclick: () => {
                     state.images.splice(index, 1);
                     sync();
                     render();
                 },
-                style: { cursor: "pointer", color: "#ff9b9b" },
+                style: { ...buttonStyle, color: "#ffb1b1", background: "#43282d", borderColor: "#70434b" },
             }));
             card.append(header);
             if (index < state.images.length - 1 || (state.loop && state.images.length >= 2)) {
                 card.append(transitionEditor(image, index));
+            } else {
+                card.append(el("div", {
+                    text: "終点（Loop OFFのため、この画像から次の区間は生成しません）",
+                    style: { margin: "8px 0 2px 76px", color: "#919bab" },
+                }));
             }
             root.append(card);
         });
-        node.setSize?.([Math.max(node.size?.[0] || 0, 560), Math.max(node.size?.[1] || 0, 520)]);
+        node.setSize?.([Math.max(node.size?.[0] || 0, 760), Math.max(node.size?.[1] || 0, 860)]);
         node.graph?.setDirtyCanvas?.(true, true);
     }
 

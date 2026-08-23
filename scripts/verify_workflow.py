@@ -342,8 +342,10 @@ def verify_story_wiring(
     output = timeline["output"]
     if output.get("exportMode") != "segments":
         raise RuntimeError("Long story Director must use per-segment export mode")
-    if output.get("continuityEnabled") is not False:
-        raise RuntimeError("Director continuity must stay disabled until the FL2V crash is fixed")
+    if output.get("continuityEnabled") is not True:
+        raise RuntimeError("Story Director Motion Context continuity must be enabled")
+    if int(output.get("continuityOverlapFrames", 0)) != 22:
+        raise RuntimeError("Story Director Motion Context must use 22 context frames")
     if float(timeline.get("frameRate", 0)) != 24.0:
         raise RuntimeError("Long story workflow must remain at 24 fps")
 

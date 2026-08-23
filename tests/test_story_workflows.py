@@ -100,6 +100,33 @@ class StoryWorkflowTests(unittest.TestCase):
         self.assertTrue(exporter.MiniMaxH3StoryExport2x.INPUT_IS_LIST)
         self.assertTrue(exporter.MiniMaxH3StoryExport2x.OUTPUT_NODE)
 
+    def test_motion_context_is_enabled_with_recommended_window(self) -> None:
+        for filename in (
+            builder.QUALITY_OUTPUT,
+            builder.FAST_OUTPUT,
+            builder.QUALITY_AUTO_MOSAIC_OUTPUT,
+            builder.FAST_AUTO_MOSAIC_OUTPUT,
+        ):
+            workflow = self.load_workflow(filename)
+            director = next(node for node in workflow["nodes"] if node["type"] == "MiniMaxH3Director")
+            timeline_index = builder.widget_index(director, "timeline_data")
+            output = json.loads(director["widgets_values"][timeline_index])["output"]
+            self.assertIs(output["continuityEnabled"], True)
+            self.assertEqual(output["continuityOverlapFrames"], 22)
+
+    def test_story_editor_is_readable_and_exposes_motion_context_guidance(self) -> None:
+        source = (
+            ROOT
+            / "custom_nodes"
+            / "minimax_h3_ordered_storyboard"
+            / "web"
+            / "ordered_storyboard.js"
+        ).read_text(encoding="utf-8")
+        for text in ("画像を追加", "区間", "Motion Context", "最後 → 最初"):
+            self.assertIn(text, source)
+        for mojibake in ("縺", "譛", "蜿", "繧"):
+            self.assertNotIn(mojibake, source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -198,7 +198,11 @@ def configure_director(director: dict[str, Any], storyboard_link_id: int) -> Non
     timeline = json.loads(director["widgets_values"][timeline_index])
     output = timeline.setdefault("output", {})
     output["exportMode"] = "segments"
-    output["continuityEnabled"] = False
+    # Director embeds the H3 Motion Context mechanism. Carry the previous
+    # segment's final latent/audio motion into the next segment, then trim the
+    # duplicated head before export.
+    output["continuityEnabled"] = True
+    output["continuityOverlapFrames"] = 22
     output["maxExportFrames"] = 0
     timeline["totalFrames"] = DEFAULT_FRAME_COUNT
     timeline["frameRate"] = DEFAULT_FRAME_RATE
@@ -226,7 +230,7 @@ def make_lora(node_id: int, input_link: int, output_links: list[int]) -> dict[st
     return {
         "id": node_id,
         "type": "LoraLoaderModelOnly",
-        "pos": [-300, -120],
+        "pos": [-1080, -240],
         "size": [430, 110],
         "flags": {},
         "order": 4,
@@ -262,8 +266,8 @@ def make_storyboard(node_id: int, output_link: int, order: int) -> dict[str, Any
     return {
         "id": node_id,
         "type": "MiniMaxH3OrderedStoryboard",
-        "pos": [-280, 1040],
-        "size": [1050, 540],
+        "pos": [-1520, 320],
+        "size": [760, 860],
         "flags": {},
         "order": order,
         "mode": 0,
@@ -281,7 +285,7 @@ def make_storyboard(node_id: int, output_link: int, order: int) -> dict[str, Any
             {"name": "segment_count", "type": "INT", "links": None},
             {"name": "total_seconds", "type": "FLOAT", "links": None},
         ],
-        "title": "Ordered Storyboard (upload, reorder, prompt each transition)",
+        "title": "Ordered Storyboard（画像順・区間プロンプト・Loop）",
         "properties": {"Node name for S&R": "MiniMaxH3OrderedStoryboard"},
         "widgets_values": [STORYBOARD_STATE],
     }
@@ -291,7 +295,7 @@ def make_easycache(node_id: int, input_link: int, output_link: int) -> dict[str,
     return {
         "id": node_id,
         "type": "EasyCache",
-        "pos": [180, -120],
+        "pos": [-600, -240],
         "size": [360, 130],
         "flags": {},
         "order": 5,
@@ -308,7 +312,7 @@ def make_upscale_loader(node_id: int, output_link: int, order: int) -> dict[str,
     return {
         "id": node_id,
         "type": "UpscaleModelLoader",
-        "pos": [900, 20],
+        "pos": [540, 320],
         "size": [320, 82],
         "flags": {},
         "order": order,
@@ -338,7 +342,7 @@ def make_story_exporter(node_id: int, order: int) -> dict[str, Any]:
     return {
         "id": node_id,
         "type": "MiniMaxH3StoryExport2x",
-        "pos": [1260, 120],
+        "pos": [900, 320],
         "size": [460, 300],
         "flags": {},
         "order": order,
@@ -411,7 +415,7 @@ def make_auto_mosaic(node_id: int, input_link: int, output_link: int, order: int
     return {
         "id": node_id,
         "type": "WanAutoMosaicVideo",
-        "pos": [900, 120],
+        "pos": [900, 320],
         "size": [410, 360],
         "flags": {},
         "order": order,
@@ -475,16 +479,20 @@ def update_note(workflow: dict[str, Any], fast: bool) -> None:
         "2. 各画像から次の画像までのprompt / duration / seedを指定\n"
         "3. 通常は隣接ペア、Loop ONなら最後→最初も生成\n"
         "4. LoRAはHMNSFW V2 / 0.5が初期値。ノードのプルダウンで変更可能\n"
-        "5. Directorはsegments出力、continuity OFF、区間ごとVRAM解放\n"
+        "5. Motion Context ON（22f）: 前区間のlatent＋音声を次区間へ継承し、重複headをTrim\n"
         "6. 専用OUTPUTノードが各区間をReal-ESRGAN 2xして即時encodeし、音声付きで結合保存\n"
         "7. DirectorのRAM保護のため全区間の合計は90秒まで\n"
         f"{speed}\n\n"
+        "### プロンプトのコツ\n"
+        "境界画像で停止させず、動作を次の区間へ継続するよう明記します。"
+        "例: `The subject passes through the key pose without pausing; motion and camera momentum continue.`\n\n"
         "### メモリ設計\n"
         "MiniMaxH3StoryExport2xはDirectorの全区間リストを一度だけ受け、各区間を16fずつ"
         "2x→一時MKV化→テンソル解放してからffmpeg concatします。境界の重複フレームと"
         "loop終端の先頭フレームは既定で除去します。"
     ]
-    note["size"] = [520, 520]
+    note["pos"] = [540, 1080]
+    note["size"] = [620, 430]
 
 
 def validate_generated(workflow: dict[str, Any], fast: bool, auto_mosaic: bool = False) -> None:
@@ -535,8 +543,10 @@ def validate_generated(workflow: dict[str, Any], fast: bool, auto_mosaic: bool =
     )
     if timeline["output"].get("exportMode") != "segments":
         raise RuntimeError("Director exportMode must be segments")
-    if timeline["output"].get("continuityEnabled") is not False:
-        raise RuntimeError("Director continuity must be disabled")
+    if timeline["output"].get("continuityEnabled") is not True:
+        raise RuntimeError("Director Motion Context continuity must be enabled")
+    if int(timeline["output"].get("continuityOverlapFrames", 0)) != 22:
+        raise RuntimeError("Director Motion Context must use the recommended 22 frames")
     if director["widgets_values"][
         widget_index(director, "clear_vram_between_segments")
     ] is not True:
@@ -586,6 +596,45 @@ def validate_generated(workflow: dict[str, Any], fast: bool, auto_mosaic: bool =
         raise RuntimeError("Story exporter is not wired to all Director/storyboard outputs")
     if exporter["widgets_values"][2:] != [18, "fast", True, True]:
         raise RuntimeError("Story exporter encoding/boundary defaults changed unexpectedly")
+
+    groups = workflow.get("groups", [])
+    group_ids = [int(group["id"]) for group in groups]
+    if len(group_ids) != len(set(group_ids)):
+        raise RuntimeError("Generated workflow has duplicate group ids")
+
+    def rectangle(item: dict[str, Any]) -> tuple[float, float, float, float]:
+        x, y, width, height = map(float, item["bounding"])
+        return x, y, x + width, y + height
+
+    group_rectangles = [(group, rectangle(group)) for group in groups]
+    for index, (left_group, left) in enumerate(group_rectangles):
+        for right_group, right in group_rectangles[index + 1 :]:
+            overlaps = (
+                min(left[2], right[2]) > max(left[0], right[0])
+                and min(left[3], right[3]) > max(left[1], right[1])
+            )
+            if overlaps:
+                raise RuntimeError(
+                    f"Workflow groups overlap: {left_group['title']!r} and "
+                    f"{right_group['title']!r}"
+                )
+
+    for node in workflow["nodes"]:
+        x, y = map(float, node["pos"])
+        width, height = map(float, node["size"])
+        contained = [
+            group["title"]
+            for group, bounds in group_rectangles
+            if x >= bounds[0]
+            and y >= bounds[1]
+            and x + width <= bounds[2]
+            and y + height <= bounds[3]
+        ]
+        if len(contained) != 1:
+            raise RuntimeError(
+                f"Node {node['id']} ({node['type']}) must be inside exactly one group; "
+                f"found {contained!r}"
+            )
 
 
 def build_variant(source: dict[str, Any], *, fast: bool) -> dict[str, Any]:
@@ -656,6 +705,22 @@ def build_variant(source: dict[str, Any], *, fast: bool) -> dict[str, Any]:
         else "video/MiniMax_H3_Story_Quality_LoRA_2x"
     )
     update_note(workflow, fast)
+
+    # Four non-overlapping lanes: models, storyboard, generation, output.
+    positions = {
+        1: [-1520, -240],
+        2: [-1520, -120],
+        3: [-1520, 30],
+        4: [-1520, 130],
+        5: [-640, 320],
+        8: [540, 700],
+        9: [1220, 700],
+        10: [1460, 700],
+    }
+    for node_id, position in positions.items():
+        node_by_id(workflow, node_id)["pos"] = position
+    director["size"] = [1060, 1000]
+
     normalize_orders(workflow, fast)
     workflow["last_node_id"] = 16 if fast else 15
     workflow["last_link_id"] = 16 if fast else 15
@@ -665,14 +730,35 @@ def build_variant(source: dict[str, Any], *, fast: bool) -> dict[str, Any]:
         else "MiniMax H3 ordered storyboard · Quality + selectable LoRA + 2x"
     )
 
-    # Keep the clean source's broad groups usable after inserting the new nodes.
+    # Replace the overlapping upstream groups with clean, numbered lanes.
     for group in workflow.get("groups", []):
         if int(group.get("id", 0)) == 1:
-            group["bounding"] = [-760, -180, 1340, 780]
+            group["title"] = "1 · Models / LoRA / Acceleration"
+            group["bounding"] = [-1560, -280, 1400, 500]
         elif int(group.get("id", 0)) == 2:
-            group["bounding"] = [-320, 40, 1120, 1580]
+            group["title"] = "3 · MiniMax H3 Director · Motion Context 22f"
+            group["bounding"] = [-680, 280, 1140, 1100]
         elif int(group.get("id", 0)) == 3:
-            group["bounding"] = [860, -20, 1100, 820]
+            group["title"] = "4 · 2x Output"
+            group["bounding"] = [500, 280, 1240, 720]
+    workflow.setdefault("groups", []).extend(
+        [
+            {
+                "id": 4,
+                "title": "2 · Storyboard Editor",
+                "bounding": [-1560, 280, 820, 980],
+                "color": "#6d5cae",
+                "flags": {},
+            },
+            {
+                "id": 5,
+                "title": "Guide / Prompt Tips",
+                "bounding": [500, 1040, 700, 510],
+                "color": "#3f789e",
+                "flags": {},
+            },
+        ]
+    )
 
     validate_generated(workflow, fast, auto_mosaic=False)
     return workflow
@@ -698,34 +784,24 @@ def add_auto_mosaic(workflow: dict[str, Any], *, fast: bool) -> dict[str, Any]:
     image_link[3] = mosaic_id
     image_link[4] = 0
     exporter["inputs"][0]["link"] = output_link
-    exporter["pos"] = [1410, 120]
+    exporter["pos"] = [1360, 320]
     exporter["widgets_values"][1] = str(exporter["widgets_values"][1]) + "_AutoMosaic"
     patched["nodes"].append(make_auto_mosaic(mosaic_id, 5, output_link, export_order))
     patched["links"].append([output_link, mosaic_id, 0, int(exporter["id"]), 0, "IMAGE"])
 
     # Keep the output lane legible without node or group overlap.
-    node_by_id(patched, 8)["pos"] = [900, 520]
-    node_by_id(patched, 9)["pos"] = [1580, 520]
-    node_by_id(patched, 10)["pos"] = [1820, 520]
-    node_by_id(patched, 11)["pos"] = [-920, 640]
+    node_by_id(patched, 8)["pos"] = [540, 760]
+    node_by_id(patched, 9)["pos"] = [1220, 760]
+    node_by_id(patched, 10)["pos"] = [1460, 760]
     for group in patched.get("groups", []):
         group_id = int(group.get("id", 0))
         if group_id == 1:
-            group["bounding"] = [-760, 40, 420, 560]
+            group["bounding"] = [-1560, -280, 1400, 500]
         elif group_id == 2:
-            group["bounding"] = [-320, -160, 1120, 1780]
+            group["bounding"] = [-680, 280, 1140, 1100]
         elif group_id == 3:
-            group["title"] = "输出 / Auto Mosaic (CPU)"
-            group["bounding"] = [860, -20, 1200, 820]
-    patched.setdefault("groups", []).append(
-        {
-            "id": max(int(group.get("id", 0)) for group in patched.get("groups", [])) + 1,
-            "title": "Workflow Guide",
-            "bounding": [-960, 600, 560, 580],
-            "color": "#3f789e",
-            "flags": {},
-        }
-    )
+            group["title"] = "4 · Auto Mosaic (CPU) → 2x Output"
+            group["bounding"] = [500, 280, 1420, 720]
 
     note = node_by_type(patched, "MarkdownNote")
     note["widgets_values"][0] += (

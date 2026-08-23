@@ -62,12 +62,21 @@ RUN mkdir -p "${MINIMAX_H3_DIRECTOR_ROOT}" \
       -r "${MINIMAX_H3_DIRECTOR_ROOT}/requirements.txt"
 
 COPY patches/minimax_h3_director_segments_no_concat.patch /tmp/minimax_h3_director_segments_no_concat.patch
+COPY patches/minimax_h3_director_fl2v_motion_context.patch /tmp/minimax_h3_director_fl2v_motion_context.patch
 
-RUN git -C "${MINIMAX_H3_DIRECTOR_ROOT}" apply --check \
+RUN git -C "${MINIMAX_H3_DIRECTOR_ROOT}" apply --recount --check \
       /tmp/minimax_h3_director_segments_no_concat.patch \
-    && git -C "${MINIMAX_H3_DIRECTOR_ROOT}" apply \
+    && git -C "${MINIMAX_H3_DIRECTOR_ROOT}" apply --recount \
       /tmp/minimax_h3_director_segments_no_concat.patch \
-    && rm /tmp/minimax_h3_director_segments_no_concat.patch
+    && python -c "from pathlib import Path; p=Path('${MINIMAX_H3_DIRECTOR_ROOT}/director/h3_motion_context.py'); p.write_bytes(p.read_bytes().replace(b'\\r\\n', b'\\n'))" \
+    && git -C "${MINIMAX_H3_DIRECTOR_ROOT}" apply --recount --check \
+      /tmp/minimax_h3_director_fl2v_motion_context.patch \
+    && git -C "${MINIMAX_H3_DIRECTOR_ROOT}" apply --recount \
+      /tmp/minimax_h3_director_fl2v_motion_context.patch \
+    && grep -Fq "MiniMAXH- local fix for AIMixer issue #26" \
+      "${MINIMAX_H3_DIRECTOR_ROOT}/director/h3_motion_context.py" \
+    && rm /tmp/minimax_h3_director_segments_no_concat.patch \
+      /tmp/minimax_h3_director_fl2v_motion_context.patch
 
 COPY . /opt/minimax-h3
 

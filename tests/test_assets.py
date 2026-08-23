@@ -246,6 +246,8 @@ class AssetTests(unittest.TestCase):
         )
         self.assertIn("AIMixer/ComfyUI_MiniMaxH3_Director.git", dockerfile)
         self.assertIn("minimax_h3_director_segments_no_concat.patch", dockerfile)
+        self.assertIn("minimax_h3_director_fl2v_motion_context.patch", dockerfile)
+        self.assertIn("h3_motion_context.py'); p.write_bytes", dockerfile)
         self.assertIn("custom_nodes/minimax_h3_ordered_storyboard", dockerfile)
         self.assertIn("manifests/minimax_h3_i2v_upscale.json", dockerfile)
         self.assertIn("MODEL_VERIFY=size", dockerfile)
@@ -280,6 +282,11 @@ class AssetTests(unittest.TestCase):
         self.assertIn("verify_auto_mosaic_workflows.py", dockerfile)
         self.assertIn("'WanAutoMosaicVideo' in p.NODE_CLASS_MAPPINGS", dockerfile)
         self.assertIn("MINIMAX_H3_ENTRYPOINT_SMOKE=1", dockerfile)
+
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("minimax_h3_director_fl2v_motion_context.patch", ci)
+        self.assertIn("apply --recount", ci)
+        self.assertIn('replace(b"\\r\\n", b"\\n")', ci)
 
     def test_downloader_supports_pinned_external_upscaler(self) -> None:
         downloader = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
@@ -324,11 +331,12 @@ class AssetTests(unittest.TestCase):
             entrypoint,
         )
         self.assertIn("required Director segments-mode memory patch is missing", entrypoint)
+        self.assertIn("required Director FL2V Motion Context fix is missing", entrypoint)
         self.assertIn('${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors', entrypoint)
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.8.0")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.9.0")
         self.assertEqual(template["env"]["MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY"], "0")
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", template["env"])
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
@@ -372,6 +380,15 @@ class AssetTests(unittest.TestCase):
         self.assertIn("MiniMAXH- local modification (2026)", patch)
         self.assertIn('plan.export_mode == "segments"', patch)
         self.assertNotIn("h3_motion_context.py", patch)
+
+    def test_director_motion_context_patch_only_retimes_fl2v_last_frame(self) -> None:
+        patch = (
+            ROOT / "patches" / "minimax_h3_director_fl2v_motion_context.patch"
+        ).read_text(encoding="utf-8")
+        self.assertIn("director/h3_motion_context.py", patch)
+        self.assertIn("MiniMAXH- local fix for AIMixer issue #26", patch)
+        self.assertIn("kf[CTX_FRAME_KEY] = resolved", patch)
+        self.assertNotIn("executor_core.py", patch)
 
     def test_lora_downloader_validates_safetensors_without_exposing_token(self) -> None:
         script_path = ROOT / "scripts" / "download_lora.py"
