@@ -8,6 +8,9 @@ MODEL_DIR="${COMFYUI_MODEL_DIR:-${COMFYUI_ROOT}/models}"
 MANIFEST="${MODEL_MANIFEST:-${PROJECT_DIR}/manifests/minimax_h3_i2v_upscale.json}"
 DIRECTOR_ROOT="${MINIMAX_H3_DIRECTOR_ROOT:-${COMFYUI_ROOT}/custom_nodes/ComfyUI_MiniMaxH3_Director}"
 STORY_NODE_ROOT="${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard"
+AUTO_MOSAIC_MODEL="${MODEL_DIR}/auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"
+AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED:-1}"
+AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED,,}"
 
 lora_selected() {
   local requested="${H3_LORA_SELECTION:-all}"
@@ -58,9 +61,16 @@ check_licensee_territory
 
 if [[ ! -f "${DIRECTOR_ROOT}/nodes/director.py" ]] \
   || [[ ! -f "${STORY_NODE_ROOT}/storyboard.py" ]] \
-  || [[ ! -f "${STORY_NODE_ROOT}/exporter.py" ]]; then
+  || [[ ! -f "${STORY_NODE_ROOT}/exporter.py" ]] \
+  || [[ ! -f "${STORY_NODE_ROOT}/mosaic_nodes.py" ]]; then
   echo "[workflow] required ordered-story custom nodes are missing from the image"
   exit 68
+fi
+
+if [[ "${AUTO_MOSAIC_REQUIRED}" =~ ^(1|true|yes|on)$ ]] \
+  && [[ -z "${CIVITAI_API_TOKEN:-}" ]]; then
+  echo "[auto-mosaic] CIVITAI_API_TOKEN is required for the segmentation model"
+  exit 70
 fi
 if ! grep -Fq "MiniMAXH- local modification (2026)" \
   "${DIRECTOR_ROOT}/director/executor_core.py"; then
@@ -81,7 +91,8 @@ if [[ "${LORA_REQUIRED}" =~ ^(1|true|yes|on)$ ]]; then
   fi
 fi
 
-mkdir -p "${MODEL_DIR}" "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output" \
+mkdir -p "${MODEL_DIR}" "${MODEL_DIR}/auto_mosaic" \
+  "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality.json"
@@ -95,8 +106,21 @@ rm -f \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json" \
   "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json"
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x_AutoMosaic.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x_AutoMosaic.json"
 
+HAS_R2V=0
 if python - "${MANIFEST}" <<'PY'
 import json
 import sys
@@ -104,6 +128,7 @@ manifest = json.load(open(sys.argv[1], encoding="utf-8"))
 raise SystemExit(0 if any("ref2va" in item["path"] for item in manifest["files"]) else 1)
 PY
 then
+  HAS_R2V=1
   echo "[workflow] REF2VA model selected; installing R2V workflows"
   cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v.json" \
     "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json"
@@ -122,6 +147,15 @@ else
     "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x.json"
 fi
 
+if [[ "${MINIMAX_H3_ENTRYPOINT_SMOKE:-0}" == "1" ]]; then
+  test -d "${MODEL_DIR}/auto_mosaic"
+  test -f "${STORY_NODE_ROOT}/mosaic_nodes.py"
+  test -f "${PROJECT_DIR}/manifests/auto_mosaic.json"
+  test -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_upscale_auto_mosaic.json"
+  echo "[smoke] entrypoint contract passed before network/model startup"
+  exit 0
+fi
+
 PREFLIGHT_ARGS=(
   --manifest "${MANIFEST}"
   --model-dir "${MODEL_DIR}"
@@ -136,40 +170,85 @@ python "${SCRIPT_DIR}/download_lora.py" &
 HMMOTION_DOWNLOAD_PID=$!
 python "${SCRIPT_DIR}/download_civitai_lora.py" &
 CIVITAI_DOWNLOAD_PID=$!
+python "${SCRIPT_DIR}/download_auto_mosaic.py" &
+AUTO_MOSAIC_DOWNLOAD_PID=$!
 "${SCRIPT_DIR}/download_models.sh" &
 MODEL_DOWNLOAD_PID=$!
 
-LORA_DOWNLOAD_FAILED=0
+DOWNLOAD_FAILED=0
 if ! wait "${HMMOTION_DOWNLOAD_PID}"; then
   echo "[download] HMMotion V1 LoRA failed"
-  LORA_DOWNLOAD_FAILED=1
+  DOWNLOAD_FAILED=1
 fi
 if ! wait "${CIVITAI_DOWNLOAD_PID}"; then
   echo "[download] Civitai V2 LoRA failed"
-  LORA_DOWNLOAD_FAILED=1
+  DOWNLOAD_FAILED=1
 fi
-if [[ "${LORA_DOWNLOAD_FAILED}" == "1" ]]; then
-  echo "[download] required LoRA failed; stopping the base-model download"
+if ! wait "${AUTO_MOSAIC_DOWNLOAD_PID}"; then
+  echo "[download] auto-mosaic segmentation model failed"
+  DOWNLOAD_FAILED=1
+fi
+if [[ "${DOWNLOAD_FAILED}" == "1" ]]; then
+  echo "[download] required auxiliary model failed; stopping the base-model download"
   kill "${MODEL_DOWNLOAD_PID}" 2>/dev/null || true
   wait "${MODEL_DOWNLOAD_PID}" 2>/dev/null || true
   exit 1
 fi
 wait "${MODEL_DOWNLOAD_PID}"
 
+if [[ "${AUTO_MOSAIC_REQUIRED}" =~ ^(1|true|yes|on)$ ]]; then
+  if [[ ! -s "${AUTO_MOSAIC_MODEL}" ]]; then
+    echo "[auto-mosaic] required model is missing after verified download: ${AUTO_MOSAIC_MODEL}"
+    exit 71
+  fi
+  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_auto_mosaic.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_AutoMosaic.json"
+  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache_auto_mosaic.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_AutoMosaic.json"
+  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_upscale_auto_mosaic.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x_AutoMosaic.json"
+  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache_upscale_auto_mosaic.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x_AutoMosaic.json"
+  if [[ "${HAS_R2V}" == "1" ]]; then
+    cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_auto_mosaic.json" \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_AutoMosaic.json"
+    cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache_auto_mosaic.json" \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_AutoMosaic.json"
+    cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_upscale_auto_mosaic.json" \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x_AutoMosaic.json"
+    cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache_upscale_auto_mosaic.json" \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x_AutoMosaic.json"
+  fi
+fi
+
 if lora_selected "hmmotion_v1" \
   && [[ -f "${MODEL_DIR}/loras/hmmotion_minimax-h3_epoch12.safetensors" ]]; then
   cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_hmmotion_lora_upscale.json" \
     "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json"
+  if [[ -s "${AUTO_MOSAIC_MODEL}" ]]; then
+    cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_hmmotion_lora_upscale_auto_mosaic.json" \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x_AutoMosaic.json"
+  fi
 fi
 if lora_selected "hmnsfw_aio_v2" \
   && [[ -f "${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors" ]]; then
   cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_selectable_lora_upscale.json" \
     "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json"
+  if [[ -s "${AUTO_MOSAIC_MODEL}" ]]; then
+    cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_selectable_lora_upscale_auto_mosaic.json" \
+      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x_AutoMosaic.json"
+  fi
   if [[ -f "${MODEL_DIR}/upscale_models/RealESRGAN_x2plus.pth" ]]; then
     cp -f "${PROJECT_DIR}/workflows/minimax_h3_story_quality_lora_2x.json" \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json"
     cp -f "${PROJECT_DIR}/workflows/minimax_h3_story_easycache_lora_2x.json" \
       "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json"
+    if [[ -s "${AUTO_MOSAIC_MODEL}" ]]; then
+      cp -f "${PROJECT_DIR}/workflows/minimax_h3_story_quality_lora_2x_auto_mosaic.json" \
+        "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x_AutoMosaic.json"
+      cp -f "${PROJECT_DIR}/workflows/minimax_h3_story_easycache_lora_2x_auto_mosaic.json" \
+        "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x_AutoMosaic.json"
+    fi
   else
     echo "[workflow] Storyboard workflows skipped: RealESRGAN_x2plus.pth is unavailable"
   fi

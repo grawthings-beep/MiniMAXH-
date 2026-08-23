@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "name": "Anime NSFW Detection v5.0 YOLO11 Segmentation",
+      "group": "auto-mosaic",
+      "url": "https://civitai.com/api/download/models/2266294",
+      "path": "auto_mosaic/animeNSFWDetection_v50.zip",
+      "size_bytes": 18846815,
+      "sha256": "aca92864d30384b8dd7851b32e7ade621a147730bf9710fb4417214e0c61d690",
+      "extract": "pt",
+      "provides": [
+        "auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"
+      ],
+      "archive_member": "ntd11_anime_nsfw_segm_v5.pt",
+      "requires_env": [
+        "CIVITAI_API_TOKEN"
+      ]
+    }
+  ]
+}

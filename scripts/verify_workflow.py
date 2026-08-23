@@ -12,6 +12,16 @@ from pathlib import Path
 FRONTEND_BUILTINS = {"MarkdownNote"}
 HMMOTION_LORA = "hmmotion_minimax-h3_epoch12.safetensors"
 HMNSFW_V2_LORA = "HMNSFW_AIO_V2.safetensors"
+AUTO_MOSAIC_MODEL = "auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"
+AUTO_MOSAIC_DEFAULTS = [
+    "ntd11_anime_nsfw_segm_v5.pt",
+    "JUST",
+    0.30,
+    0.50,
+    0,
+    3,
+    "pussy,penis,testicles",
+]
 
 
 def all_nodes(workflow: dict[str, object]) -> list[dict[str, object]]:
@@ -145,7 +155,9 @@ def verify_video_reference_wiring(workflow: dict[str, object]) -> None:
         raise RuntimeError(f"Native video-reference wiring is incomplete: {sorted(expected - actual)}")
 
 
-def verify_upscale_wiring(workflow: dict[str, object]) -> None:
+def verify_upscale_wiring(
+    workflow: dict[str, object], *, expect_auto_mosaic: bool = False
+) -> None:
     graph = next(
         (
             candidate
@@ -163,10 +175,14 @@ def verify_upscale_wiring(workflow: dict[str, object]) -> None:
     loader = next(node for node in nodes if node["type"] == "UpscaleModelLoader")
     upscaler = next(node for node in nodes if node["type"] == "ImageUpscaleWithModel")
     create_video = next(node for node in nodes if node["type"] == "CreateVideo")
+    expected_target = next(
+        node for node in nodes
+        if node["type"] == ("WanAutoMosaicVideo" if expect_auto_mosaic else "CreateVideo")
+    )
     expected = {
         (int(loader["id"]), int(upscaler["id"]), "UPSCALE_MODEL"),
         (int(vae_decode["id"]), int(upscaler["id"]), "IMAGE"),
-        (int(upscaler["id"]), int(create_video["id"]), "IMAGE"),
+        (int(upscaler["id"]), int(expected_target["id"]), "IMAGE"),
     }
     actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
     if not expected <= actual:
@@ -246,7 +262,7 @@ def graph_with_types(
 
 
 def verify_story_wiring(
-    workflow: dict[str, object], *, expect_easycache: bool
+    workflow: dict[str, object], *, expect_easycache: bool, expect_auto_mosaic: bool
 ) -> None:
     required = {
         "UNETLoader",
@@ -285,9 +301,17 @@ def verify_story_wiring(
     else:
         model_chain.add((int(lora["id"]), int(director["id"]), "MODEL"))
 
-    data_chain = {
-        (int(storyboard["id"]), int(director["id"]), "MMX_DIR_GROUP"),
+    image_chain = {
         (int(director["id"]), int(exporter["id"]), "IMAGE"),
+    }
+    if expect_auto_mosaic:
+        mosaic = by_type["WanAutoMosaicVideo"]
+        image_chain = {
+            (int(director["id"]), int(mosaic["id"]), "IMAGE"),
+            (int(mosaic["id"]), int(exporter["id"]), "IMAGE"),
+        }
+    data_chain = image_chain | {
+        (int(storyboard["id"]), int(director["id"]), "MMX_DIR_GROUP"),
         (int(director["id"]), int(exporter["id"]), "AUDIO"),
         (int(director["id"]), int(exporter["id"]), "FLOAT"),
         (int(storyboard["id"]), int(exporter["id"]), "STRING"),
@@ -343,6 +367,67 @@ def verify_story_wiring(
         raise RuntimeError("Story Export must remove boundary and loop duplicate frames")
 
 
+def verify_auto_mosaic_wiring(workflow: dict[str, object], *, mode: str, expect_upscale: bool) -> None:
+    mosaics = [node for node in all_nodes(workflow) if node["type"] == "WanAutoMosaicVideo"]
+    if len(mosaics) != 1:
+        raise RuntimeError(f"Auto-mosaic workflow must contain exactly one node, got {len(mosaics)}")
+    mosaic = mosaics[0]
+    if mosaic.get("widgets_values") != AUTO_MOSAIC_DEFAULTS:
+        raise RuntimeError("Auto-mosaic defaults must remain JUST/0.30/0.50/0/3 without anus")
+    if "anus" in str(mosaic.get("widgets_values", [""])[-1]).lower():
+        raise RuntimeError("anus must not be present in default auto-mosaic targets")
+    models = mosaic.get("properties", {}).get("models", [])
+    if models != [
+        {
+            "name": "ntd11_anime_nsfw_segm_v5.pt",
+            "url": "https://civitai.com/api/download/models/2266294",
+            "directory": "auto_mosaic",
+        }
+    ]:
+        raise RuntimeError("Auto-mosaic workflow model metadata is not pinned")
+
+    graph = graph_with_types(workflow, {"WanAutoMosaicVideo"})
+    nodes = graph["nodes"]
+    links = graph["links"]
+    actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
+    target_type = "MiniMaxH3StoryExport2x" if mode == "story" else "CreateVideo"
+    upstream_type = (
+        "MiniMaxH3Director"
+        if mode == "story"
+        else "ImageUpscaleWithModel" if expect_upscale else "VAEDecode"
+    )
+    target = next(node for node in nodes if node["type"] == target_type)
+    upstream = next(node for node in nodes if node["type"] == upstream_type)
+    expected = {
+        (int(upstream["id"]), int(mosaic["id"]), "IMAGE"),
+        (int(mosaic["id"]), int(target["id"]), "IMAGE"),
+    }
+    if not expected <= actual:
+        raise RuntimeError(f"Final-frame auto-mosaic wiring is incomplete: {sorted(expected - actual)}")
+    if (int(upstream["id"]), int(target["id"]), "IMAGE") in actual:
+        raise RuntimeError("Final video encoder bypasses auto mosaic")
+
+    # The inserted node belongs to exactly one non-overlapping output group.
+    mx, my = map(float, mosaic["pos"])
+    mw, mh = map(float, mosaic["size"])
+    containing = []
+    groups = graph.get("groups", [])
+    for group in groups:
+        gx, gy, gw, gh = map(float, group["bounding"])
+        if gx <= mx and gy <= my and mx + mw <= gx + gw and my + mh <= gy + gh:
+            containing.append(group)
+    if len(containing) != 1:
+        raise RuntimeError("Auto-mosaic node must sit fully inside exactly one output group")
+    for index, left in enumerate(groups):
+        lx, ly, lw, lh = map(float, left["bounding"])
+        for right in groups[index + 1 :]:
+            rx, ry, rw, rh = map(float, right["bounding"])
+            if max(lx, rx) < min(lx + lw, rx + rw) and max(ly, ry) < min(ly + lh, ry + rh):
+                raise RuntimeError(
+                    f"Workflow groups overlap: {left.get('title')} / {right.get('title')}"
+                )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workflow", type=Path, required=True)
@@ -358,6 +443,8 @@ def main() -> int:
     )
     parser.add_argument("--expect-easycache", action="store_true")
     parser.add_argument("--expect-upscale", action="store_true")
+    parser.add_argument("--expect-auto-mosaic", action="store_true")
+    parser.add_argument("--auto-mosaic-manifest", type=Path)
     parser.add_argument(
         "--expect-lora",
         nargs="?",
@@ -378,6 +465,18 @@ def main() -> int:
     }
 
     expected_models = {str(item["path"]) for item in manifest["files"]}
+    if args.expect_auto_mosaic:
+        if args.auto_mosaic_manifest is None:
+            raise RuntimeError("--expect-auto-mosaic requires --auto-mosaic-manifest")
+        mosaic_manifest = json.loads(args.auto_mosaic_manifest.read_text(encoding="utf-8"))
+        provides = [
+            str(path)
+            for item in mosaic_manifest.get("files", [])
+            for path in item.get("provides", [])
+        ]
+        if provides != [AUTO_MOSAIC_MODEL]:
+            raise RuntimeError("Auto-mosaic manifest does not provide the pinned workflow model")
+        expected_models.add(AUTO_MOSAIC_MODEL)
     if args.expect_lora:
         expected_models.add(f"loras/{args.expect_lora}")
     actual_models = workflow_models(nodes)
@@ -411,7 +510,11 @@ def main() -> int:
             raise RuntimeError("Reference-to-video assets are not allowed in an I2V story workflow")
 
     if args.mode == "story":
-        verify_story_wiring(workflow, expect_easycache=args.expect_easycache)
+        verify_story_wiring(
+            workflow,
+            expect_easycache=args.expect_easycache,
+            expect_auto_mosaic=args.expect_auto_mosaic,
+        )
     elif args.expect_easycache:
         verify_easycache_wiring(workflow)
     elif "EasyCache" in node_types:
@@ -421,7 +524,9 @@ def main() -> int:
     if args.mode == "story":
         pass
     elif args.expect_upscale:
-        verify_upscale_wiring(workflow)
+        verify_upscale_wiring(
+            workflow, expect_auto_mosaic=args.expect_auto_mosaic
+        )
     elif {"UpscaleModelLoader", "ImageUpscaleWithModel"} & node_types:
         raise RuntimeError("Upscale nodes are enabled in a non-upscale workflow")
     if args.expect_lora and args.mode != "story":
@@ -433,6 +538,13 @@ def main() -> int:
         verify_lora_wiring(workflow, args.expect_lora, expected_strength)
     elif not args.expect_lora and "LoraLoaderModelOnly" in node_types:
         raise RuntimeError("LoRA is enabled in a non-LoRA workflow")
+
+    if args.expect_auto_mosaic:
+        verify_auto_mosaic_wiring(
+            workflow, mode=args.mode, expect_upscale=args.expect_upscale
+        )
+    elif "WanAutoMosaicVideo" in node_types:
+        raise RuntimeError("WanAutoMosaicVideo is enabled in a normal workflow")
 
     if args.mode == "story":
         if not args.expect_upscale:
@@ -466,6 +578,7 @@ def main() -> int:
     speed = "EasyCache Fast" if args.expect_easycache else "Quality"
     output = " + Real-ESRGAN 2x" if args.expect_upscale else ""
     output += f" + {args.expect_lora}" if args.expect_lora else ""
+    output += " + CPU Auto Mosaic" if args.expect_auto_mosaic else ""
     print(
         f"Verified {args.mode.upper()} {speed}{output} workflow: "
         f"{len(actual_models)} models, {native_count} native node types."

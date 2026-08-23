@@ -34,6 +34,8 @@ jobs:
             --output-dir .ci-story-workflows
           cmp .ci-story-workflows/minimax_h3_story_quality_lora_2x.json workflows/minimax_h3_story_quality_lora_2x.json
           cmp .ci-story-workflows/minimax_h3_story_easycache_lora_2x.json workflows/minimax_h3_story_easycache_lora_2x.json
+          cmp .ci-story-workflows/minimax_h3_story_quality_lora_2x_auto_mosaic.json workflows/minimax_h3_story_quality_lora_2x_auto_mosaic.json
+          cmp .ci-story-workflows/minimax_h3_story_easycache_lora_2x_auto_mosaic.json workflows/minimax_h3_story_easycache_lora_2x_auto_mosaic.json
           python scripts/verify_workflow.py \
             --workflow workflows/minimax_h3_i2v.json \
             --manifest manifests/minimax_h3_i2v.json \
@@ -100,6 +102,10 @@ jobs:
             --mode r2v \
             --require-video-reference \
             --comfyui-root .ci-ComfyUI
+          python scripts/verify_auto_mosaic_workflows.py \
+            --comfyui-root .ci-ComfyUI \
+            --director-root .ci-MiniMaxH3-Director \
+            --local-node-root custom_nodes/minimax_h3_ordered_storyboard
           python scripts/verify_workflow.py \
             --workflow workflows/minimax_h3_r2v_easycache.json \
             --manifest manifests/minimax_h3_r2v.json \

@@ -89,6 +89,16 @@ class AssetTests(unittest.TestCase):
             "minimax_h3_i2v_easycache_upscale.json",
             "minimax_h3_r2v_upscale.json",
             "minimax_h3_r2v_easycache_upscale.json",
+            "minimax_h3_i2v_auto_mosaic.json",
+            "minimax_h3_i2v_easycache_auto_mosaic.json",
+            "minimax_h3_i2v_upscale_auto_mosaic.json",
+            "minimax_h3_i2v_easycache_upscale_auto_mosaic.json",
+            "minimax_h3_i2v_hmmotion_lora_upscale_auto_mosaic.json",
+            "minimax_h3_i2v_selectable_lora_upscale_auto_mosaic.json",
+            "minimax_h3_r2v_auto_mosaic.json",
+            "minimax_h3_r2v_easycache_auto_mosaic.json",
+            "minimax_h3_r2v_upscale_auto_mosaic.json",
+            "minimax_h3_r2v_easycache_upscale_auto_mosaic.json",
         )
         with tempfile.TemporaryDirectory() as temp:
             result = subprocess.run(
@@ -265,6 +275,11 @@ class AssetTests(unittest.TestCase):
         self.assertIn("H3_LORA_SELECTION=all", dockerfile)
         self.assertIn("H3_LORA_REPO_ID=uwgm/nikke-civitai-backup", dockerfile)
         self.assertIn("civitai.red/api/download/models/3206518?fileId=3088013", dockerfile)
+        self.assertIn("ultralytics.__version__ == '8.4.104'", dockerfile)
+        self.assertIn("AUTO_MOSAIC_REQUIRED=1", dockerfile)
+        self.assertIn("verify_auto_mosaic_workflows.py", dockerfile)
+        self.assertIn("'WanAutoMosaicVideo' in p.NODE_CLASS_MAPPINGS", dockerfile)
+        self.assertIn("MINIMAX_H3_ENTRYPOINT_SMOKE=1", dockerfile)
 
     def test_downloader_supports_pinned_external_upscaler(self) -> None:
         downloader = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
@@ -296,6 +311,10 @@ class AssetTests(unittest.TestCase):
         self.assertIn("download_civitai_lora.py", entrypoint)
         self.assertIn("HMMOTION_DOWNLOAD_PID", entrypoint)
         self.assertIn("CIVITAI_DOWNLOAD_PID", entrypoint)
+        self.assertIn("AUTO_MOSAIC_DOWNLOAD_PID", entrypoint)
+        self.assertIn("CIVITAI_API_TOKEN", entrypoint)
+        self.assertIn("download_auto_mosaic.py", entrypoint)
+        self.assertIn("entrypoint contract passed before network/model startup", entrypoint)
         self.assertIn("MODEL_DOWNLOAD_PID", entrypoint)
         self.assertIn("MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json", entrypoint)
         self.assertIn("MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json", entrypoint)
@@ -309,7 +328,7 @@ class AssetTests(unittest.TestCase):
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.7.0")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.8.0")
         self.assertEqual(template["env"]["MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY"], "0")
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", template["env"])
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
@@ -317,6 +336,8 @@ class AssetTests(unittest.TestCase):
         self.assertNotIn("--fast-disk", template["env"]["COMFYUI_ARGS"])
         self.assertEqual(template["env"]["HF_TOKEN"], "")
         self.assertEqual(template["env"]["CIVITAI_TOKEN"], "")
+        self.assertEqual(template["env"]["CIVITAI_API_TOKEN"], "")
+        self.assertEqual(template["env"]["AUTO_MOSAIC_REQUIRED"], "1")
         self.assertEqual(template["env"]["H3_LORA_REQUIRED"], "1")
         self.assertEqual(template["env"]["H3_LORA_SELECTION"], "all")
         self.assertEqual(template["env"]["H3_LORA_REPO_ID"], "uwgm/nikke-civitai-backup")

@@ -57,6 +57,19 @@ UPSCALER_URL = (
 
 QUALITY_OUTPUT = "minimax_h3_story_quality_lora_2x.json"
 FAST_OUTPUT = "minimax_h3_story_easycache_lora_2x.json"
+QUALITY_AUTO_MOSAIC_OUTPUT = "minimax_h3_story_quality_lora_2x_auto_mosaic.json"
+FAST_AUTO_MOSAIC_OUTPUT = "minimax_h3_story_easycache_lora_2x_auto_mosaic.json"
+AUTO_MOSAIC_MODEL = "ntd11_anime_nsfw_segm_v5.pt"
+AUTO_MOSAIC_URL = "https://civitai.com/api/download/models/2266294"
+AUTO_MOSAIC_DEFAULTS = [
+    AUTO_MOSAIC_MODEL,
+    "JUST",
+    0.30,
+    0.50,
+    0,
+    3,
+    "pussy,penis,testicles",
+]
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -394,6 +407,37 @@ def make_story_exporter(node_id: int, order: int) -> dict[str, Any]:
     }
 
 
+def make_auto_mosaic(node_id: int, input_link: int, output_link: int, order: int) -> dict[str, Any]:
+    return {
+        "id": node_id,
+        "type": "WanAutoMosaicVideo",
+        "pos": [900, 120],
+        "size": [410, 360],
+        "flags": {},
+        "order": order,
+        "mode": 0,
+        "inputs": [
+            {"name": "images", "type": "IMAGE", "link": input_link},
+            {"name": "model_name", "type": "COMBO", "widget": {"name": "model_name"}, "link": None},
+            {"name": "coverage_preset", "type": "COMBO", "widget": {"name": "coverage_preset"}, "link": None},
+            {"name": "confidence", "type": "FLOAT", "widget": {"name": "confidence"}, "link": None},
+            {"name": "iou_threshold", "type": "FLOAT", "widget": {"name": "iou_threshold"}, "link": None},
+            {"name": "block_size", "type": "INT", "widget": {"name": "block_size"}, "link": None},
+            {"name": "max_gap_frames", "type": "INT", "widget": {"name": "max_gap_frames"}, "link": None},
+            {"name": "target_classes", "type": "STRING", "widget": {"name": "target_classes"}, "link": None},
+        ],
+        "outputs": [{"name": "mosaicked_images", "type": "IMAGE", "links": [output_link]}],
+        "title": "AUTO MOSAIC - JUST CONTOUR (CPU, generated segments)",
+        "properties": {
+            "Node name for S&R": "WanAutoMosaicVideo",
+            "models": [
+                {"name": AUTO_MOSAIC_MODEL, "url": AUTO_MOSAIC_URL, "directory": "auto_mosaic"}
+            ],
+        },
+        "widgets_values": list(AUTO_MOSAIC_DEFAULTS),
+    }
+
+
 def normalize_orders(workflow: dict[str, Any], fast: bool) -> None:
     orders = {
         1: 0,
@@ -443,7 +487,7 @@ def update_note(workflow: dict[str, Any], fast: bool) -> None:
     note["size"] = [520, 520]
 
 
-def validate_generated(workflow: dict[str, Any], fast: bool) -> None:
+def validate_generated(workflow: dict[str, Any], fast: bool, auto_mosaic: bool = False) -> None:
     """Static, bidirectional link validation plus requested graph invariants."""
 
     node_ids = {int(node["id"]) for node in workflow["nodes"]}
@@ -461,6 +505,10 @@ def validate_generated(workflow: dict[str, Any], fast: bool) -> None:
             raise RuntimeError(f"Link {link_id} missing from origin node output")
         if int(target["inputs"][int(link[4])].get("link") or -1) != link_id:
             raise RuntimeError(f"Link {link_id} missing from target node input")
+
+    mosaics = [node for node in workflow["nodes"] if node["type"] == "WanAutoMosaicVideo"]
+    if len(mosaics) != (1 if auto_mosaic else 0):
+        raise RuntimeError("Auto-mosaic node count does not match the workflow variant")
 
     expected_model_path = ["UNETLoader", "LoraLoaderModelOnly"]
     if fast:
@@ -518,7 +566,22 @@ def validate_generated(workflow: dict[str, Any], fast: bool) -> None:
     ]
     if [item["name"] for item in exporter["inputs"]] != expected_export_inputs:
         raise RuntimeError("Story exporter inputs do not match the registered node schema")
-    expected_export_links = [5, 14, 7, None, None, None, None, None, 6, 15]
+    image_link = 5
+    if auto_mosaic:
+        mosaic = mosaics[0]
+        if mosaic.get("widgets_values") != AUTO_MOSAIC_DEFAULTS:
+            raise RuntimeError("Story auto-mosaic defaults changed unexpectedly")
+        if next(item for item in mosaic["inputs"] if item["name"] == "images")["link"] != 5:
+            raise RuntimeError("Director IMAGE segments are not wired into auto mosaic")
+        output_links = mosaic["outputs"][0].get("links") or []
+        if len(output_links) != 1:
+            raise RuntimeError("Story auto mosaic must feed the exporter exactly once")
+        image_link = int(output_links[0])
+        if int(links[5][3]) != int(mosaic["id"]):
+            raise RuntimeError("Director IMAGE link bypasses story auto mosaic")
+        if int(links[image_link][3]) != int(exporter["id"]):
+            raise RuntimeError("Story auto mosaic output does not feed the exporter")
+    expected_export_links = [image_link, 14, 7, None, None, None, None, None, 6, 15]
     if [item.get("link") for item in exporter["inputs"]] != expected_export_links:
         raise RuntimeError("Story exporter is not wired to all Director/storyboard outputs")
     if exporter["widgets_values"][2:] != [18, "fast", True, True]:
@@ -611,8 +674,77 @@ def build_variant(source: dict[str, Any], *, fast: bool) -> dict[str, Any]:
         elif int(group.get("id", 0)) == 3:
             group["bounding"] = [860, -20, 1100, 820]
 
-    validate_generated(workflow, fast)
+    validate_generated(workflow, fast, auto_mosaic=False)
     return workflow
+
+
+def add_auto_mosaic(workflow: dict[str, Any], *, fast: bool) -> dict[str, Any]:
+    """Insert CPU contour processing between Director segments and final export."""
+    patched = copy.deepcopy(workflow)
+    patched["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f'{patched["id"]}:auto-mosaic'))
+    director = node_by_type(patched, "MiniMaxH3Director")
+    exporter = node_by_type(patched, "MiniMaxH3StoryExport2x")
+    image_link = link_by_id(patched, 5)
+    if int(image_link[1]) != int(director["id"]) or int(image_link[3]) != int(exporter["id"]):
+        raise RuntimeError("Pinned Director-to-exporter IMAGE link changed")
+
+    mosaic_id = max(int(node["id"]) for node in patched["nodes"]) + 1
+    output_link = max(int(link[0]) for link in patched["links"]) + 1
+    export_order = int(exporter["order"])
+    for node in patched["nodes"]:
+        if int(node.get("order", -1)) >= export_order:
+            node["order"] = int(node["order"]) + 1
+
+    image_link[3] = mosaic_id
+    image_link[4] = 0
+    exporter["inputs"][0]["link"] = output_link
+    exporter["pos"] = [1410, 120]
+    exporter["widgets_values"][1] = str(exporter["widgets_values"][1]) + "_AutoMosaic"
+    patched["nodes"].append(make_auto_mosaic(mosaic_id, 5, output_link, export_order))
+    patched["links"].append([output_link, mosaic_id, 0, int(exporter["id"]), 0, "IMAGE"])
+
+    # Keep the output lane legible without node or group overlap.
+    node_by_id(patched, 8)["pos"] = [900, 520]
+    node_by_id(patched, 9)["pos"] = [1580, 520]
+    node_by_id(patched, 10)["pos"] = [1820, 520]
+    node_by_id(patched, 11)["pos"] = [-920, 640]
+    for group in patched.get("groups", []):
+        group_id = int(group.get("id", 0))
+        if group_id == 1:
+            group["bounding"] = [-760, 40, 420, 560]
+        elif group_id == 2:
+            group["bounding"] = [-320, -160, 1120, 1780]
+        elif group_id == 3:
+            group["title"] = "输出 / Auto Mosaic (CPU)"
+            group["bounding"] = [860, -20, 1200, 820]
+    patched.setdefault("groups", []).append(
+        {
+            "id": max(int(group.get("id", 0)) for group in patched.get("groups", [])) + 1,
+            "title": "Workflow Guide",
+            "bounding": [-960, 600, 560, 580],
+            "color": "#3f789e",
+            "flags": {},
+        }
+    )
+
+    note = node_by_type(patched, "MarkdownNote")
+    note["widgets_values"][0] += (
+        "\n\n## CPU auto mosaic\n"
+        "Generated Director IMAGE segments pass through `WanAutoMosaicVideo` exactly once "
+        "before the memory-bounded 2x/MP4 exporter. Detection and contour pixelation are "
+        "CPU-only. JUST, confidence 0.30, IoU 0.50, automatic short-edge÷50 blocks, and "
+        "3-frame circular gap repair are the defaults; anus is deliberately excluded."
+    )
+    patched["last_node_id"] = mosaic_id
+    patched["last_link_id"] = output_link
+    patched.setdefault("extra", {})["auto_mosaic"] = {
+        "enabled": True,
+        "stage": "Director final IMAGE segments -> WanAutoMosaicVideo -> 2x/MP4 exporter",
+        "cpu_only": True,
+        "source_commit": "01a73bc628cc19a1df92684349285f03d4a1f39a",
+    }
+    validate_generated(patched, fast, auto_mosaic=True)
+    return patched
 
 
 def main() -> int:
@@ -630,8 +762,18 @@ def main() -> int:
     args = parser.parse_args()
 
     source = read_json(args.director_source)
-    write_json(args.output_dir / QUALITY_OUTPUT, build_variant(source, fast=False))
-    write_json(args.output_dir / FAST_OUTPUT, build_variant(source, fast=True))
+    quality = build_variant(source, fast=False)
+    fast = build_variant(source, fast=True)
+    write_json(args.output_dir / QUALITY_OUTPUT, quality)
+    write_json(args.output_dir / FAST_OUTPUT, fast)
+    write_json(
+        args.output_dir / QUALITY_AUTO_MOSAIC_OUTPUT,
+        add_auto_mosaic(quality, fast=False),
+    )
+    write_json(
+        args.output_dir / FAST_AUTO_MOSAIC_OUTPUT,
+        add_auto_mosaic(fast, fast=True),
+    )
     return 0
 
 

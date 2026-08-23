@@ -40,6 +40,10 @@ class StoryWorkflowTests(unittest.TestCase):
         fast = self.load_workflow(builder.FAST_OUTPUT)
         builder.validate_generated(quality, fast=False)
         builder.validate_generated(fast, fast=True)
+        quality_auto = self.load_workflow(builder.QUALITY_AUTO_MOSAIC_OUTPUT)
+        fast_auto = self.load_workflow(builder.FAST_AUTO_MOSAIC_OUTPUT)
+        builder.validate_generated(quality_auto, fast=False, auto_mosaic=True)
+        builder.validate_generated(fast_auto, fast=True, auto_mosaic=True)
 
     def test_workflow_sockets_match_registered_custom_nodes(self) -> None:
         runtime_story_inputs = list(

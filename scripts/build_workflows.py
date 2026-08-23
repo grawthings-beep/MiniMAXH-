@@ -28,6 +28,17 @@ HMNSFW_V2_URL = (
     "https://civitai.red/api/download/models/3206518?fileId=3088013"
 )
 HMNSFW_V2_STRENGTH = 0.5
+AUTO_MOSAIC_MODEL = "ntd11_anime_nsfw_segm_v5.pt"
+AUTO_MOSAIC_URL = "https://civitai.com/api/download/models/2266294"
+AUTO_MOSAIC_DEFAULTS = [
+    AUTO_MOSAIC_MODEL,
+    "JUST",
+    0.30,
+    0.50,
+    0,
+    3,
+    "pussy,penis,testicles",
+]
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -580,6 +591,160 @@ def add_upscale(workflow: dict[str, Any], label: str) -> dict[str, Any]:
     return upscaled
 
 
+def add_auto_mosaic(workflow: dict[str, Any], label: str) -> dict[str, Any]:
+    """Insert CPU contour mosaic once, after the final IMAGE processor."""
+    patched = copy.deepcopy(workflow)
+    patched["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f'{patched["id"]}:auto-mosaic'))
+    graph = next(
+        candidate
+        for candidate in graph_candidates(patched)
+        if any(node["type"] == "CreateVideo" for node in candidate.get("nodes", []))
+    )
+    nodes = graph["nodes"]
+    links = graph["links"]
+    create_video = next(node for node in nodes if node["type"] == "CreateVideo")
+    image_input = next(item for item in create_video["inputs"] if item["name"] == "images")
+    original_link_id = int(image_input["link"])
+    image_link = next(link for link in links if link_id(link) == original_link_id)
+    if link_target(image_link) != int(create_video["id"]):
+        raise RuntimeError("CreateVideo IMAGE link target is inconsistent")
+
+    mosaic_id = next_numeric_id(nodes)
+    new_link_id = max(link_id(link) for link in links) + 1
+    original_x = float(create_video["pos"][0])
+    original_y = float(create_video["pos"][1])
+    create_order = int(create_video["order"])
+
+    # Move the encoder and any downstream output nodes right, leaving a clean
+    # left-to-right final-frame lane for the postprocessor.
+    for node in nodes:
+        if float(node.get("pos", [0])[0]) >= original_x:
+            node["pos"][0] = float(node["pos"][0]) + 600
+    shift_orders(nodes, create_order, 1)
+    set_link_target(image_link, mosaic_id, 0)
+    image_input["link"] = new_link_id
+
+    mosaic = {
+        "id": mosaic_id,
+        "type": "WanAutoMosaicVideo",
+        "pos": [original_x, original_y - 170],
+        "size": [410, 360],
+        "flags": {},
+        "order": create_order,
+        "mode": 0,
+        "inputs": [
+            {"name": "images", "type": "IMAGE", "link": original_link_id},
+            {"name": "model_name", "type": "COMBO", "widget": {"name": "model_name"}, "link": None},
+            {"name": "coverage_preset", "type": "COMBO", "widget": {"name": "coverage_preset"}, "link": None},
+            {"name": "confidence", "type": "FLOAT", "widget": {"name": "confidence"}, "link": None},
+            {"name": "iou_threshold", "type": "FLOAT", "widget": {"name": "iou_threshold"}, "link": None},
+            {"name": "block_size", "type": "INT", "widget": {"name": "block_size"}, "link": None},
+            {"name": "max_gap_frames", "type": "INT", "widget": {"name": "max_gap_frames"}, "link": None},
+            {"name": "target_classes", "type": "STRING", "widget": {"name": "target_classes"}, "link": None},
+        ],
+        "outputs": [{"name": "mosaicked_images", "type": "IMAGE", "links": [new_link_id]}],
+        "title": "AUTO MOSAIC - JUST CONTOUR (CPU, final frames)",
+        "properties": {
+            "Node name for S&R": "WanAutoMosaicVideo",
+            "models": [
+                {"name": AUTO_MOSAIC_MODEL, "url": AUTO_MOSAIC_URL, "directory": "auto_mosaic"}
+            ],
+        },
+        "widgets_values": list(AUTO_MOSAIC_DEFAULTS),
+    }
+    nodes.append(mosaic)
+    if isinstance(links[0], dict):
+        links.append(
+            {
+                "id": new_link_id,
+                "origin_id": mosaic_id,
+                "origin_slot": 0,
+                "target_id": int(create_video["id"]),
+                "target_slot": 0,
+                "type": "IMAGE",
+            }
+        )
+        state = graph.setdefault("state", {})
+        state["lastNodeId"] = max(int(state.get("lastNodeId", 0)), mosaic_id)
+        state["lastLinkId"] = max(int(state.get("lastLinkId", 0)), new_link_id)
+        graph["name"] = f'{graph.get("name", label)} - CPU Auto Mosaic'
+    else:
+        links.append([new_link_id, mosaic_id, 0, int(create_video["id"]), 0, "IMAGE"])
+        patched["last_node_id"] = max(int(patched.get("last_node_id", 0)), mosaic_id)
+        patched["last_link_id"] = max(int(patched.get("last_link_id", 0)), new_link_id)
+
+    # Expand the existing output group instead of overlapping it with a new group.
+    output_group = None
+    for group in graph.get("groups", []):
+        gx, gy, gw, gh = map(float, group.get("bounding", [0, 0, 0, 0]))
+        if gx <= original_x <= gx + gw and gy <= original_y <= gy + gh:
+            output_group = group
+            break
+    if output_group is None:
+        output_group = next(
+            (
+                group for group in graph.get("groups", [])
+                if "decod" in str(group.get("title", "")).lower()
+                or "output" in str(group.get("title", "")).lower()
+            ),
+            None,
+        )
+    if output_group is None:
+        raise RuntimeError("Final-frame graph has no output group for auto mosaic")
+    gx, _gy, gw, _gh = map(float, output_group["bounding"])
+    create_right = float(create_video["pos"][0]) + float(create_video["size"][0]) + 40
+    output_group["bounding"][2] = max(gw, create_right - gx)
+    if "Auto Mosaic" not in str(output_group.get("title", "")):
+        output_group["title"] = f'{output_group.get("title", "Output")} + Auto Mosaic'
+
+    # Earlier cache/LoRA builders preserved wiring but inherited a crowded
+    # upstream position. Auto-mosaic editions are published with a clean graph.
+    models_group = next(
+        (group for group in graph.get("groups", []) if str(group.get("title", "")).lower() == "models"),
+        None,
+    )
+    if models_group is not None:
+        gx, gy, gw, gh = map(float, models_group["bounding"])
+        for auxiliary in (
+            node for node in nodes
+            if node["type"] in {"EasyCache", "LoraLoaderModelOnly"}
+        ):
+            height = float(auxiliary["size"][1])
+            auxiliary["pos"] = [gx + 30, gy - height - 50]
+            new_top = float(auxiliary["pos"][1]) - 30
+            old_bottom = gy + gh
+            models_group["bounding"][1] = new_top
+            models_group["bounding"][3] = old_bottom - new_top
+
+    save = next((node for node in patched.get("nodes", []) if node["type"] == "SaveVideo"), None)
+    if save and save.get("widgets_values"):
+        save["widgets_values"][0] = str(save["widgets_values"][0]) + "_AutoMosaic"
+    note = next(
+        (
+            node for node in patched.get("nodes", [])
+            if node["type"] == "MarkdownNote"
+            and "About this workflow" in node.get("widgets_values", [""])[0]
+        ),
+        None,
+    )
+    if note:
+        note["widgets_values"][0] += (
+            "\n\n## CPU auto mosaic variant\n"
+            "`WanAutoMosaicVideo` runs exactly once on generated frames immediately before "
+            "`CreateVideo` (after Real-ESRGAN when present). It uses YOLO11 instance contours "
+            "on CPU with JUST / 0.30 confidence / 0.50 IoU / automatic short-edge÷50 blocks "
+            "and up to 3-frame circular gap repair. Default classes are pussy, penis, and "
+            "testicles; anus is deliberately excluded."
+        )
+    patched.setdefault("extra", {})["auto_mosaic"] = {
+        "enabled": True,
+        "stage": "final IMAGE -> WanAutoMosaicVideo -> CreateVideo",
+        "cpu_only": True,
+        "source_commit": "01a73bc628cc19a1df92684349285f03d4a1f39a",
+    }
+    return patched
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--i2v-source", type=Path, required=True)
@@ -591,17 +756,13 @@ def main() -> int:
     r2v = prepare_r2v(read_json(args.r2v_upstream))
     i2v_fast = add_easycache(i2v, "I2V")
     r2v_fast = add_easycache(r2v, "R2V")
-    write_json(args.output_dir / "minimax_h3_r2v.json", r2v)
-    write_json(args.output_dir / "minimax_h3_i2v_easycache.json", i2v_fast)
-    write_json(args.output_dir / "minimax_h3_r2v_easycache.json", r2v_fast)
-    write_json(args.output_dir / "minimax_h3_i2v_upscale.json", add_upscale(i2v, "I2V"))
-    write_json(
-        args.output_dir / "minimax_h3_i2v_hmmotion_lora_upscale.json",
-        add_upscale(add_lora(i2v, "I2V"), "I2V HMMotion LoRA"),
-    )
-    write_json(
-        args.output_dir / "minimax_h3_i2v_selectable_lora_upscale.json",
-        add_upscale(
+    variants = {
+        "minimax_h3_r2v.json": r2v,
+        "minimax_h3_i2v_easycache.json": i2v_fast,
+        "minimax_h3_r2v_easycache.json": r2v_fast,
+        "minimax_h3_i2v_upscale.json": add_upscale(i2v, "I2V"),
+        "minimax_h3_i2v_hmmotion_lora_upscale.json": add_upscale(add_lora(i2v, "I2V"), "I2V HMMotion LoRA"),
+        "minimax_h3_i2v_selectable_lora_upscale.json": add_upscale(
             add_lora(
                 i2v,
                 "I2V",
@@ -620,16 +781,20 @@ def main() -> int:
             ),
             "I2V Selectable LoRA",
         ),
-    )
-    write_json(
-        args.output_dir / "minimax_h3_i2v_easycache_upscale.json",
-        add_upscale(i2v_fast, "I2V EasyCache Fast"),
-    )
-    write_json(args.output_dir / "minimax_h3_r2v_upscale.json", add_upscale(r2v, "R2V"))
-    write_json(
-        args.output_dir / "minimax_h3_r2v_easycache_upscale.json",
-        add_upscale(r2v_fast, "R2V EasyCache Fast"),
-    )
+        "minimax_h3_i2v_easycache_upscale.json": add_upscale(i2v_fast, "I2V EasyCache Fast"),
+        "minimax_h3_r2v_upscale.json": add_upscale(r2v, "R2V"),
+        "minimax_h3_r2v_easycache_upscale.json": add_upscale(r2v_fast, "R2V EasyCache Fast"),
+    }
+    for filename, variant in variants.items():
+        write_json(args.output_dir / filename, variant)
+
+    auto_sources = {"minimax_h3_i2v.json": i2v, **variants}
+    for filename, variant in auto_sources.items():
+        stem = filename.removesuffix(".json")
+        write_json(
+            args.output_dir / f"{stem}_auto_mosaic.json",
+            add_auto_mosaic(variant, stem),
+        )
     return 0
 
 

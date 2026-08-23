@@ -19,6 +19,18 @@ Access requires the operator's Civitai account token. Use is subject to the asse
 creator's current Civitai permissions and terms as well as the MiniMax H3 license.
 Source: https://civitai.com/models/2834417?modelVersionId=3206518
 
+Anime NSFW Detection v5.0 YOLO11 Segmentation
+(ntd11_anime_nsfw_segm_v5.pt) is downloaded at runtime from Civitai model
+version 2266294. It is not included in this container image or repository.
+Access uses the operator-provided CIVITAI_API_TOKEN. Use remains subject to the
+asset creator's current Civitai permissions and terms.
+Source: https://civitai.com/api/download/models/2266294
+
+The CPU contour auto-mosaic implementation is adapted from
+grawthings-beep/wan-animate-runpod commit
+01a73bc628cc19a1df92684349285f03d4a1f39a.
+Source: https://github.com/grawthings-beep/wan-animate-runpod/tree/01a73bc628cc19a1df92684349285f03d4a1f39a
+
 ComfyUI_MiniMaxH3_Director is installed from AIMixer commit
 a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7 under the Apache License 2.0.
 The container modifies director/executor_core.py with the patch

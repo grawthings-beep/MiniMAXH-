@@ -88,8 +88,8 @@ MiniMaxの[公式License Q&A](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/m
 ### 2. コンテナをビルド
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.7.0 .
-docker push ghcr.io/OWNER/minimax-h3-i2v:0.7.0
+docker build --platform linux/amd64 -t ghcr.io/OWNER/minimax-h3-i2v:0.8.0 .
+docker push ghcr.io/OWNER/minimax-h3-i2v:0.8.0
 ```
 
 タグ`v*`をpushするか、GitHub Actionsの`Build container`を手動実行してGHCRへ公開することもできます。
@@ -362,6 +362,40 @@ python scripts/verify_workflow.py --workflow workflows/minimax_h3_story_quality_
 bash -n scripts/entrypoint.sh scripts/download_models.sh
 python -m json.tool manifests/minimax_h3_all.json >/dev/null
 python -m json.tool workflows/minimax_h3_i2v_easycache_upscale.json >/dev/null
+```
+
+## 完成動画へのCPU自動モザイク
+
+通常版12ワークフローは変更せず、同名の`*_auto_mosaic.json`派生を12本収録しています。
+ComfyUI上では末尾が`_AutoMosaic`のワークフローを選択してください。I2V/R2Vでは最終
+`IMAGE`バッチ（2x版はReal-ESRGAN後）と`CreateVideo`の間に、長編Storyboardでは
+Directorが生成した最終区間バッチとメモリ制限付き2x/MP4エクスポーターの間に
+`WanAutoMosaicVideo`を一度だけ接続します。入力・参照画像には適用しません。
+
+検出とモザイク処理はYOLO11 instance segmentationを明示的にCPUで実行します。
+既定値は`JUST`、confidence `0.30`、IoU `0.50`、block size `0`
+（短辺÷50、最小10px）、gap `3`です。対象は`pussy,penis,testicles`で、`anus`は
+既定対象から明示的に除外しています。短い検出抜けはループの先頭・末尾をまたいで
+補間しますが、正常検出済みフレームの輪郭を隣接フレームのマスクで置換しません。
+
+起動時には次のRunPod Secretを環境変数へ割り当てます。値をテンプレートJSON、ログ、
+Docker imageへ埋め込まないでください。
+
+```text
+CIVITAI_API_TOKEN={{ RUNPOD_SECRET_CIVITAI_API_TOKEN }}
+AUTO_MOSAIC_REQUIRED=1
+AUTO_MOSAIC_MANIFEST=/opt/minimax-h3/manifests/auto_mosaic.json
+```
+
+約18.8MBのZIPはベースモデルとLoRAと並列・再開可能で取得し、固定サイズ、SHA256、
+ZIP CRC、固定メンバー名を検証してから
+`ComfyUI/models/auto_mosaic/ntd11_anime_nsfw_segm_v5.pt`へ展開します。
+モデル、`ultralytics==8.4.104`、custom nodeのいずれかが不足した場合、ComfyUIは起動しません。
+
+全派生の静的検証は次で実行できます。
+
+```bash
+python scripts/verify_auto_mosaic_workflows.py
 ```
 
 実際のI2V生成テストにはNVIDIA GPUと約42.54GBのモデル取得が必要です。

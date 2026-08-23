@@ -18,6 +18,12 @@ This repository does not redistribute MiniMax H3 weights.
   workflows come from `Comfy-Org/workflow_templates`; exact source revisions
   and local derivation are documented in `workflows/UPSTREAM.md`.
 - The H3 text encoder is derived from Qwen3-VL-32B, licensed under Apache-2.0.
+- `ultralytics==8.4.104` is installed for CPU-only YOLO11 instance-segmentation
+  inference. The separately downloaded auto-mosaic model is not redistributed;
+  its current Civitai terms remain the operator's responsibility.
+- The auto-mosaic contour and circular-gap implementation is adapted from
+  `grawthings-beep/wan-animate-runpod` commit
+  `01a73bc628cc19a1df92684349285f03d4a1f39a`.
 
 Review all applicable licenses before building, using, or distributing a
 container made from this repository.

@@ -1,0 +1,1232 @@
+{
+  "id": "b3868ed9-9872-58c0-9cf4-640e17e31ac2",
+  "revision": 0,
+  "last_node_id": 17,
+  "last_link_id": 17,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "UNETLoader",
+      "pos": [
+        -720,
+        80
+      ],
+      "size": [
+        360,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "unet_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "unet_name"
+          },
+          "link": null
+        },
+        {
+          "name": "weight_dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "weight_dtype"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "title": "MiniMax H3 UNET",
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "default"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "CLIPLoader",
+      "pos": [
+        -720,
+        220
+      ],
+      "size": [
+        360,
+        106
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name"
+          },
+          "link": null
+        },
+        {
+          "name": "type",
+          "type": "COMBO",
+          "widget": {
+            "name": "type"
+          },
+          "link": null
+        },
+        {
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "title": "CLIP (minimax / Qwen3-VL)",
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax",
+        "default"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "VAELoader",
+      "pos": [
+        -720,
+        380
+      ],
+      "size": [
+        360,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "vae_name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "title": "Video VAE",
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "minimax_h3_video_vae_fp16.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "minimax_h3_video_vae_fp16.safetensors"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "VAELoader",
+      "pos": [
+        -720,
+        500
+      ],
+      "size": [
+        360,
+        58
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "vae_name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "title": "Audio VAE",
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "minimax_h3_audio_vae_fp32.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "MiniMaxH3Director",
+      "pos": [
+        -280,
+        80
+      ],
+      "size": [
+        1050,
+        900
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "name": "video_vae",
+          "type": "VAE",
+          "link": 3
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 4
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "name": "i2v_groups",
+          "type": "MMX_DIR_GROUP",
+          "link": 13
+        },
+        {
+          "name": "r2v_groups",
+          "type": "MMX_DIR_GROUP",
+          "link": null
+        },
+        {
+          "name": "task_type",
+          "type": "COMBO",
+          "widget": {
+            "name": "task_type"
+          },
+          "link": null
+        },
+        {
+          "name": "global_prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "global_prompt"
+          },
+          "link": null
+        },
+        {
+          "name": "bd_grp_sample",
+          "type": "BDGROUP",
+          "widget": {
+            "name": "bd_grp_sample"
+          },
+          "link": null
+        },
+        {
+          "name": "cfg",
+          "type": "FLOAT",
+          "widget": {
+            "name": "cfg"
+          },
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "name": "frame_rate",
+          "type": "FLOAT",
+          "widget": {
+            "name": "frame_rate"
+          },
+          "link": null
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": null
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": null
+        },
+        {
+          "name": "ref_max_size",
+          "type": "INT",
+          "widget": {
+            "name": "ref_max_size"
+          },
+          "link": null
+        },
+        {
+          "name": "total_frames",
+          "type": "INT",
+          "widget": {
+            "name": "total_frames"
+          },
+          "link": null
+        },
+        {
+          "name": "timeline_data",
+          "type": "STRING",
+          "widget": {
+            "name": "timeline_data"
+          },
+          "link": null
+        },
+        {
+          "name": "bd_grp_advanced",
+          "type": "BDGROUP",
+          "widget": {
+            "name": "bd_grp_advanced"
+          },
+          "link": null
+        },
+        {
+          "name": "steps",
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "name": "sampler",
+          "type": "COMBO",
+          "widget": {
+            "name": "sampler"
+          },
+          "link": null
+        },
+        {
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "name": "shift_video",
+          "type": "FLOAT",
+          "widget": {
+            "name": "shift_video"
+          },
+          "link": null
+        },
+        {
+          "name": "shift_audio",
+          "type": "FLOAT",
+          "widget": {
+            "name": "shift_audio"
+          },
+          "link": null
+        },
+        {
+          "name": "bd_grp_perf",
+          "type": "BDGROUP",
+          "widget": {
+            "name": "bd_grp_perf"
+          },
+          "link": null
+        },
+        {
+          "name": "clear_vram_between_segments",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "clear_vram_between_segments"
+          },
+          "link": null
+        },
+        {
+          "name": "export_source_images",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "export_source_images"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            5
+          ],
+          "shape": 6
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            6
+          ],
+          "shape": 6
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "links": [
+            7,
+            10
+          ]
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": [
+            11
+          ]
+        },
+        {
+          "name": "source_images",
+          "type": "IMAGE",
+          "links": null,
+          "shape": 6
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3Director"
+      },
+      "widgets_values": [
+        "fl2v — 首尾帧生视频(First-Last Frame)",
+        "Smooth cinematic motion between the first and last keyframes. Natural camera move, consistent subject identity, soft ambient soundscape. No text or watermarks.",
+        "采样设置",
+        1.0,
+        42,
+        "randomize",
+        24.0,
+        864,
+        480,
+        864,
+        158,
+        "{\"version\":4,\"editMode\":\"global\",\"timelineMode\":\"fl2v\",\"totalFrames\":158,\"frameRate\":24.0,\"width\":864,\"height\":480,\"refMaxSize\":864,\"output\":{\"mode\":\"fixed\",\"longEdge\":864,\"width\":864,\"height\":480,\"maxExportFrames\":0,\"exportMode\":\"segments\",\"continuityEnabled\":false,\"continuityOverlapFrames\":9},\"videoClips\":[],\"video\":{\"fileName\":\"\",\"videoFile\":\"\",\"subfolder\":\"\",\"type\":\"input\",\"frames\":[],\"frameMap\":[]},\"global\":{\"taskType\":\"fl2v — 首尾帧生视频(First-Last Frame)\",\"prompt\":\"Smooth cinematic motion between the first and last keyframes. Natural camera move, consistent subject identity, soft ambient soundscape. No text or watermarks.\",\"refs\":[],\"referenceVideo\":{},\"continuousReference\":false,\"genImage\":{\"imageFile\":\"\"}},\"segments\":[{\"id\":\"s0\",\"start\":0,\"length\":158,\"frameCount\":158,\"durationSec\":6.5,\"prompt\":\"\",\"taskType\":\"\",\"refs\":[],\"referenceVideo\":{},\"genImage\":{\"imageFile\":\"\"},\"negativePrompt\":\"\"}],\"gen\":{\"defaultFrameCount\":158},\"runSelectEnabled\":false,\"runSelection\":[]}",
+        "高级采样 Advanced",
+        25,
+        "res_multistep",
+        "simple",
+        12.0,
+        3.0,
+        "性能 Performance",
+        true,
+        false
+      ]
+    },
+    {
+      "id": 8,
+      "type": "PreviewAny",
+      "pos": [
+        900,
+        520
+      ],
+      "size": [
+        640,
+        200
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Director 运行报告",
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "PreviewAny",
+      "pos": [
+        1580,
+        520
+      ],
+      "size": [
+        210,
+        100
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "fps",
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 10,
+      "type": "PreviewAny",
+      "pos": [
+        1820,
+        520
+      ],
+      "size": [
+        210,
+        100
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "frame_count",
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 11,
+      "type": "MarkdownNote",
+      "pos": [
+        -920,
+        640
+      ],
+      "size": [
+        520,
+        520
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "MiniMax H3 Ordered Storyboard",
+      "properties": {},
+      "widgets_values": [
+        "## MiniMax H3 · Ordered Storyboard\n\n1. Ordered Storyboardへ2枚以上を追加し、↑↓で順番を変更\n2. 各画像から次の画像までのprompt / duration / seedを指定\n3. 通常は隣接ペア、Loop ONなら最後→最初も生成\n4. LoRAはHMNSFW V2 / 0.5が初期値。ノードのプルダウンで変更可能\n5. Directorはsegments出力、continuity OFF、区間ごとVRAM解放\n6. 専用OUTPUTノードが各区間をReal-ESRGAN 2xして即時encodeし、音声付きで結合保存\n7. DirectorのRAM保護のため全区間の合計は90秒まで\n\n- **Fast版**: EasyCache 0.20 / 0.15–0.95をLoRA後に適用。品質低下時はQuality版を使用。\n\n### メモリ設計\nMiniMaxH3StoryExport2xはDirectorの全区間リストを一度だけ受け、各区間を16fずつ2x→一時MKV化→テンソル解放してからffmpeg concatします。境界の重複フレームとloop終端の先頭フレームは既定で除去します。\n\n## CPU auto mosaic\nGenerated Director IMAGE segments pass through `WanAutoMosaicVideo` exactly once before the memory-bounded 2x/MP4 exporter. Detection and contour pixelation are CPU-only. JUST, confidence 0.30, IoU 0.50, automatic short-edge÷50 blocks, and 3-frame circular gap repair are the defaults; anus is deliberately excluded."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 12,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        -300,
+        -120
+      ],
+      "size": [
+        430,
+        110
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "title": "Selectable MiniMax H3 LoRA (HMNSFW V2 default; choose here)",
+      "properties": {
+        "Node name for S&R": "LoraLoaderModelOnly",
+        "models": [
+          {
+            "name": "HMNSFW_AIO_V2.safetensors",
+            "url": "https://civitai.red/api/download/models/3206518?fileId=3088013",
+            "directory": "loras"
+          }
+        ]
+      },
+      "widgets_values": [
+        "HMNSFW_AIO_V2.safetensors",
+        0.5
+      ]
+    },
+    {
+      "id": 13,
+      "type": "MiniMaxH3OrderedStoryboard",
+      "pos": [
+        -280,
+        1040
+      ],
+      "size": [
+        1050,
+        540
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "storyboard_data",
+          "type": "STRING",
+          "widget": {
+            "name": "storyboard_data"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "groups",
+          "type": "MMX_DIR_GROUP",
+          "links": [
+            13
+          ]
+        },
+        {
+          "name": "storyboard_plan",
+          "type": "STRING",
+          "links": [
+            15
+          ]
+        },
+        {
+          "name": "segment_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "total_seconds",
+          "type": "FLOAT",
+          "links": null
+        }
+      ],
+      "title": "Ordered Storyboard (upload, reorder, prompt each transition)",
+      "properties": {
+        "Node name for S&R": "MiniMaxH3OrderedStoryboard"
+      },
+      "widgets_values": [
+        "{\"version\":1,\"loop\":false,\"defaults\":{\"prompt\":\"\",\"duration_sec\":6.5,\"seed\":0},\"images\":[]}"
+      ]
+    },
+    {
+      "id": 14,
+      "type": "UpscaleModelLoader",
+      "pos": [
+        900,
+        20
+      ],
+      "size": [
+        320,
+        82
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "UPSCALE_MODEL",
+          "type": "UPSCALE_MODEL",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "title": "Real-ESRGAN 2x model",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.10.0",
+        "Node name for S&R": "UpscaleModelLoader",
+        "models": [
+          {
+            "name": "RealESRGAN_x2plus.pth",
+            "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth",
+            "directory": "upscale_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "RealESRGAN_x2plus.pth"
+      ]
+    },
+    {
+      "id": 15,
+      "type": "MiniMaxH3StoryExport2x",
+      "pos": [
+        1410,
+        120
+      ],
+      "size": [
+        460,
+        300
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 17
+        },
+        {
+          "name": "upscale_model",
+          "type": "UPSCALE_MODEL",
+          "link": 14
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": 7
+        },
+        {
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "name": "crf",
+          "type": "INT",
+          "widget": {
+            "name": "crf"
+          },
+          "link": null
+        },
+        {
+          "name": "preset",
+          "type": "COMBO",
+          "widget": {
+            "name": "preset"
+          },
+          "link": null
+        },
+        {
+          "name": "drop_boundary_duplicates",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "drop_boundary_duplicates"
+          },
+          "link": null
+        },
+        {
+          "name": "drop_loop_terminal",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "drop_loop_terminal"
+          },
+          "link": null
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 6
+        },
+        {
+          "name": "storyboard_plan",
+          "type": "STRING",
+          "link": 15,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "links": null
+        },
+        {
+          "name": "saved_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "2x Story Export (memory bounded, final OUTPUT_NODE)",
+      "properties": {
+        "Node name for S&R": "MiniMaxH3StoryExport2x"
+      },
+      "widgets_values": [
+        24.0,
+        "video/MiniMax_H3_Story_EasyCache_LoRA_2x_AutoMosaic",
+        18,
+        "fast",
+        true,
+        true
+      ]
+    },
+    {
+      "id": 16,
+      "type": "EasyCache",
+      "pos": [
+        180,
+        -120
+      ],
+      "size": [
+        360,
+        130
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "title": "EasyCache Fast (experimental)",
+      "properties": {
+        "Node name for S&R": "EasyCache"
+      },
+      "widgets_values": [
+        0.2,
+        0.15,
+        0.95,
+        true
+      ]
+    },
+    {
+      "id": 17,
+      "type": "WanAutoMosaicVideo",
+      "pos": [
+        900,
+        120
+      ],
+      "size": [
+        410,
+        360
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 5
+        },
+        {
+          "name": "model_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_name"
+          },
+          "link": null
+        },
+        {
+          "name": "coverage_preset",
+          "type": "COMBO",
+          "widget": {
+            "name": "coverage_preset"
+          },
+          "link": null
+        },
+        {
+          "name": "confidence",
+          "type": "FLOAT",
+          "widget": {
+            "name": "confidence"
+          },
+          "link": null
+        },
+        {
+          "name": "iou_threshold",
+          "type": "FLOAT",
+          "widget": {
+            "name": "iou_threshold"
+          },
+          "link": null
+        },
+        {
+          "name": "block_size",
+          "type": "INT",
+          "widget": {
+            "name": "block_size"
+          },
+          "link": null
+        },
+        {
+          "name": "max_gap_frames",
+          "type": "INT",
+          "widget": {
+            "name": "max_gap_frames"
+          },
+          "link": null
+        },
+        {
+          "name": "target_classes",
+          "type": "STRING",
+          "widget": {
+            "name": "target_classes"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mosaicked_images",
+          "type": "IMAGE",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "title": "AUTO MOSAIC - JUST CONTOUR (CPU, generated segments)",
+      "properties": {
+        "Node name for S&R": "WanAutoMosaicVideo",
+        "models": [
+          {
+            "name": "ntd11_anime_nsfw_segm_v5.pt",
+            "url": "https://civitai.com/api/download/models/2266294",
+            "directory": "auto_mosaic"
+          }
+        ]
+      },
+      "widgets_values": [
+        "ntd11_anime_nsfw_segm_v5.pt",
+        "JUST",
+        0.3,
+        0.5,
+        0,
+        3,
+        "pussy,penis,testicles"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      16,
+      0,
+      5,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      2,
+      0,
+      5,
+      3,
+      "CLIP"
+    ],
+    [
+      3,
+      3,
+      0,
+      5,
+      1,
+      "VAE"
+    ],
+    [
+      4,
+      4,
+      0,
+      5,
+      2,
+      "VAE"
+    ],
+    [
+      5,
+      5,
+      0,
+      17,
+      0,
+      "IMAGE"
+    ],
+    [
+      6,
+      5,
+      1,
+      15,
+      8,
+      "AUDIO"
+    ],
+    [
+      7,
+      5,
+      2,
+      15,
+      2,
+      "FLOAT"
+    ],
+    [
+      8,
+      5,
+      5,
+      8,
+      0,
+      "*"
+    ],
+    [
+      10,
+      5,
+      2,
+      9,
+      0,
+      "*"
+    ],
+    [
+      11,
+      5,
+      3,
+      10,
+      0,
+      "*"
+    ],
+    [
+      12,
+      1,
+      0,
+      12,
+      0,
+      "MODEL"
+    ],
+    [
+      13,
+      13,
+      0,
+      5,
+      4,
+      "MMX_DIR_GROUP"
+    ],
+    [
+      14,
+      14,
+      0,
+      15,
+      1,
+      "UPSCALE_MODEL"
+    ],
+    [
+      15,
+      13,
+      1,
+      15,
+      9,
+      "STRING"
+    ],
+    [
+      16,
+      12,
+      0,
+      16,
+      0,
+      "MODEL"
+    ],
+    [
+      17,
+      17,
+      0,
+      15,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "模型加载 (MiniMax H3)",
+      "bounding": [
+        -760,
+        40,
+        420,
+        560
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "MiniMax H3 Director",
+      "bounding": [
+        -320,
+        -160,
+        1120,
+        1780
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "输出 / Auto Mosaic (CPU)",
+      "bounding": [
+        860,
+        -20,
+        1200,
+        820
+      ],
+      "color": "#b58",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Workflow Guide",
+      "bounding": [
+        -960,
+        600,
+        560,
+        580
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "frontendVersion": "1.23.0",
+    "note": "MiniMax H3 ordered storyboard · EasyCache + selectable LoRA + 2x",
+    "ds": {
+      "scale": 0.85,
+      "offset": [
+        780,
+        40
+      ]
+    },
+    "auto_mosaic": {
+      "enabled": true,
+      "stage": "Director final IMAGE segments -> WanAutoMosaicVideo -> 2x/MP4 exporter",
+      "cpu_only": true,
+      "source_commit": "01a73bc628cc19a1df92684349285f03d4a1f39a"
+    }
+  },
+  "version": 0.4
+}

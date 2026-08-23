@@ -1,6 +1,6 @@
 {
   "name": "MiniMax-H3-I2V-Ephemeral-Xet",
-  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.7.0",
+  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.8.0",
   "containerDiskInGb": 120,
   "volumeInGb": 0,
   "volumeMountPath": "/workspace",
@@ -10,6 +10,9 @@
   "env": {
     "HF_TOKEN": "",
     "CIVITAI_TOKEN": "",
+    "CIVITAI_API_TOKEN": "",
+    "AUTO_MOSAIC_REQUIRED": "1",
+    "AUTO_MOSAIC_MANIFEST": "/opt/minimax-h3/manifests/auto_mosaic.json",
     "H3_LORA_REQUIRED": "1",
     "H3_LORA_SELECTION": "all",
     "H3_LORA_REPO_ID": "uwgm/nikke-civitai-backup",
