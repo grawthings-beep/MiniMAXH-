@@ -39,7 +39,27 @@ def query_gpu() -> tuple[str, float, str]:
         raise RuntimeError("NVIDIA GPU is not available to the container") from exc
     first = output.strip().splitlines()[0]
     name, memory_mib, driver_version = (part.strip() for part in first.rsplit(",", 2))
-    return name, float(memory_mib) / 1024, driver_version
+    try:
+        vram_gib = float(memory_mib) / 1024
+    except ValueError:
+        # Some RunPod Community Cloud hosts expose the GPU but deny NVML's
+        # memory.total query, returning "[Insufficient Permissions]". PyTorch
+        # still knows the CUDA device allocation limit in that environment.
+        try:
+            import torch
+
+            if not torch.cuda.is_available():
+                raise RuntimeError("PyTorch cannot access the NVIDIA GPU")
+            device = torch.cuda.current_device()
+            properties = torch.cuda.get_device_properties(device)
+            vram_gib = int(properties.total_memory) / GIB
+            if not name or name.startswith("["):
+                name = str(properties.name)
+        except Exception as exc:
+            raise RuntimeError(
+                "NVIDIA VRAM could not be read through nvidia-smi or PyTorch"
+            ) from exc
+    return name, vram_gib, driver_version
 
 
 def query_acceleration() -> dict[str, object]:

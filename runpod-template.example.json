@@ -1,6 +1,6 @@
 {
   "name": "MiniMax-H3-I2V-Ephemeral-Xet",
-  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.9.0",
+  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:0.9.1",
   "containerDiskInGb": 120,
   "volumeInGb": 0,
   "volumeMountPath": "/workspace",
