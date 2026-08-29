@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -23,8 +24,10 @@ def profile_for_vram(vram_gib: float) -> dict[str, object]:
     if vram_gib < 24:
         return {"name": "balanced", "megapixels": 0.4, "duration": 5}
     if vram_gib < 32:
-        return {"name": "high", "megapixels": 0.6, "duration": 5}
-    return {"name": "native-768p", "megapixels": 0.98, "duration": 5}
+        return {"name": "conservative-24gb", "megapixels": 0.4, "duration": 5}
+    if vram_gib < 40:
+        return {"name": "stable-32gb", "megapixels": 0.4, "duration": 5}
+    return {"name": "high-48gb", "megapixels": 0.6, "duration": 5}
 
 
 def query_gpu() -> tuple[str, float, str]:
@@ -65,6 +68,8 @@ def query_gpu() -> tuple[str, float, str]:
 def query_acceleration() -> dict[str, object]:
     result: dict[str, object] = {
         "ready": False,
+        "gpu_access": False,
+        "optimized": False,
         "torch_version": None,
         "compiled_cuda": None,
         "compute_capability": None,
@@ -78,6 +83,7 @@ def query_acceleration() -> dict[str, object]:
         if not torch.cuda.is_available():
             result["error"] = "PyTorch cannot access the NVIDIA GPU"
             return result
+        result["gpu_access"] = True
         major, minor = torch.cuda.get_device_capability(torch.cuda.current_device())
         result["compute_capability"] = f"{major}.{minor}"
 
@@ -97,9 +103,13 @@ def query_acceleration() -> dict[str, object]:
             ),
         }
         result["comfy_kitchen_cuda"] = status
-        result["ready"] = status["available"] and not status["disabled"]
-        if not result["ready"]:
-            result["error"] = "ComfyKitchen CUDA backend is unavailable or disabled"
+        result["optimized"] = status["available"] and not status["disabled"]
+        result["ready"] = True
+        if not result["optimized"]:
+            result["warning"] = (
+                "ComfyKitchen CUDA backend is unavailable or disabled; "
+                "using the compatible eager path"
+            )
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
     return result
@@ -138,6 +148,9 @@ def main() -> int:
     acceleration = query_acceleration()
 
     report = {
+        "runtime_variant": os.environ.get(
+            "MINIMAX_H3_RUNTIME_VARIANT", "unknown"
+        ),
         "gpu": gpu_name,
         "nvidia_driver": driver_version,
         "vram_gib": round(vram_gib, 2),
@@ -164,11 +177,21 @@ def main() -> int:
     if profile["name"] == "unsupported":
         print("At least 8 GiB VRAM is required; 12 GiB or more is recommended.", file=sys.stderr)
         return 1
-    if args.require_comfy_kitchen_cuda and not acceleration["ready"]:
+    if not acceleration["gpu_access"]:
+        print(
+            "PyTorch cannot access this GPU with the selected container runtime. "
+            f"Runtime variant: {report['runtime_variant']}. "
+            "Use the community-cu128 image for r525-r579 hosts, or fast-cu130 "
+            "only with an r580+ host driver.",
+            file=sys.stderr,
+        )
+        return 1
+    if args.require_comfy_kitchen_cuda and not acceleration["optimized"]:
         print(
             "ComfyKitchen CUDA acceleration is required but is not ready. "
-            "Use an NVIDIA r580+ host driver and the pinned cu130 image. "
-            f"Details: {acceleration.get('error')}",
+            "Use the fast-cu130 image with an NVIDIA r580+ host driver, or select "
+            "the community-cu128 image without the optimized-kernel requirement. "
+            f"Details: {acceleration.get('error') or acceleration.get('warning')}",
             file=sys.stderr,
         )
         return 1

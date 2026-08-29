@@ -31,13 +31,22 @@ ComfyUIへ表示するMiniMax H3ワークフローは、次の3本だけです�
 RunPodのワークフロー一覧へはコピーしません。起動時に旧`MiniMax_H3`配布ワークフローを消し、
 上の3本だけを配置します。
 
-## 高速化構成
+## Runtime構成
 
-- ComfyUI `v0.31.0`、PyTorch `2.10.0+cu130`を固定
+Community Cloudのhost driver差を吸収するため、同じworkflowを2種類のimageで配布します。
+
+| image tag | PyTorch | host driver | 特徴 |
+|---|---|---|---|
+| `community-cu128` | `2.9.1+cu128` | r525以上 | r550 L40S、r570 RTX 5090、r580以降で起動する互換優先版 |
+| `fast-cu130` | `2.10.0+cu130` | r580以上 | ComfyKitchen CUDA INT8を使う高速版 |
+
+- ComfyUI `v0.31.0`を固定
 - MiniMax H3 FL2VA pruned INT8 ConvRot
-- ComfyKitchen CUDAを必須化し、低速なeager fallbackを起動前に拒否
+- `community-cu128`はComfyKitchen eager fallbackを許可
+- `fast-cu130`だけComfyKitchen CUDAを必須化
 - FastはFirstBlockCacheの`H3 Safe`（threshold `0.08`、10〜95%、最大2連続hit）
 - TurboはLightX2V FL2VA Turbo 8-step v1.0を強度`1.0`でcreator LoRAの前へ適用
+- Turboのcreator LoRAは32GBで二重LoRA 208 patchesを避けるため初期値`0.0`
 - Turboは公式推奨どおり`Euler`、`simple`、8 steps、video shift `12`、audio shift `3`
 - EasyCacheとFirstBlockCacheは併用しない
 - TurboとFirstBlockCacheも既定では併用しない
@@ -65,16 +74,22 @@ SHA256 `2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e`を検�
 - Container Disk: `120 GB`
 - Volume Disk: `0 GB`
 - HTTP Port: `8188`
-- GPU VRAM: 24 GB以上。48 GBなら余裕が増える
+- GPU VRAM: 32 GB以上を推奨。32GBでは0.4MP/5秒から開始、48GBでは0.6MP/5秒から開始
 - System RAM: 64 GB以上推奨
-- NVIDIA Driver: CUDA 13対応のr580以上
+- NVIDIA Driver: `community-cu128`はr525以上、`fast-cu130`はr580以上
 
 ## RunPod template
 
 Docker image:
 
 ```text
-ghcr.io/grawthings-beep/minimax-h3-i2v:1.0.0
+ghcr.io/grawthings-beep/minimax-h3-i2v:community-cu128
+```
+
+r580以上を確認できるhostだけ高速版へ変更します。
+
+```text
+ghcr.io/grawthings-beep/minimax-h3-i2v:fast-cu130
 ```
 
 環境変数は次を設定します。tokenの実値をテンプレートやログへ直接書かず、RunPod Secretを使います。
@@ -111,10 +126,14 @@ HF_HUB_DOWNLOAD_TIMEOUT=120
 DOWNLOAD_RETRIES=3
 MODEL_VERIFY=size
 MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json
-REQUIRE_COMFY_KITCHEN_CUDA=1
-COMFYUI_ARGS="--vram-headroom 2"
+REQUIRE_COMFY_KITCHEN_CUDA=0
+COMFYUI_ARGS="--disable-dynamic-vram --reserve-vram 4"
 TINI_SUBREAPER=1
 ```
+
+`fast-cu130`を使う場合だけ`REQUIRE_COMFY_KITCHEN_CUDA=1`へ変更します。旧Templateの
+`--vram-headroom 2`は起動時に安定profileへ自動移行されます。`REQUIRE_COMFY_KITCHEN_CUDA=0`
+だけを旧cu130 imageへ設定してもdriver非互換は解消しません。
 
 MiniMax H3のライセンスを確認し、利用者本人または組織がApplicable Territoryを拠点とする場合だけ
 `MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1`を設定してください。別途MiniMaxから許諾を得た場合は
@@ -158,7 +177,8 @@ INT8 FL2VA → LightX2V Turbo 1.0 → 選択creator LoRA → SigmaShift → Sche
 ```
 
 Turbo LoRAをcreator LoRAの後ろへ動かしたり、強度を変更したりしないでください。creator LoRAは
-プルダウンでV1/V2を選び、強度を調整できます。既定は`HMNSFW_AIO_V2.safetensors / 0.5`です。
+プルダウンでV1/V2を選び、強度を調整できます。Quality/Fastの既定は
+`HMNSFW_AIO_V2.safetensors / 0.5`、Turboだけは安定性のため`0.0`です。
 
 ## 検証
 
@@ -166,7 +186,7 @@ Turbo LoRAをcreator LoRAの後ろへ動かしたり、強度を変更したり�
 python -m unittest discover -s tests -v
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_01_quality.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_02_fast_fbcache.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --expect-first-block-cache
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_03_turbo_8step.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --expect-turbo
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_03_turbo_8step.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 --expect-turbo
 bash -n scripts/entrypoint.sh scripts/download_models.sh
 ```
 

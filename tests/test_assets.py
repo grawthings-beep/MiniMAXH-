@@ -241,7 +241,7 @@ class AssetTests(unittest.TestCase):
                     "--expect-upscale", "--expect-auto-mosaic", "--expect-turbo",
                     "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
                     "--expect-lora", "HMNSFW_AIO_V2.safetensors",
-                    "--expect-lora-strength", "0.5",
+                    "--expect-lora-strength", "0.0",
                 ],
             ),
         )
@@ -269,10 +269,14 @@ class AssetTests(unittest.TestCase):
     def test_dockerfile_pins_comfyui_director_and_installs_story_workflows(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn(
-            "pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime@sha256:"
-            "1f57418aedd9a4d0d3a59646619e1d4f82cacc33817247cead4f749e1f452d4b",
+            "pytorch/pytorch:2.9.1-cuda12.8-cudnn9-runtime@sha256:"
+            "7b324d212a4450795b49edba9949b7cdc72429148a64e974334bfe5774d51385",
             dockerfile,
         )
+        self.assertIn("ARG PYTORCH_IMAGE=", dockerfile)
+        self.assertIn("ARG MINIMAX_H3_RUNTIME_VARIANT=community-cu128", dockerfile)
+        self.assertIn("ARG REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT=0", dockerfile)
+        self.assertIn('ARG COMFYUI_ARGS_DEFAULT="--disable-dynamic-vram --reserve-vram 4"', dockerfile)
         self.assertIn("ARG COMFYUI_VERSION=v0.31.0", dockerfile)
         self.assertRegex(dockerfile, r"ARG COMFYUI_COMMIT=[0-9a-f]{40}")
         self.assertIn(
@@ -301,7 +305,7 @@ class AssetTests(unittest.TestCase):
         self.assertNotIn("ComfyUI-INT8-Fast", dockerfile)
         self.assertNotIn("ComfyUI_sol-attn_Blackwell", dockerfile)
         self.assertIn("PIP_BREAK_SYSTEM_PACKAGES=1", dockerfile)
-        self.assertIn("REQUIRE_COMFY_KITCHEN_CUDA=1", dockerfile)
+        self.assertIn("REQUIRE_COMFY_KITCHEN_CUDA=${REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT}", dockerfile)
         self.assertIn("--start-period=30m", dockerfile)
         self.assertIn("H3_LORA_REQUIRED=1", dockerfile)
         self.assertIn("H3_LORA_SELECTION=all", dockerfile)
@@ -319,6 +323,11 @@ class AssetTests(unittest.TestCase):
         self.assertIn("minimax_h3_director_fl2v_motion_context.patch", ci)
         self.assertIn("apply --recount", ci)
         self.assertIn('replace(b"\\r\\n", b"\\n")', ci)
+        docker_ci = (ROOT / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
+        self.assertIn("community-cu128", docker_ci)
+        self.assertIn("fast-cu130", docker_ci)
+        self.assertIn("2.10.0-cuda13.0-cudnn9-runtime@sha256:", docker_ci)
+        self.assertIn("2.9.1-cuda12.8-cudnn9-runtime@sha256:", docker_ci)
 
     def test_downloader_supports_pinned_external_upscaler(self) -> None:
         downloader = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
@@ -344,6 +353,8 @@ class AssetTests(unittest.TestCase):
         self.assertIn("manifests/minimax_h3_i2v_upscale.json", entrypoint)
         self.assertIn("installed exactly 3 MiniMax H3 presets", entrypoint)
         self.assertIn("--require-comfy-kitchen-cuda", entrypoint)
+        self.assertIn("overriding legacy REQUIRE_COMFY_KITCHEN_CUDA=1", entrypoint)
+        self.assertIn("replacing the legacy DynamicVRAM setting", entrypoint)
         self.assertIn("--fast-disk can make H3 model offload much slower", entrypoint)
         self.assertIn("download_lora.py", entrypoint)
         self.assertIn("download_civitai_lora.py", entrypoint)
@@ -365,11 +376,14 @@ class AssetTests(unittest.TestCase):
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:1.0.0")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:community-cu128")
         self.assertEqual(template["env"]["MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY"], "0")
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", template["env"])
-        self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
-        self.assertEqual(template["env"]["COMFYUI_ARGS"], "--vram-headroom 2")
+        self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "0")
+        self.assertEqual(
+            template["env"]["COMFYUI_ARGS"],
+            "--disable-dynamic-vram --reserve-vram 4",
+        )
         self.assertNotIn("--fast-disk", template["env"]["COMFYUI_ARGS"])
         self.assertEqual(template["env"]["HF_TOKEN"], "")
         self.assertEqual(template["env"]["CIVITAI_TOKEN"], "")
@@ -393,6 +407,16 @@ class AssetTests(unittest.TestCase):
             template["env"]["H3_LORA_SOURCE_PATH"],
             "hmmotion_minimax-h3_epoch12.safetensors",
         )
+
+        fast = json.loads(
+            (ROOT / "runpod-template.fast-cu130.example.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            fast["imageName"],
+            "ghcr.io/grawthings-beep/minimax-h3-i2v:fast-cu130",
+        )
+        self.assertEqual(fast["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
+        self.assertEqual(fast["env"]["COMFYUI_ARGS"], template["env"]["COMFYUI_ARGS"])
 
     def test_required_minimax_notice_is_present(self) -> None:
         notice = (ROOT / "NOTICE").read_text(encoding="utf-8")

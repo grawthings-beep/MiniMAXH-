@@ -312,6 +312,11 @@ def verify_turbo_8step(workflow: dict[str, object]) -> None:
         raise RuntimeError(f"Turbo model chain is incomplete: {sorted(expected - actual)}")
     if turbo.get("widgets_values") != [TURBO_LORA, 1.0]:
         raise RuntimeError("Turbo LoRA must remain fixed at strength 1.0")
+    creator_values = creator.get("widgets_values", [])
+    if len(creator_values) < 2 or creator_values[1] != 0.0:
+        raise RuntimeError(
+            "Turbo creator LoRA must default to 0.0 to avoid dual-LoRA patch pressure"
+        )
     if sigma.get("widgets_values") != [12.0, 3.0]:
         raise RuntimeError("Turbo SigmaShift must remain video=12/audio=3")
     if scheduler.get("widgets_values") != ["simple", 8, 1]:

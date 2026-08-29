@@ -1,9 +1,13 @@
-FROM pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime@sha256:1f57418aedd9a4d0d3a59646619e1d4f82cacc33817247cead4f749e1f452d4b
+ARG PYTORCH_IMAGE=pytorch/pytorch:2.9.1-cuda12.8-cudnn9-runtime@sha256:7b324d212a4450795b49edba9949b7cdc72429148a64e974334bfe5774d51385
+FROM ${PYTORCH_IMAGE}
 
 ARG COMFYUI_VERSION=v0.31.0
 ARG COMFYUI_COMMIT=43cb4fffc89bba20ab7bd61467a36d0339338dab
 ARG MINIMAX_H3_DIRECTOR_COMMIT=a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7
 ARG MINIMAX_H3_FBC_COMMIT=725973c3bfd9de6dce249bc93dc5fe27f820df31
+ARG MINIMAX_H3_RUNTIME_VARIANT=community-cu128
+ARG REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT=0
+ARG COMFYUI_ARGS_DEFAULT="--disable-dynamic-vram --reserve-vram 4"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -35,7 +39,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     H3_TURBO_REVISION=05ef678438e84933c406131b59abbf86919b3aac \
     AUTO_MOSAIC_REQUIRED=1 \
     AUTO_MOSAIC_MANIFEST=/opt/minimax-h3/manifests/auto_mosaic.json \
-    REQUIRE_COMFY_KITCHEN_CUDA=1
+    MINIMAX_H3_RUNTIME_VARIANT=${MINIMAX_H3_RUNTIME_VARIANT} \
+    REQUIRE_COMFY_KITCHEN_CUDA=${REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT} \
+    COMFYUI_ARGS=${COMFYUI_ARGS_DEFAULT}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       aria2 \
@@ -238,7 +244,7 @@ RUN pip install --no-cache-dir \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
       --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo \
       --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
-      --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
+      --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 \
       --comfyui-root "${COMFYUI_ROOT}" \
       --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
     && cd "${COMFYUI_ROOT}" \

@@ -20,8 +20,9 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(preflight.profile_for_vram(7.9)["name"], "unsupported")
         self.assertEqual(preflight.profile_for_vram(12)["name"], "preview")
         self.assertEqual(preflight.profile_for_vram(16)["name"], "balanced")
-        self.assertEqual(preflight.profile_for_vram(24)["name"], "high")
-        self.assertEqual(preflight.profile_for_vram(32)["name"], "native-768p")
+        self.assertEqual(preflight.profile_for_vram(24)["name"], "conservative-24gb")
+        self.assertEqual(preflight.profile_for_vram(32)["name"], "stable-32gb")
+        self.assertEqual(preflight.profile_for_vram(48)["name"], "high-48gb")
 
     def test_gpu_query_falls_back_to_torch_when_nvml_memory_is_restricted(self) -> None:
         fake_cuda = types.SimpleNamespace(
