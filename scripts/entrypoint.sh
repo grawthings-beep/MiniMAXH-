@@ -12,6 +12,18 @@ STORY_NODE_ROOT="${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard"
 AUTO_MOSAIC_MODEL="${MODEL_DIR}/auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"
 AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED:-1}"
 AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED,,}"
+RUNTIME_VARIANT="${MINIMAX_H3_RUNTIME_VARIANT:-community-cu128}"
+
+echo "[runtime] variant=${RUNTIME_VARIANT}"
+if [[ "${RUNTIME_VARIANT}" == "community-cu128" ]] \
+  && [[ "${REQUIRE_COMFY_KITCHEN_CUDA:-0}" == "1" ]]; then
+  echo "[runtime] overriding legacy REQUIRE_COMFY_KITCHEN_CUDA=1 for the cu128 compatibility image"
+  export REQUIRE_COMFY_KITCHEN_CUDA=0
+fi
+if [[ "${COMFYUI_ARGS:-}" == "--vram-headroom 2" ]]; then
+  echo "[runtime] replacing the legacy DynamicVRAM setting with the stable H3 loader profile"
+  export COMFYUI_ARGS="--disable-dynamic-vram --reserve-vram 4"
+fi
 
 # One RunPod Civitai secret is enough for both creator-LoRA and mosaic-model
 # downloads.  Keep the established API-specific override when supplied.

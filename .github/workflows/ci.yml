@@ -161,7 +161,7 @@ jobs:
             --manifest manifests/minimax_h3_i2v_upscale.json \
             --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo \
             --auto-mosaic-manifest manifests/auto_mosaic.json \
-            --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
+            --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 \
             --comfyui-root .ci-ComfyUI \
             --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
       - name: Validate shell scripts
@@ -170,6 +170,6 @@ jobs:
         run: node --check custom_nodes/minimax_h3_ordered_storyboard/web/ordered_storyboard.js
       - name: Validate JSON
         run: |
-          for file in manifests/*.json workflows/*.json runpod-template.example.json; do
+          for file in manifests/*.json workflows/*.json runpod-template*.json; do
             python -m json.tool "$file" >/dev/null
           done

@@ -416,7 +416,7 @@ def add_first_block_cache(workflow: dict[str, Any], label: str) -> dict[str, Any
 
 
 def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
-    """Add LightX2V 8-step Turbo before creator LoRA and apply calibrated shifts."""
+    """Add LightX2V Turbo while leaving the optional creator LoRA disabled by default."""
     turbo = copy.deepcopy(workflow)
     turbo["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f'{turbo["id"]}:lightx2v-turbo-8step'))
     graph = next(
@@ -432,6 +432,10 @@ def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         for node in nodes
         if node["type"] == "LoraLoaderModelOnly"
         and node.get("widgets_values", [None])[0] != TURBO_LORA_MODEL
+    )
+    creator["widgets_values"][1] = 0.0
+    creator["title"] = (
+        "Optional creator LoRA (OFF by default for 32GB stability; enable manually)"
     )
     unet_consumers = [link for link in links if link_origin(link) == int(unet["id"])]
     if {link_target(link) for link in unet_consumers} != {int(creator["id"])}:
@@ -526,6 +530,8 @@ def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         "shift_video": 12,
         "shift_audio": 3,
         "source_revision": "05ef678438e84933c406131b59abbf86919b3aac",
+        "creator_lora_default_strength": 0.0,
+        "memory_note": "Avoids the 208-patch dual-LoRA default on 32GB GPUs",
     }
     note = next(
         (
@@ -537,10 +543,18 @@ def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         None,
     )
     if note:
+        note["widgets_values"][0] = note["widgets_values"][0].replace(
+            "`HMNSFW_AIO_V2.safetensors` is applied to the diffusion model with the built-in "
+            "`LoraLoaderModelOnly` node at strength `0.50`.",
+            "`HMNSFW_AIO_V2.safetensors` remains selectable, but this Turbo preset disables "
+            "the creator LoRA at strength `0.00` by default.",
+        )
         note["widgets_values"][0] += (
             "\n\n## 03 Turbo · LightX2V 8-step\n"
-            "Turbo LoRA 1.0 → creator LoRA → SigmaShift 12/3、Euler/simple/8 stepsの固定構成です。"
-            "音声や速い動きが崩れる場合は02 Fastまたは01 Qualityへ戻してください。"
+            "Turbo LoRA 1.0 → optional creator LoRA → SigmaShift 12/3、Euler/simple/8 stepsの構成です。"
+            "32GBで208 patchesを避けるためcreator LoRAは初期値0.0です。必要な場合だけ手動で有効化し、"
+            "二回目以降に不安定になる場合は0.0へ戻してください。音声や速い動きが崩れる場合は"
+            "02 Fastまたは01 Qualityへ戻してください。"
         )
     return turbo
 
