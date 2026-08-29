@@ -50,7 +50,10 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/minimax-h3-i2v
+          flavor: |
+            latest=false
           tags: |
+            type=raw,value=latest,enable=${{ matrix.publish_default }}
             type=raw,value=${{ matrix.variant }}
             type=semver,pattern={{version}},suffix=-${{ matrix.variant }}
             type=semver,pattern={{version}},enable=${{ matrix.publish_default }}

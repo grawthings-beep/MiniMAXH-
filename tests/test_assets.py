@@ -328,6 +328,11 @@ class AssetTests(unittest.TestCase):
         self.assertIn("fast-cu130", docker_ci)
         self.assertIn("2.10.0-cuda13.0-cudnn9-runtime@sha256:", docker_ci)
         self.assertIn("2.9.1-cuda12.8-cudnn9-runtime@sha256:", docker_ci)
+        self.assertIn("latest=false", docker_ci)
+        self.assertIn(
+            "type=raw,value=latest,enable=${{ matrix.publish_default }}",
+            docker_ci,
+        )
 
     def test_downloader_supports_pinned_external_upscaler(self) -> None:
         downloader = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
