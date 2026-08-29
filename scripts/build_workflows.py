@@ -293,12 +293,6 @@ def add_easycache(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         None,
     )
     if note:
-        note["widgets_values"][0] = note["widgets_values"][0].replace(
-            "`HMNSFW_AIO_V2.safetensors` is applied to the diffusion model with the built-in "
-            "`LoraLoaderModelOnly` node at strength `0.50`.",
-            "`HMNSFW_AIO_V2.safetensors` remains selectable, but this Turbo preset disables "
-            "the creator LoRA at strength `0.00` by default.",
-        )
         note["widgets_values"][0] += (
             "\n\n## EasyCache Fast variant\n"
             "Native EasyCache is enabled with `reuse_threshold=0.20`, `start_percent=0.15`, "
@@ -549,6 +543,12 @@ def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         None,
     )
     if note:
+        note["widgets_values"][0] = note["widgets_values"][0].replace(
+            "`HMNSFW_AIO_V2.safetensors` is applied to the diffusion model with the built-in "
+            "`LoraLoaderModelOnly` node at strength `0.50`.",
+            "`HMNSFW_AIO_V2.safetensors` remains selectable, but this Turbo preset disables "
+            "the creator LoRA at strength `0.00` by default.",
+        )
         note["widgets_values"][0] += (
             "\n\n## 03 Turbo · LightX2V 8-step\n"
             "Turbo LoRA 1.0 → optional creator LoRA → SigmaShift 12/3、Euler/simple/8 stepsの構成です。"
