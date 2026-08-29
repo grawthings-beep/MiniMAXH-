@@ -35,6 +35,7 @@ class AutoMosaicWorkflowTests(unittest.TestCase):
             path for path in WORKFLOWS.glob("minimax_h3_*.json")
             if not path.name.endswith("_auto_mosaic.json")
             and not path.name.startswith("upstream_")
+            and not path.name.startswith("minimax_h3_preset_")
         )
         self.assertEqual(len(normal), 12)
         self.assertEqual(len(AUTO_FILES), 12)
@@ -44,6 +45,58 @@ class AutoMosaicWorkflowTests(unittest.TestCase):
                 any(node["type"] == "WanAutoMosaicVideo" for graph in graphs(workflow) for node in graph.get("nodes", [])),
                 path.name,
             )
+
+    def test_three_ui_presets_share_one_toggleable_mosaic_tail(self):
+        presets = tuple(sorted(WORKFLOWS.glob("minimax_h3_preset_*.json")))
+        self.assertEqual(len(presets), 3)
+        for path in presets:
+            workflow = json.loads(path.read_text(encoding="utf-8"))
+            mosaics = [
+                node
+                for graph in graphs(workflow)
+                for node in graph.get("nodes", [])
+                if node["type"] == "WanAutoMosaicVideo"
+            ]
+            self.assertEqual(len(mosaics), 1, path.name)
+            self.assertIs(mosaics[0]["widgets_values"][1], True)
+
+            for graph in graphs(workflow):
+                nodes = [
+                    node for node in graph.get("nodes", [])
+                    if node.get("pos") and node.get("size")
+                ]
+                for index, left in enumerate(nodes):
+                    lx, ly = map(float, left["pos"])
+                    lw, lh = map(float, left["size"])
+                    for right in nodes[index + 1:]:
+                        rx, ry = map(float, right["pos"])
+                        rw, rh = map(float, right["size"])
+                        overlap = (
+                            max(lx, rx) < min(lx + lw, rx + rw)
+                            and max(ly, ry) < min(ly + lh, ry + rh)
+                        )
+                        self.assertFalse(overlap, (path.name, left["id"], right["id"]))
+
+            subgraph = workflow["definitions"]["subgraphs"][0]
+            model_group = next(
+                group for group in subgraph["groups"] if group["title"] == "Models"
+            )
+            gx, gy, gw, gh = map(float, model_group["bounding"])
+            acceleration = [
+                node for node in subgraph["nodes"]
+                if node["type"] in {"ApplyMiniMaxH3FirstBlockCache", "MiniMaxH3SigmaShift"}
+                or (
+                    node["type"] == "LoraLoaderModelOnly"
+                    and "turbo_8step" in str(node.get("widgets_values", [""])[0])
+                )
+            ]
+            for node in acceleration:
+                x, y = map(float, node["pos"])
+                width, height = map(float, node["size"])
+                self.assertTrue(
+                    gx <= x and gy <= y and x + width <= gx + gw and y + height <= gy + gh,
+                    (path.name, node["id"]),
+                )
 
     def test_auto_workflows_have_one_bidirectionally_serialized_final_node(self):
         for filename in AUTO_FILES:
@@ -58,7 +111,7 @@ class AutoMosaicWorkflowTests(unittest.TestCase):
             graph, mosaic = matches[0]
             self.assertEqual(
                 mosaic["widgets_values"],
-                ["ntd11_anime_nsfw_segm_v5.pt", "JUST", 0.3, 0.5, 0, 3, "pussy,penis,testicles"],
+                ["ntd11_anime_nsfw_segm_v5.pt", True, "JUST", 0.3, 0.5, 0, 3, "pussy,penis,testicles"],
             )
             self.assertNotIn("anus", mosaic["widgets_values"][-1])
 

@@ -12,9 +12,11 @@ from pathlib import Path
 FRONTEND_BUILTINS = {"MarkdownNote"}
 HMMOTION_LORA = "hmmotion_minimax-h3_epoch12.safetensors"
 HMNSFW_V2_LORA = "HMNSFW_AIO_V2.safetensors"
+TURBO_LORA = "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
 AUTO_MOSAIC_MODEL = "auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"
 AUTO_MOSAIC_DEFAULTS = [
     "ntd11_anime_nsfw_segm_v5.pt",
+    True,
     "JUST",
     0.30,
     0.50,
@@ -215,23 +217,39 @@ def verify_lora_wiring(
     nodes = graph["nodes"]
     links = graph["links"]
     unet = next(node for node in nodes if node["type"] == "UNETLoader")
-    lora = next(node for node in nodes if node["type"] == "LoraLoaderModelOnly")
+    lora = next(
+        node
+        for node in nodes
+        if node["type"] == "LoraLoaderModelOnly"
+        and node.get("widgets_values", [None])[0] == expected_model
+    )
     scheduler = next(node for node in nodes if node["type"] == "BasicScheduler")
     guider = next(node for node in nodes if node["type"] == "BasicGuider")
-    actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
-    expected = {
-        (int(unet["id"]), int(lora["id"]), "MODEL"),
-        (int(lora["id"]), int(scheduler["id"]), "MODEL"),
-        (int(lora["id"]), int(guider["id"]), "MODEL"),
+    model_edges = {
+        (link_origin(link), link_target(link))
+        for link in links
+        if link_type(link) == "MODEL"
     }
-    if not expected <= actual:
-        raise RuntimeError(f"LoRA wiring is incomplete: {sorted(expected - actual)}")
-    bypasses = {
-        (int(unet["id"]), int(scheduler["id"]), "MODEL"),
-        (int(unet["id"]), int(guider["id"]), "MODEL"),
-    }
-    if bypasses & actual:
-        raise RuntimeError("UNETLoader bypasses the LoRA loader")
+
+    def reachable(start: int, target: int) -> bool:
+        pending = [start]
+        visited: set[int] = set()
+        while pending:
+            current = pending.pop()
+            if current == target:
+                return True
+            if current in visited:
+                continue
+            visited.add(current)
+            pending.extend(dst for src, dst in model_edges if src == current)
+        return False
+
+    if not reachable(int(unet["id"]), int(lora["id"])):
+        raise RuntimeError("UNETLoader does not reach the selected creator LoRA")
+    if not reachable(int(lora["id"]), int(scheduler["id"])) or not reachable(
+        int(lora["id"]), int(guider["id"])
+    ):
+        raise RuntimeError("Creator LoRA does not reach both scheduler and guider")
     if lora.get("widgets_values") != [expected_model, expected_strength]:
         raise RuntimeError(
             f"LoRA defaults have changed; expected {expected_model} at {expected_strength}"
@@ -239,6 +257,69 @@ def verify_lora_wiring(
     model_entries = lora.get("properties", {}).get("models", [])
     if len(model_entries) != 1 or model_entries[0].get("directory") != "loras":
         raise RuntimeError("The LoRA model metadata is incomplete")
+
+
+def verify_first_block_cache(workflow: dict[str, object]) -> None:
+    graph = graph_with_types(
+        workflow, {"UNETLoader", "ApplyMiniMaxH3FirstBlockCache", "LoraLoaderModelOnly"}
+    )
+    nodes = graph["nodes"]
+    links = graph["links"]
+    unet = next(node for node in nodes if node["type"] == "UNETLoader")
+    cache = next(
+        node for node in nodes if node["type"] == "ApplyMiniMaxH3FirstBlockCache"
+    )
+    creator = next(node for node in nodes if node["type"] == "LoraLoaderModelOnly")
+    actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
+    expected = {
+        (int(unet["id"]), int(cache["id"]), "MODEL"),
+        (int(cache["id"]), int(creator["id"]), "MODEL"),
+    }
+    if not expected <= actual:
+        raise RuntimeError(f"FirstBlockCache wiring is incomplete: {sorted(expected - actual)}")
+    if cache.get("widgets_values") != [
+        "H3 Safe — 0.08 / max 2", 0.08, 0.10, 0.95, 2, False
+    ]:
+        raise RuntimeError("FirstBlockCache must use the conservative H3 Safe preset")
+    if any(node["type"] == "EasyCache" for node in nodes):
+        raise RuntimeError("FirstBlockCache and EasyCache must never be combined")
+
+
+def verify_turbo_8step(workflow: dict[str, object]) -> None:
+    graph = graph_with_types(
+        workflow,
+        {"UNETLoader", "LoraLoaderModelOnly", "MiniMaxH3SigmaShift", "BasicScheduler", "KSamplerSelect"},
+    )
+    nodes = graph["nodes"]
+    links = graph["links"]
+    unet = next(node for node in nodes if node["type"] == "UNETLoader")
+    loras = [node for node in nodes if node["type"] == "LoraLoaderModelOnly"]
+    turbo = next(node for node in loras if node.get("widgets_values", [None])[0] == TURBO_LORA)
+    creator = next(node for node in loras if node is not turbo)
+    sigma = next(node for node in nodes if node["type"] == "MiniMaxH3SigmaShift")
+    scheduler = next(node for node in nodes if node["type"] == "BasicScheduler")
+    guider = next(node for node in nodes if node["type"] == "BasicGuider")
+    sampler = next(node for node in nodes if node["type"] == "KSamplerSelect")
+    actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
+    expected = {
+        (int(unet["id"]), int(turbo["id"]), "MODEL"),
+        (int(turbo["id"]), int(creator["id"]), "MODEL"),
+        (int(creator["id"]), int(sigma["id"]), "MODEL"),
+        (int(sigma["id"]), int(scheduler["id"]), "MODEL"),
+        (int(sigma["id"]), int(guider["id"]), "MODEL"),
+    }
+    if not expected <= actual:
+        raise RuntimeError(f"Turbo model chain is incomplete: {sorted(expected - actual)}")
+    if turbo.get("widgets_values") != [TURBO_LORA, 1.0]:
+        raise RuntimeError("Turbo LoRA must remain fixed at strength 1.0")
+    if sigma.get("widgets_values") != [12.0, 3.0]:
+        raise RuntimeError("Turbo SigmaShift must remain video=12/audio=3")
+    if scheduler.get("widgets_values") != ["simple", 8, 1]:
+        raise RuntimeError("Turbo scheduler must remain simple at 8 steps")
+    if sampler.get("widgets_values") != ["euler"]:
+        raise RuntimeError("Turbo sampler must remain Euler")
+    if any(node["type"] in {"EasyCache", "ApplyMiniMaxH3FirstBlockCache"} for node in nodes):
+        raise RuntimeError("Turbo preset must not stack another approximate cache")
 
 
 def graph_with_types(
@@ -444,6 +525,8 @@ def main() -> int:
         help="Additional custom-node source tree used to verify non-core node types.",
     )
     parser.add_argument("--expect-easycache", action="store_true")
+    parser.add_argument("--expect-first-block-cache", action="store_true")
+    parser.add_argument("--expect-turbo", action="store_true")
     parser.add_argument("--expect-upscale", action="store_true")
     parser.add_argument("--expect-auto-mosaic", action="store_true")
     parser.add_argument("--auto-mosaic-manifest", type=Path)
@@ -479,6 +562,8 @@ def main() -> int:
         if provides != [AUTO_MOSAIC_MODEL]:
             raise RuntimeError("Auto-mosaic manifest does not provide the pinned workflow model")
         expected_models.add(AUTO_MOSAIC_MODEL)
+    if args.expect_turbo:
+        expected_models.add(f"loras/{TURBO_LORA}")
     if args.expect_lora:
         expected_models.add(f"loras/{args.expect_lora}")
     actual_models = workflow_models(nodes)
@@ -521,6 +606,14 @@ def main() -> int:
         verify_easycache_wiring(workflow)
     elif "EasyCache" in node_types:
         raise RuntimeError("EasyCache is enabled in a Quality workflow")
+    if args.expect_first_block_cache:
+        verify_first_block_cache(workflow)
+    elif "ApplyMiniMaxH3FirstBlockCache" in node_types:
+        raise RuntimeError("FirstBlockCache is enabled without an explicit Fast expectation")
+    if args.expect_turbo:
+        verify_turbo_8step(workflow)
+    elif "MiniMaxH3SigmaShift" in node_types:
+        raise RuntimeError("Turbo SigmaShift is enabled in a non-Turbo workflow")
     if args.require_video_reference:
         verify_video_reference_wiring(workflow)
     if args.mode == "story":
@@ -577,7 +670,15 @@ def main() -> int:
         )
 
     native_count = len(node_types - subgraph_ids)
-    speed = "EasyCache Fast" if args.expect_easycache else "Quality"
+    speed = (
+        "Turbo 8-step"
+        if args.expect_turbo
+        else "FirstBlockCache Fast"
+        if args.expect_first_block_cache
+        else "EasyCache Fast"
+        if args.expect_easycache
+        else "Quality"
+    )
     output = " + Real-ESRGAN 2x" if args.expect_upscale else ""
     output += f" + {args.expect_lora}" if args.expect_lora else ""
     output += " + CPU Auto Mosaic" if args.expect_auto_mosaic else ""

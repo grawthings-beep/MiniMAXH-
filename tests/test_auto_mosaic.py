@@ -43,6 +43,7 @@ class AutoMosaicTests(unittest.TestCase):
 
     def test_default_contract_excludes_anus(self):
         required = self.module.WanAutoMosaicVideo.INPUT_TYPES()["required"]
+        self.assertIs(required["enabled"][1]["default"], True)
         self.assertEqual(required["coverage_preset"][1]["default"], "JUST")
         self.assertEqual(required["confidence"][1]["default"], 0.30)
         self.assertEqual(required["iou_threshold"][1]["default"], 0.50)

@@ -19,6 +19,15 @@ R2V workflow, both EasyCache Fast variants, four Real-ESRGAN 2x post-process
 variants, and both I2V Quality + selectable LoRA + 2x variants from these pinned
 upstream assets.
 
+The same builder derives the only three workflows installed in the RunPod UI:
+Quality, FirstBlockCache Safe, and LightX2V Turbo 8-step. All three include the
+selectable creator LoRA, 2x tail, and toggleable CPU auto-mosaic. The Fast graph
+uses `duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache` commit
+`725973c3bfd9de6dce249bc93dc5fe27f820df31`. The Turbo graph follows the
+ModelTC reference graph at commit `02e26d591f7a04d5d1a074c9566d5dd4f22f6225`
+and uses the public LightX2V weight revision
+`05ef678438e84933c406131b59abbf86919b3aac`.
+
 The 2x variants use ComfyUI's built-in `UpscaleModelLoader` and
 `ImageUpscaleWithModel` nodes with the official `RealESRGAN_x2plus.pth` release:
 https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.1

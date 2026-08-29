@@ -7,7 +7,10 @@ This repository does not redistribute MiniMax H3 weights.
   [MiniMax H3 Community License Agreement](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE).
   The license's required redistribution notice is also provided in `NOTICE`.
 - ComfyUI is licensed under GPL-3.0. The container clones the unmodified
-  `Comfy-Org/ComfyUI` v0.30.0 release at build time.
+  `Comfy-Org/ComfyUI` v0.31.0 release at build time.
+- `duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache` is installed at pinned commit
+  `725973c3bfd9de6dce249bc93dc5fe27f820df31` under MIT. It adds no model or
+  Python-package dependency.
 - `AIMixer/ComfyUI_MiniMaxH3_Director` is licensed under Apache-2.0. The
   container installs commit `a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7`
   as a separate custom-node checkout. It applies the repository patch
@@ -23,6 +26,9 @@ This repository does not redistribute MiniMax H3 weights.
   workflows come from `Comfy-Org/workflow_templates`; exact source revisions
   and local derivation are documented in `workflows/UPSTREAM.md`.
 - The H3 text encoder is derived from Qwen3-VL-32B, licensed under Apache-2.0.
+- The public LightX2V MiniMax H3 Turbo 8-step LoRA is downloaded at Pod startup
+  from pinned Hugging Face revision `05ef678438e84933c406131b59abbf86919b3aac`
+  and is published under Apache-2.0.
 - `ultralytics==8.4.104` is installed for CPU-only YOLO11 instance-segmentation
   inference. The separately downloaded auto-mosaic model is not redistributed;
   its current Civitai terms remain the operator's responsibility.

@@ -1,8 +1,9 @@
 FROM pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime@sha256:1f57418aedd9a4d0d3a59646619e1d4f82cacc33817247cead4f749e1f452d4b
 
-ARG COMFYUI_VERSION=v0.30.0
-ARG COMFYUI_COMMIT=b1693ecba9f5b65f8c80ab36b195ab963ec92413
+ARG COMFYUI_VERSION=v0.31.0
+ARG COMFYUI_COMMIT=43cb4fffc89bba20ab7bd61467a36d0339338dab
 ARG MINIMAX_H3_DIRECTOR_COMMIT=a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7
+ARG MINIMAX_H3_FBC_COMMIT=725973c3bfd9de6dce249bc93dc5fe27f820df31
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -11,6 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     COMFYUI_ROOT=/opt/ComfyUI \
     COMFYUI_MODEL_DIR=/opt/ComfyUI/models \
     MINIMAX_H3_DIRECTOR_ROOT=/opt/ComfyUI/custom_nodes/ComfyUI_MiniMaxH3_Director \
+    MINIMAX_H3_FBC_ROOT=/opt/ComfyUI/custom_nodes/ComfyUI-MiniMaxH3-FirstBlockCache \
     MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
     HF_HOME=/tmp/huggingface \
     HF_XET_HIGH_PERFORMANCE=auto \
@@ -27,6 +29,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     H3_LORA_SOURCE_PATH=hmmotion_minimax-h3_epoch12.safetensors \
     H3_LORA_REVISION=main \
     H3_CIVITAI_LORA_URL=https://civitai.red/api/download/models/3206518?fileId=3088013 \
+    H3_TURBO_REQUIRED=1 \
+    H3_TURBO_REPO_ID=lightx2v/Minimax-h3-Turbo \
+    H3_TURBO_SOURCE_PATH=minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors \
+    H3_TURBO_REVISION=05ef678438e84933c406131b59abbf86919b3aac \
     AUTO_MOSAIC_REQUIRED=1 \
     AUTO_MOSAIC_MANIFEST=/opt/minimax-h3/manifests/auto_mosaic.json \
     REQUIRE_COMFY_KITCHEN_CUDA=1
@@ -60,6 +66,18 @@ RUN mkdir -p "${MINIMAX_H3_DIRECTOR_ROOT}" \
       "${MINIMAX_H3_DIRECTOR_COMMIT}" \
     && pip install --no-cache-dir \
       -r "${MINIMAX_H3_DIRECTOR_ROOT}/requirements.txt"
+
+RUN mkdir -p "${MINIMAX_H3_FBC_ROOT}" \
+    && git -C "${MINIMAX_H3_FBC_ROOT}" init \
+    && git -C "${MINIMAX_H3_FBC_ROOT}" remote add origin \
+      https://github.com/duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache.git \
+    && git -C "${MINIMAX_H3_FBC_ROOT}" fetch --depth 1 origin \
+      "${MINIMAX_H3_FBC_COMMIT}" \
+    && git -C "${MINIMAX_H3_FBC_ROOT}" checkout --detach FETCH_HEAD \
+    && test "$(git -C "${MINIMAX_H3_FBC_ROOT}" rev-parse HEAD)" = \
+      "${MINIMAX_H3_FBC_COMMIT}" \
+    && grep -Fq '"ApplyMiniMaxH3FirstBlockCache"' \
+      "${MINIMAX_H3_FBC_ROOT}/nodes.py"
 
 COPY patches/minimax_h3_director_segments_no_concat.patch /tmp/minimax_h3_director_segments_no_concat.patch
 COPY patches/minimax_h3_director_fl2v_motion_context.patch /tmp/minimax_h3_director_fl2v_motion_context.patch
@@ -100,30 +118,12 @@ RUN pip install --no-cache-dir \
       /opt/minimax-h3/workflows/minimax_h3_story_easycache_lora_2x_auto_mosaic.json \
     && rm -r /tmp/minimax-h3-story-workflows \
     && mkdir -p "${COMFYUI_ROOT}/user/default/workflows" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_i2v.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_i2v_easycache.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_i2v_upscale.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_i2v_hmmotion_lora_upscale.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_i2v_selectable_lora_upscale.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_story_quality_lora_2x.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_story_easycache_lora_2x.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_i2v_easycache_upscale.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_r2v.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_r2v_easycache.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_r2v_upscale.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_r2v_easycache_upscale.json \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_preset_01_quality.json \
+      "${COMFYUI_ROOT}/user/default/workflows/01_MiniMax_H3_Quality_2x.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_preset_02_fast_fbcache.json \
+      "${COMFYUI_ROOT}/user/default/workflows/02_MiniMax_H3_Fast_FBCache_2x.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_preset_03_turbo_8step.json \
+      "${COMFYUI_ROOT}/user/default/workflows/03_MiniMax_H3_Turbo_8step_2x.json" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_i2v.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v.json \
@@ -216,6 +216,31 @@ RUN pip install --no-cache-dir \
       --comfyui-root "${COMFYUI_ROOT}" \
       --director-root "${MINIMAX_H3_DIRECTOR_ROOT}" \
       --local-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_preset_01_quality.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
+      --mode i2v --expect-upscale --expect-auto-mosaic \
+      --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
+      --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
+      --comfyui-root "${COMFYUI_ROOT}" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_preset_02_fast_fbcache.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
+      --mode i2v --expect-upscale --expect-auto-mosaic --expect-first-block-cache \
+      --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
+      --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
+      --comfyui-root "${COMFYUI_ROOT}" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+      --custom-node-root "${MINIMAX_H3_FBC_ROOT}" \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_preset_03_turbo_8step.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
+      --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo \
+      --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
+      --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
+      --comfyui-root "${COMFYUI_ROOT}" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
     && cd "${COMFYUI_ROOT}" \
     && python -c "import sys; sys.path.insert(0, '${COMFYUI_ROOT}/custom_nodes'); import minimax_h3_ordered_storyboard as p; assert 'WanAutoMosaicVideo' in p.NODE_CLASS_MAPPINGS"
 

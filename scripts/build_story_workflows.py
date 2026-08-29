@@ -63,6 +63,7 @@ AUTO_MOSAIC_MODEL = "ntd11_anime_nsfw_segm_v5.pt"
 AUTO_MOSAIC_URL = "https://civitai.com/api/download/models/2266294"
 AUTO_MOSAIC_DEFAULTS = [
     AUTO_MOSAIC_MODEL,
+    True,
     "JUST",
     0.30,
     0.50,
