@@ -269,6 +269,7 @@ class WanAutoMosaicVideo:
             "required": {
                 "images": ("IMAGE",),
                 "model_name": ([MODEL_FILENAME],),
+                "enabled": ("BOOLEAN", {"default": True}),
                 "coverage_preset": (list(COVERAGE_PRESETS), {"default": "JUST"}),
                 "confidence": ("FLOAT", {"default": 0.30, "min": 0.05, "max": 0.95, "step": 0.01}),
                 "iou_threshold": ("FLOAT", {"default": 0.50, "min": 0.05, "max": 0.95, "step": 0.01}),
@@ -282,6 +283,7 @@ class WanAutoMosaicVideo:
         self,
         images,
         model_name,
+        enabled,
         coverage_preset,
         confidence,
         iou_threshold,
@@ -293,6 +295,10 @@ class WanAutoMosaicVideo:
 
         if images.ndim != 4 or images.shape[-1] < 3:
             raise ValueError("Auto mosaic expects IMAGE shaped [frames, H, W, C].")
+        if not bool(enabled):
+            # Preserve the exact frame tensor when censorship is disabled.  The
+            # model is not loaded and no CPU detector work is performed.
+            return (images,)
         model = _load_model(model_name)
         class_ids = _selected_class_ids(model.names, target_classes)
         _frame_count, height, width, _channels = images.shape

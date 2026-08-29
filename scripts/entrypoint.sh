@@ -7,10 +7,17 @@ COMFYUI_ROOT="${COMFYUI_ROOT:-/opt/ComfyUI}"
 MODEL_DIR="${COMFYUI_MODEL_DIR:-${COMFYUI_ROOT}/models}"
 MANIFEST="${MODEL_MANIFEST:-${PROJECT_DIR}/manifests/minimax_h3_i2v_upscale.json}"
 DIRECTOR_ROOT="${MINIMAX_H3_DIRECTOR_ROOT:-${COMFYUI_ROOT}/custom_nodes/ComfyUI_MiniMaxH3_Director}"
+FBC_ROOT="${MINIMAX_H3_FBC_ROOT:-${COMFYUI_ROOT}/custom_nodes/ComfyUI-MiniMaxH3-FirstBlockCache}"
 STORY_NODE_ROOT="${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard"
 AUTO_MOSAIC_MODEL="${MODEL_DIR}/auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"
 AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED:-1}"
 AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED,,}"
+
+# One RunPod Civitai secret is enough for both creator-LoRA and mosaic-model
+# downloads.  Keep the established API-specific override when supplied.
+if [[ -z "${CIVITAI_API_TOKEN:-}" ]] && [[ -n "${CIVITAI_TOKEN:-}" ]]; then
+  export CIVITAI_API_TOKEN="${CIVITAI_TOKEN}"
+fi
 
 lora_selected() {
   local requested="${H3_LORA_SELECTION:-all}"
@@ -66,6 +73,10 @@ if [[ ! -f "${DIRECTOR_ROOT}/nodes/director.py" ]] \
   echo "[workflow] required ordered-story custom nodes are missing from the image"
   exit 68
 fi
+if [[ ! -f "${FBC_ROOT}/nodes.py" ]]; then
+  echo "[workflow] pinned MiniMax H3 FirstBlockCache custom node is missing from the image"
+  exit 73
+fi
 
 if [[ "${AUTO_MOSAIC_REQUIRED}" =~ ^(1|true|yes|on)$ ]] \
   && [[ -z "${CIVITAI_API_TOKEN:-}" ]]; then
@@ -99,64 +110,24 @@ fi
 mkdir -p "${MODEL_DIR}" "${MODEL_DIR}/auto_mosaic" \
   "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
-cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality.json"
-cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache.json"
-cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_upscale.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x.json"
-cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache_upscale.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x.json"
-rm -f \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x_AutoMosaic.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x_AutoMosaic.json"
-
-HAS_R2V=0
-if python - "${MANIFEST}" <<'PY'
-import json
-import sys
-manifest = json.load(open(sys.argv[1], encoding="utf-8"))
-raise SystemExit(0 if any("ref2va" in item["path"] for item in manifest["files"]) else 1)
-PY
-then
-  HAS_R2V=1
-  echo "[workflow] REF2VA model selected; installing R2V workflows"
-  cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json"
-  cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json"
-  cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_upscale.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x.json"
-  cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache_upscale.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x.json"
-else
-  echo "[workflow] I2V-only manifest selected; hiding R2V workflows with missing models"
-  rm -f \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x.json"
-fi
+find "${COMFYUI_ROOT}/user/default/workflows" -maxdepth 1 -type f \
+  -name '*MiniMax_H3*.json' -delete
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_01_quality.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/01_MiniMax_H3_Quality_2x.json"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_02_fast_fbcache.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/02_MiniMax_H3_Fast_FBCache_2x.json"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_03_turbo_8step.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/03_MiniMax_H3_Turbo_8step_2x.json"
+echo "[workflow] installed exactly 3 MiniMax H3 presets: Quality, Fast FBCache, Turbo 8-step"
 
 if [[ "${MINIMAX_H3_ENTRYPOINT_SMOKE:-0}" == "1" ]]; then
   test -d "${MODEL_DIR}/auto_mosaic"
   test -f "${STORY_NODE_ROOT}/mosaic_nodes.py"
   test -f "${PROJECT_DIR}/manifests/auto_mosaic.json"
-  test -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_upscale_auto_mosaic.json"
+  test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_01_quality.json"
+  test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_02_fast_fbcache.json"
+  test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_03_turbo_8step.json"
+  test -f "${FBC_ROOT}/nodes.py"
   echo "[smoke] entrypoint contract passed before network/model startup"
   exit 0
 fi
@@ -177,6 +148,8 @@ python "${SCRIPT_DIR}/download_civitai_lora.py" &
 CIVITAI_DOWNLOAD_PID=$!
 python "${SCRIPT_DIR}/download_auto_mosaic.py" &
 AUTO_MOSAIC_DOWNLOAD_PID=$!
+python "${SCRIPT_DIR}/download_turbo_lora.py" &
+TURBO_DOWNLOAD_PID=$!
 "${SCRIPT_DIR}/download_models.sh" &
 MODEL_DOWNLOAD_PID=$!
 
@@ -193,6 +166,10 @@ if ! wait "${AUTO_MOSAIC_DOWNLOAD_PID}"; then
   echo "[download] auto-mosaic segmentation model failed"
   DOWNLOAD_FAILED=1
 fi
+if ! wait "${TURBO_DOWNLOAD_PID}"; then
+  echo "[download] LightX2V Turbo 8-step LoRA failed"
+  DOWNLOAD_FAILED=1
+fi
 if [[ "${DOWNLOAD_FAILED}" == "1" ]]; then
   echo "[download] required auxiliary model failed; stopping the base-model download"
   kill "${MODEL_DOWNLOAD_PID}" 2>/dev/null || true
@@ -206,58 +183,24 @@ if [[ "${AUTO_MOSAIC_REQUIRED}" =~ ^(1|true|yes|on)$ ]]; then
     echo "[auto-mosaic] required model is missing after verified download: ${AUTO_MOSAIC_MODEL}"
     exit 71
   fi
-  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_auto_mosaic.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_AutoMosaic.json"
-  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache_auto_mosaic.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_AutoMosaic.json"
-  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_upscale_auto_mosaic.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_2x_AutoMosaic.json"
-  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_easycache_upscale_auto_mosaic.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Fast_EasyCache_2x_AutoMosaic.json"
-  if [[ "${HAS_R2V}" == "1" ]]; then
-    cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_auto_mosaic.json" \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_AutoMosaic.json"
-    cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache_auto_mosaic.json" \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_AutoMosaic.json"
-    cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_upscale_auto_mosaic.json" \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Quality_2x_AutoMosaic.json"
-    cp -f "${PROJECT_DIR}/workflows/minimax_h3_r2v_easycache_upscale_auto_mosaic.json" \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_R2V_Fast_EasyCache_2x_AutoMosaic.json"
-  fi
 fi
 
-if lora_selected "hmmotion_v1" \
-  && [[ -f "${MODEL_DIR}/loras/hmmotion_minimax-h3_epoch12.safetensors" ]]; then
-  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_hmmotion_lora_upscale.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json"
-  if [[ -s "${AUTO_MOSAIC_MODEL}" ]]; then
-    cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_hmmotion_lora_upscale_auto_mosaic.json" \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x_AutoMosaic.json"
-  fi
+TURBO_REQUIRED="${H3_TURBO_REQUIRED:-1}"
+TURBO_REQUIRED="${TURBO_REQUIRED,,}"
+TURBO_MODEL="${MODEL_DIR}/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
+if [[ "${TURBO_REQUIRED}" =~ ^(1|true|yes|on)$ ]] && [[ ! -s "${TURBO_MODEL}" ]]; then
+  echo "[turbo] required verified LoRA is missing: ${TURBO_MODEL}"
+  exit 74
 fi
-if lora_selected "hmnsfw_aio_v2" \
-  && [[ -f "${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors" ]]; then
-  cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_selectable_lora_upscale.json" \
-    "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json"
-  if [[ -s "${AUTO_MOSAIC_MODEL}" ]]; then
-    cp -f "${PROJECT_DIR}/workflows/minimax_h3_i2v_selectable_lora_upscale_auto_mosaic.json" \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_I2V_Quality_Selectable_LoRA_2x_AutoMosaic.json"
+
+for required_path in \
+  "${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors" \
+  "${MODEL_DIR}/upscale_models/RealESRGAN_x2plus.pth"; do
+  if [[ ! -s "${required_path}" ]]; then
+    echo "[workflow] one of the 3 presets is missing a required model: ${required_path}"
+    exit 75
   fi
-  if [[ -f "${MODEL_DIR}/upscale_models/RealESRGAN_x2plus.pth" ]]; then
-    cp -f "${PROJECT_DIR}/workflows/minimax_h3_story_quality_lora_2x.json" \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json"
-    cp -f "${PROJECT_DIR}/workflows/minimax_h3_story_easycache_lora_2x.json" \
-      "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json"
-    if [[ -s "${AUTO_MOSAIC_MODEL}" ]]; then
-      cp -f "${PROJECT_DIR}/workflows/minimax_h3_story_quality_lora_2x_auto_mosaic.json" \
-        "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Quality_Selectable_LoRA_2x_AutoMosaic.json"
-      cp -f "${PROJECT_DIR}/workflows/minimax_h3_story_easycache_lora_2x_auto_mosaic.json" \
-        "${COMFYUI_ROOT}/user/default/workflows/MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x_AutoMosaic.json"
-    fi
-  else
-    echo "[workflow] Storyboard workflows skipped: RealESRGAN_x2plus.pth is unavailable"
-  fi
-fi
+done
 
 cd "${COMFYUI_ROOT}"
 read -r -a EXTRA_ARGS <<< "${COMFYUI_ARGS:-}"

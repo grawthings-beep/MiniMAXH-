@@ -99,6 +99,9 @@ class AssetTests(unittest.TestCase):
             "minimax_h3_r2v_easycache_auto_mosaic.json",
             "minimax_h3_r2v_upscale_auto_mosaic.json",
             "minimax_h3_r2v_easycache_upscale_auto_mosaic.json",
+            "minimax_h3_preset_01_quality.json",
+            "minimax_h3_preset_02_fast_fbcache.json",
+            "minimax_h3_preset_03_turbo_8step.json",
         )
         with tempfile.TemporaryDirectory() as temp:
             result = subprocess.run(
@@ -208,6 +211,39 @@ class AssetTests(unittest.TestCase):
                 "r2v",
                 ["--expect-easycache", "--expect-upscale", "--require-video-reference"],
             ),
+            (
+                "minimax_h3_preset_01_quality.json",
+                "minimax_h3_i2v_upscale.json",
+                "i2v",
+                [
+                    "--expect-upscale", "--expect-auto-mosaic",
+                    "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
+                    "--expect-lora", "HMNSFW_AIO_V2.safetensors",
+                    "--expect-lora-strength", "0.5",
+                ],
+            ),
+            (
+                "minimax_h3_preset_02_fast_fbcache.json",
+                "minimax_h3_i2v_upscale.json",
+                "i2v",
+                [
+                    "--expect-upscale", "--expect-auto-mosaic", "--expect-first-block-cache",
+                    "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
+                    "--expect-lora", "HMNSFW_AIO_V2.safetensors",
+                    "--expect-lora-strength", "0.5",
+                ],
+            ),
+            (
+                "minimax_h3_preset_03_turbo_8step.json",
+                "minimax_h3_i2v_upscale.json",
+                "i2v",
+                [
+                    "--expect-upscale", "--expect-auto-mosaic", "--expect-turbo",
+                    "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
+                    "--expect-lora", "HMNSFW_AIO_V2.safetensors",
+                    "--expect-lora-strength", "0.5",
+                ],
+            ),
         )
         for workflow, manifest, mode, extra in cases:
             with self.subTest(workflow=workflow):
@@ -237,7 +273,7 @@ class AssetTests(unittest.TestCase):
             "1f57418aedd9a4d0d3a59646619e1d4f82cacc33817247cead4f749e1f452d4b",
             dockerfile,
         )
-        self.assertIn("ARG COMFYUI_VERSION=v0.30.0", dockerfile)
+        self.assertIn("ARG COMFYUI_VERSION=v0.31.0", dockerfile)
         self.assertRegex(dockerfile, r"ARG COMFYUI_COMMIT=[0-9a-f]{40}")
         self.assertIn(
             "ARG MINIMAX_H3_DIRECTOR_COMMIT="
@@ -245,27 +281,21 @@ class AssetTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn("AIMixer/ComfyUI_MiniMaxH3_Director.git", dockerfile)
+        self.assertIn(
+            "ARG MINIMAX_H3_FBC_COMMIT=725973c3bfd9de6dce249bc93dc5fe27f820df31",
+            dockerfile,
+        )
+        self.assertIn("duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache.git", dockerfile)
         self.assertIn("minimax_h3_director_segments_no_concat.patch", dockerfile)
         self.assertIn("minimax_h3_director_fl2v_motion_context.patch", dockerfile)
         self.assertIn("h3_motion_context.py'); p.write_bytes", dockerfile)
         self.assertIn("custom_nodes/minimax_h3_ordered_storyboard", dockerfile)
         self.assertIn("manifests/minimax_h3_i2v_upscale.json", dockerfile)
         self.assertIn("MODEL_VERIFY=size", dockerfile)
-        self.assertIn("MiniMax_H3_I2V_Quality.json", dockerfile)
-        self.assertIn("MiniMax_H3_I2V_Fast_EasyCache.json", dockerfile)
-        self.assertIn("MiniMax_H3_R2V_Quality.json", dockerfile)
-        self.assertIn("MiniMax_H3_R2V_Fast_EasyCache.json", dockerfile)
-        self.assertIn("MiniMax_H3_I2V_Quality_2x.json", dockerfile)
-        self.assertIn("MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json", dockerfile)
-        self.assertIn("MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json", dockerfile)
-        self.assertIn("MiniMax_H3_I2V_Fast_EasyCache_2x.json", dockerfile)
-        self.assertIn("MiniMax_H3_R2V_Quality_2x.json", dockerfile)
-        self.assertIn("MiniMax_H3_R2V_Fast_EasyCache_2x.json", dockerfile)
-        self.assertIn("MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json", dockerfile)
-        self.assertIn(
-            "MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json",
-            dockerfile,
-        )
+        self.assertIn("01_MiniMax_H3_Quality_2x.json", dockerfile)
+        self.assertIn("02_MiniMax_H3_Fast_FBCache_2x.json", dockerfile)
+        self.assertIn("03_MiniMax_H3_Turbo_8step_2x.json", dockerfile)
+        self.assertNotIn("MiniMax_H3_I2V_Fast_EasyCache.json", dockerfile)
         self.assertIn("HF_XET_HIGH_PERFORMANCE=auto", dockerfile)
         self.assertNotIn("HF_HUB_ENABLE_HF_TRANSFER", dockerfile)
         self.assertNotIn("ComfyUI-INT8-Fast", dockerfile)
@@ -276,6 +306,8 @@ class AssetTests(unittest.TestCase):
         self.assertIn("H3_LORA_REQUIRED=1", dockerfile)
         self.assertIn("H3_LORA_SELECTION=all", dockerfile)
         self.assertIn("H3_LORA_REPO_ID=uwgm/nikke-civitai-backup", dockerfile)
+        self.assertIn("H3_TURBO_REQUIRED=1", dockerfile)
+        self.assertIn("lightx2v/Minimax-h3-Turbo", dockerfile)
         self.assertIn("civitai.red/api/download/models/3206518?fileId=3088013", dockerfile)
         self.assertIn("ultralytics.__version__ == '8.4.104'", dockerfile)
         self.assertIn("AUTO_MOSAIC_REQUIRED=1", dockerfile)
@@ -310,8 +342,7 @@ class AssetTests(unittest.TestCase):
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", entrypoint)
         self.assertNotIn("Choose an eligible data center", entrypoint)
         self.assertIn("manifests/minimax_h3_i2v_upscale.json", entrypoint)
-        self.assertIn('any("ref2va" in item["path"]', entrypoint)
-        self.assertIn("I2V-only manifest selected", entrypoint)
+        self.assertIn("installed exactly 3 MiniMax H3 presets", entrypoint)
         self.assertIn("--require-comfy-kitchen-cuda", entrypoint)
         self.assertIn("--fast-disk can make H3 model offload much slower", entrypoint)
         self.assertIn("download_lora.py", entrypoint)
@@ -321,22 +352,20 @@ class AssetTests(unittest.TestCase):
         self.assertIn("AUTO_MOSAIC_DOWNLOAD_PID", entrypoint)
         self.assertIn("CIVITAI_API_TOKEN", entrypoint)
         self.assertIn("download_auto_mosaic.py", entrypoint)
+        self.assertIn("download_turbo_lora.py", entrypoint)
+        self.assertIn("TURBO_DOWNLOAD_PID", entrypoint)
         self.assertIn("entrypoint contract passed before network/model startup", entrypoint)
         self.assertIn("MODEL_DOWNLOAD_PID", entrypoint)
-        self.assertIn("MiniMax_H3_I2V_Quality_HMMotion_LoRA_2x.json", entrypoint)
-        self.assertIn("MiniMax_H3_I2V_Quality_Selectable_LoRA_2x.json", entrypoint)
-        self.assertIn("MiniMax_H3_Story_Quality_Selectable_LoRA_2x.json", entrypoint)
-        self.assertIn(
-            "MiniMax_H3_Story_Fast_EasyCache_Selectable_LoRA_2x.json",
-            entrypoint,
-        )
+        self.assertIn("01_MiniMax_H3_Quality_2x.json", entrypoint)
+        self.assertIn("02_MiniMax_H3_Fast_FBCache_2x.json", entrypoint)
+        self.assertIn("03_MiniMax_H3_Turbo_8step_2x.json", entrypoint)
         self.assertIn("required Director segments-mode memory patch is missing", entrypoint)
         self.assertIn("required Director FL2V Motion Context fix is missing", entrypoint)
         self.assertIn('${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors', entrypoint)
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:0.9.1")
+        self.assertEqual(template["imageName"], "ghcr.io/grawthings-beep/minimax-h3-i2v:1.0.0")
         self.assertEqual(template["env"]["MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY"], "0")
         self.assertNotIn("MINIMAX_H3_DEPLOYMENT_ALLOWED", template["env"])
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "1")
@@ -349,6 +378,12 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(template["env"]["H3_LORA_REQUIRED"], "1")
         self.assertEqual(template["env"]["H3_LORA_SELECTION"], "all")
         self.assertEqual(template["env"]["H3_LORA_REPO_ID"], "uwgm/nikke-civitai-backup")
+        self.assertEqual(template["env"]["H3_TURBO_REQUIRED"], "1")
+        self.assertEqual(template["env"]["H3_TURBO_REPO_ID"], "lightx2v/Minimax-h3-Turbo")
+        self.assertEqual(
+            template["env"]["H3_TURBO_SOURCE_PATH"],
+            "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        )
         self.assertEqual(
             template["env"]["MODEL_MANIFEST"],
             "/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json",
@@ -371,6 +406,8 @@ class AssetTests(unittest.TestCase):
         self.assertIn("HMNSFW_AIO_V2.safetensors", notice)
         self.assertIn("ComfyUI_MiniMaxH3_Director", notice)
         self.assertIn("a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7", notice)
+        self.assertIn("minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", notice)
+        self.assertIn("725973c3bfd9de6dce249bc93dc5fe27f820df31", notice)
 
     def test_director_memory_patch_is_narrow_and_prominently_marked(self) -> None:
         patch = (
@@ -458,6 +495,24 @@ class AssetTests(unittest.TestCase):
             )
             self.assertIsNotNone(redirected)
             self.assertIsNone(redirected.get_header("Authorization"))
+
+            turbo_path = ROOT / "scripts" / "download_turbo_lora.py"
+            turbo_spec = importlib.util.spec_from_file_location(
+                "download_turbo_lora", turbo_path
+            )
+            self.assertIsNotNone(turbo_spec)
+            self.assertIsNotNone(turbo_spec.loader)
+            turbo = importlib.util.module_from_spec(turbo_spec)
+            turbo_spec.loader.exec_module(turbo)
+            self.assertEqual(turbo.EXPECTED_SIZE, 1_956_193_000)
+            self.assertEqual(
+                turbo.EXPECTED_SHA256,
+                "2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e",
+            )
+            self.assertEqual(
+                turbo.DEFAULT_REVISION,
+                "05ef678438e84933c406131b59abbf86919b3aac",
+            )
             self.assertEqual(redirected.get_header("Range"), "bytes=1024-")
             size, tensors = civitai.verify_download(
                 model, model.stat().st_size, hashlib.sha256(model.read_bytes()).hexdigest()

@@ -21,8 +21,13 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Verify every workflow node against pinned ComfyUI
         run: |
-          git clone --depth 1 --branch v0.30.0 https://github.com/Comfy-Org/ComfyUI.git .ci-ComfyUI
-          test "$(git -C .ci-ComfyUI rev-parse HEAD)" = "b1693ecba9f5b65f8c80ab36b195ab963ec92413"
+          git clone --depth 1 --branch v0.31.0 https://github.com/Comfy-Org/ComfyUI.git .ci-ComfyUI
+          test "$(git -C .ci-ComfyUI rev-parse HEAD)" = "43cb4fffc89bba20ab7bd61467a36d0339338dab"
+          git init .ci-FirstBlockCache
+          git -C .ci-FirstBlockCache remote add origin https://github.com/duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache.git
+          git -C .ci-FirstBlockCache fetch --depth 1 origin 725973c3bfd9de6dce249bc93dc5fe27f820df31
+          git -C .ci-FirstBlockCache checkout --detach FETCH_HEAD
+          test "$(git -C .ci-FirstBlockCache rev-parse HEAD)" = "725973c3bfd9de6dce249bc93dc5fe27f820df31"
           git init .ci-MiniMaxH3-Director
           git -C .ci-MiniMaxH3-Director remote add origin https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git
           git -C .ci-MiniMaxH3-Director fetch --depth 1 origin a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7
@@ -134,6 +139,31 @@ jobs:
             --expect-upscale \
             --require-video-reference \
             --comfyui-root .ci-ComfyUI
+          python scripts/verify_workflow.py \
+            --workflow workflows/minimax_h3_preset_01_quality.json \
+            --manifest manifests/minimax_h3_i2v_upscale.json \
+            --mode i2v --expect-upscale --expect-auto-mosaic \
+            --auto-mosaic-manifest manifests/auto_mosaic.json \
+            --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
+            --comfyui-root .ci-ComfyUI \
+            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
+          python scripts/verify_workflow.py \
+            --workflow workflows/minimax_h3_preset_02_fast_fbcache.json \
+            --manifest manifests/minimax_h3_i2v_upscale.json \
+            --mode i2v --expect-upscale --expect-auto-mosaic --expect-first-block-cache \
+            --auto-mosaic-manifest manifests/auto_mosaic.json \
+            --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
+            --comfyui-root .ci-ComfyUI \
+            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard \
+            --custom-node-root .ci-FirstBlockCache
+          python scripts/verify_workflow.py \
+            --workflow workflows/minimax_h3_preset_03_turbo_8step.json \
+            --manifest manifests/minimax_h3_i2v_upscale.json \
+            --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo \
+            --auto-mosaic-manifest manifests/auto_mosaic.json \
+            --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
+            --comfyui-root .ci-ComfyUI \
+            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
       - name: Validate shell scripts
         run: bash -n scripts/entrypoint.sh scripts/download_models.sh
       - name: Validate custom-node JavaScript

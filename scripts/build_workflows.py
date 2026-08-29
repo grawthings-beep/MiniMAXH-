@@ -32,6 +32,7 @@ AUTO_MOSAIC_MODEL = "ntd11_anime_nsfw_segm_v5.pt"
 AUTO_MOSAIC_URL = "https://civitai.com/api/download/models/2266294"
 AUTO_MOSAIC_DEFAULTS = [
     AUTO_MOSAIC_MODEL,
+    True,
     "JUST",
     0.30,
     0.50,
@@ -39,6 +40,20 @@ AUTO_MOSAIC_DEFAULTS = [
     3,
     "pussy,penis,testicles",
 ]
+
+FIRST_BLOCK_CACHE_VALUES = [
+    "H3 Safe — 0.08 / max 2",
+    0.08,
+    0.10,
+    0.95,
+    2,
+    False,
+]
+TURBO_LORA_MODEL = "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
+TURBO_LORA_URL = (
+    "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/"
+    f"05ef678438e84933c406131b59abbf86919b3aac/{TURBO_LORA_MODEL}"
+)
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -285,6 +300,249 @@ def add_easycache(workflow: dict[str, Any], label: str) -> dict[str, Any]:
             "may reduce motion, identity, or audio fidelity. Use the Quality workflow for finals."
         )
     return fast
+
+
+def _append_model_node(
+    graph: dict[str, Any],
+    *,
+    source: dict[str, Any],
+    consumers: list[Any],
+    node: dict[str, Any],
+) -> None:
+    """Insert a one-input MODEL patch between ``source`` and its consumers."""
+    nodes = graph["nodes"]
+    links = graph["links"]
+    node_id = int(node["id"])
+    new_link_id = max(link_id(link) for link in links) + 1
+    old_link_ids = {link_id(link) for link in consumers}
+    for link in consumers:
+        set_link_origin(link, node_id)
+    output = source["outputs"][0]
+    output["links"] = [
+        current
+        for current in (output.get("links") or [])
+        if int(current) not in old_link_ids
+    ] + [new_link_id]
+    node["inputs"][0]["link"] = new_link_id
+    node["outputs"][0]["links"] = sorted(old_link_ids)
+    nodes.append(node)
+    if isinstance(links[0], dict):
+        links.append(
+            {
+                "id": new_link_id,
+                "origin_id": int(source["id"]),
+                "origin_slot": 0,
+                "target_id": node_id,
+                "target_slot": 0,
+                "type": "MODEL",
+            }
+        )
+        state = graph.setdefault("state", {})
+        state["lastNodeId"] = max(int(state.get("lastNodeId", 0)), node_id)
+        state["lastLinkId"] = max(int(state.get("lastLinkId", 0)), new_link_id)
+    else:
+        links.append([new_link_id, int(source["id"]), 0, node_id, 0, "MODEL"])
+
+
+def add_first_block_cache(workflow: dict[str, Any], label: str) -> dict[str, Any]:
+    """Insert the conservative H3 FirstBlockCache directly after UNETLoader."""
+    fast = copy.deepcopy(workflow)
+    fast["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f'{fast["id"]}:first-block-cache-safe'))
+    graph = next(
+        candidate
+        for candidate in graph_candidates(fast)
+        if any(node["type"] == "UNETLoader" for node in candidate.get("nodes", []))
+    )
+    nodes = graph["nodes"]
+    links = graph["links"]
+    unet = next(node for node in nodes if node["type"] == "UNETLoader")
+    consumers = [link for link in links if link_origin(link) == int(unet["id"])]
+    if not consumers:
+        raise RuntimeError("UNETLoader has no MODEL consumer for FirstBlockCache")
+
+    cache_id = next_numeric_id(nodes)
+    cache_order = int(unet["order"]) + 1
+    shift_orders(nodes, cache_order, 1)
+    cache = {
+        "id": cache_id,
+        "type": "ApplyMiniMaxH3FirstBlockCache",
+        "pos": [-2020, 4080],
+        "size": [440, 250],
+        "flags": {},
+        "order": cache_order,
+        "mode": 0,
+        "inputs": [
+            {"name": "model", "type": "MODEL", "link": None},
+        ],
+        "outputs": [{"name": "MODEL", "type": "MODEL", "links": []}],
+        "title": "FirstBlockCache SAFE (20 steps; replaces EasyCache)",
+        "properties": {"Node name for S&R": "ApplyMiniMaxH3FirstBlockCache"},
+        "widgets_values": FIRST_BLOCK_CACHE_VALUES,
+    }
+    _append_model_node(graph, source=unet, consumers=consumers, node=cache)
+    unet["pos"] = [-2020, 3950]
+    creator = next(
+        (node for node in nodes if node["type"] == "LoraLoaderModelOnly"), None
+    )
+    if creator:
+        creator["pos"] = [-2020, 4370]
+    for group in graph.get("groups", []):
+        if group.get("title") == "Models":
+            group["bounding"] = [-2050, 3920, 700, 1420]
+    graph["name"] = f'{graph.get("name", label)} - FirstBlockCache Safe'
+    fast.setdefault("extra", {})["acceleration"] = {
+        "type": "FirstBlockCache",
+        "mode": "H3 Safe",
+        "threshold": 0.08,
+        "source_commit": "725973c3bfd9de6dce249bc93dc5fe27f820df31",
+        "incompatible_with": ["EasyCache", "LazyCache", "CacheDiT", "T8 Block Cache"],
+    }
+    note = next(
+        (
+            node
+            for node in graph_candidates(fast)[0].get("nodes", [])
+            if node["type"] == "MarkdownNote"
+            and "About this workflow" in node.get("widgets_values", [""])[0]
+        ),
+        None,
+    )
+    if note:
+        note["widgets_values"][0] += (
+            "\n\n## 02 Fast · FirstBlockCache Safe\n"
+            "20 stepsを維持し、FirstBlockCacheのH3 Safe（threshold 0.08）で後段ブロックを"
+            "近似再利用します。EasyCacheとは併用しません。最終採用前は01 Qualityと同一seedで比較してください。"
+        )
+    return fast
+
+
+def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
+    """Add LightX2V 8-step Turbo before creator LoRA and apply calibrated shifts."""
+    turbo = copy.deepcopy(workflow)
+    turbo["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f'{turbo["id"]}:lightx2v-turbo-8step'))
+    graph = next(
+        candidate
+        for candidate in graph_candidates(turbo)
+        if any(node["type"] == "UNETLoader" for node in candidate.get("nodes", []))
+    )
+    nodes = graph["nodes"]
+    links = graph["links"]
+    unet = next(node for node in nodes if node["type"] == "UNETLoader")
+    creator = next(
+        node
+        for node in nodes
+        if node["type"] == "LoraLoaderModelOnly"
+        and node.get("widgets_values", [None])[0] != TURBO_LORA_MODEL
+    )
+    unet_consumers = [link for link in links if link_origin(link) == int(unet["id"])]
+    if {link_target(link) for link in unet_consumers} != {int(creator["id"])}:
+        raise RuntimeError("Turbo LoRA must be inserted before the selectable creator LoRA")
+
+    turbo_id = next_numeric_id(nodes)
+    turbo_order = int(unet["order"]) + 1
+    shift_orders(nodes, turbo_order, 1)
+    turbo_lora = {
+        "id": turbo_id,
+        "type": "LoraLoaderModelOnly",
+        "pos": [-2020, 3930],
+        "size": [430, 110],
+        "flags": {},
+        "order": turbo_order,
+        "mode": 0,
+        "inputs": [{"name": "model", "type": "MODEL", "link": None}],
+        "outputs": [{"name": "MODEL", "type": "MODEL", "links": []}],
+        "title": "LightX2V MiniMax H3 Turbo 8-step (fixed 1.0)",
+        "properties": {
+            "Node name for S&R": "LoraLoaderModelOnly",
+            "models": [
+                {
+                    "name": TURBO_LORA_MODEL,
+                    "url": TURBO_LORA_URL,
+                    "directory": "loras",
+                }
+            ],
+        },
+        "widgets_values": [TURBO_LORA_MODEL, 1.0],
+    }
+    _append_model_node(graph, source=unet, consumers=unet_consumers, node=turbo_lora)
+
+    creator_consumers = [
+        link for link in links if link_origin(link) == int(creator["id"])
+    ]
+    expected = {
+        int(node["id"])
+        for node in nodes
+        if node["type"] in {"BasicScheduler", "BasicGuider"}
+    }
+    if {link_target(link) for link in creator_consumers} != expected:
+        raise RuntimeError("Creator LoRA must feed BasicScheduler and BasicGuider")
+    sigma_id = next_numeric_id(nodes)
+    sigma_order = int(creator["order"]) + 1
+    shift_orders(nodes, sigma_order, 1)
+    sigma = {
+        "id": sigma_id,
+        "type": "MiniMaxH3SigmaShift",
+        "pos": [-2020, 4230],
+        "size": [360, 130],
+        "flags": {},
+        "order": sigma_order,
+        "mode": 0,
+        "inputs": [
+            {"name": "model", "type": "MODEL", "link": None},
+            {
+                "name": "shift_video",
+                "type": "FLOAT",
+                "widget": {"name": "shift_video"},
+                "link": None,
+            },
+            {
+                "name": "shift_audio",
+                "type": "FLOAT",
+                "widget": {"name": "shift_audio"},
+                "link": None,
+            },
+        ],
+        "outputs": [{"name": "MODEL", "type": "MODEL", "links": []}],
+        "title": "Turbo Sigma Shift (video 12 / audio 3)",
+        "properties": {"Node name for S&R": "MiniMaxH3SigmaShift"},
+        "widgets_values": [12.0, 3.0],
+    }
+    _append_model_node(graph, source=creator, consumers=creator_consumers, node=sigma)
+
+    unet["pos"] = [-2020, 3800]
+    creator["pos"] = [-2020, 4080]
+    for group in graph.get("groups", []):
+        if group.get("title") == "Models":
+            group["bounding"] = [-2050, 3770, 700, 1570]
+    sampler = next(node for node in nodes if node["type"] == "KSamplerSelect")
+    scheduler = next(node for node in nodes if node["type"] == "BasicScheduler")
+    sampler["widgets_values"] = ["euler"]
+    scheduler["widgets_values"] = ["simple", 8, 1]
+    graph["name"] = f'{graph.get("name", label)} - LightX2V Turbo 8-step'
+    turbo.setdefault("extra", {})["acceleration"] = {
+        "type": "LightX2V Turbo LoRA",
+        "steps": 8,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "shift_video": 12,
+        "shift_audio": 3,
+        "source_revision": "05ef678438e84933c406131b59abbf86919b3aac",
+    }
+    note = next(
+        (
+            node
+            for node in graph_candidates(turbo)[0].get("nodes", [])
+            if node["type"] == "MarkdownNote"
+            and "About this workflow" in node.get("widgets_values", [""])[0]
+        ),
+        None,
+    )
+    if note:
+        note["widgets_values"][0] += (
+            "\n\n## 03 Turbo · LightX2V 8-step\n"
+            "Turbo LoRA 1.0 → creator LoRA → SigmaShift 12/3、Euler/simple/8 stepsの固定構成です。"
+            "音声や速い動きが崩れる場合は02 Fastまたは01 Qualityへ戻してください。"
+        )
+    return turbo
 
 
 def add_lora(
@@ -734,7 +992,8 @@ def add_auto_mosaic(workflow: dict[str, Any], label: str) -> dict[str, Any]:
             "`CreateVideo` (after Real-ESRGAN when present). It uses YOLO11 instance contours "
             "on CPU with JUST / 0.30 confidence / 0.50 IoU / automatic short-edge÷50 blocks "
             "and up to 3-frame circular gap repair. Default classes are pussy, penis, and "
-            "testicles; anus is deliberately excluded."
+            "testicles; anus is deliberately excluded. Set `enabled=false` to pass the original "
+            "completed frames through without loading the detector."
         )
     patched.setdefault("extra", {})["auto_mosaic"] = {
         "enabled": True,
@@ -743,6 +1002,29 @@ def add_auto_mosaic(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         "source_commit": "01a73bc628cc19a1df92684349285f03d4a1f39a",
     }
     return patched
+
+
+def configure_ui_preset(
+    workflow: dict[str, Any], *, preset: str, title: str, output_prefix: str
+) -> dict[str, Any]:
+    """Give a distributable preset an unmistakable canvas and output identity."""
+    configured = copy.deepcopy(workflow)
+    subgraph_ids = {
+        str(graph["id"])
+        for graph in configured.get("definitions", {}).get("subgraphs", [])
+    }
+    for node in configured.get("nodes", []):
+        if node["type"] == "SaveVideo":
+            values = list(node.get("widgets_values", []))
+            if values:
+                values[0] = output_prefix
+                node["widgets_values"] = values
+            node["title"] = f"Output · {title}"
+        elif str(node["type"]) in subgraph_ids:
+            node["title"] = title
+    configured.setdefault("extra", {})["preset"] = preset
+    configured["extra"]["ui_title"] = title
+    return configured
 
 
 def main() -> int:
@@ -756,31 +1038,32 @@ def main() -> int:
     r2v = prepare_r2v(read_json(args.r2v_upstream))
     i2v_fast = add_easycache(i2v, "I2V")
     r2v_fast = add_easycache(r2v, "R2V")
+    selectable_i2v = add_upscale(
+        add_lora(
+            i2v,
+            "I2V",
+            model=HMNSFW_V2_MODEL,
+            url=HMNSFW_V2_URL,
+            strength=HMNSFW_V2_STRENGTH,
+            variant_id="hmnsfw-aio-v2-lora",
+            display_name="Selectable MiniMax H3 LoRA (V2 default)",
+            node_title="Selectable MiniMax H3 LoRA (V2 default; choose LoRA here)",
+            source_note=(
+                "Both installed creator LoRAs appear in this node's dropdown when "
+                "`H3_LORA_SELECTION=all`. The Civitai V2 asset is downloaded at Pod "
+                "startup using `CIVITAI_TOKEN`; its author recommends strength 0.5 or "
+                "lower and trained it against BF16, so compare INT8 output carefully."
+            ),
+        ),
+        "I2V Selectable LoRA",
+    )
     variants = {
         "minimax_h3_r2v.json": r2v,
         "minimax_h3_i2v_easycache.json": i2v_fast,
         "minimax_h3_r2v_easycache.json": r2v_fast,
         "minimax_h3_i2v_upscale.json": add_upscale(i2v, "I2V"),
         "minimax_h3_i2v_hmmotion_lora_upscale.json": add_upscale(add_lora(i2v, "I2V"), "I2V HMMotion LoRA"),
-        "minimax_h3_i2v_selectable_lora_upscale.json": add_upscale(
-            add_lora(
-                i2v,
-                "I2V",
-                model=HMNSFW_V2_MODEL,
-                url=HMNSFW_V2_URL,
-                strength=HMNSFW_V2_STRENGTH,
-                variant_id="hmnsfw-aio-v2-lora",
-                display_name="Selectable MiniMax H3 LoRA (V2 default)",
-                node_title="Selectable MiniMax H3 LoRA (V2 default; choose LoRA here)",
-                source_note=(
-                    "Both installed LoRAs appear in this node's dropdown when "
-                    "`H3_LORA_SELECTION=all`. The Civitai V2 asset is downloaded at Pod "
-                    "startup using `CIVITAI_TOKEN`; its author recommends strength 0.5 or "
-                    "lower and trained it against BF16, so compare INT8 output carefully."
-                ),
-            ),
-            "I2V Selectable LoRA",
-        ),
+        "minimax_h3_i2v_selectable_lora_upscale.json": selectable_i2v,
         "minimax_h3_i2v_easycache_upscale.json": add_upscale(i2v_fast, "I2V EasyCache Fast"),
         "minimax_h3_r2v_upscale.json": add_upscale(r2v, "R2V"),
         "minimax_h3_r2v_easycache_upscale.json": add_upscale(r2v_fast, "R2V EasyCache Fast"),
@@ -795,6 +1078,32 @@ def main() -> int:
             args.output_dir / f"{stem}_auto_mosaic.json",
             add_auto_mosaic(variant, stem),
         )
+
+    quality = configure_ui_preset(
+        add_auto_mosaic(selectable_i2v, "quality-preset"),
+        preset="01-quality",
+        title="01 · Quality · 20 steps · Selectable LoRA · 2x · Mosaic toggle",
+        output_prefix="video/MiniMax_H3_01_Quality_2x",
+    )
+    fast = configure_ui_preset(
+        add_first_block_cache(quality, "I2V Fast"),
+        preset="02-fast-firstblockcache",
+        title="02 · Fast · FBCache Safe · Selectable LoRA · 2x · Mosaic toggle",
+        output_prefix="video/MiniMax_H3_02_Fast_FBCache_2x",
+    )
+    turbo = configure_ui_preset(
+        add_turbo_8step(quality, "I2V Turbo"),
+        preset="03-turbo-8step",
+        title="03 · Turbo · 8 steps · Selectable LoRA · 2x · Mosaic toggle",
+        output_prefix="video/MiniMax_H3_03_Turbo_8step_2x",
+    )
+    presets = {
+        "minimax_h3_preset_01_quality.json": quality,
+        "minimax_h3_preset_02_fast_fbcache.json": fast,
+        "minimax_h3_preset_03_turbo_8step.json": turbo,
+    }
+    for filename, preset in presets.items():
+        write_json(args.output_dir / filename, preset)
     return 0
 
 

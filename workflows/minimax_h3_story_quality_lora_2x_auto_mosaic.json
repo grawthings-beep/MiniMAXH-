@@ -980,6 +980,7 @@
       },
       "widgets_values": [
         "ntd11_anime_nsfw_segm_v5.pt",
+        true,
         "JUST",
         0.3,
         0.5,
