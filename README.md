@@ -127,12 +127,15 @@ DOWNLOAD_RETRIES=3
 MODEL_VERIFY=size
 MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json
 REQUIRE_COMFY_KITCHEN_CUDA=0
-COMFYUI_ARGS="--disable-dynamic-vram --reserve-vram 4"
+COMFYUI_ARGS="--vram-headroom 2"
 TINI_SUBREAPER=1
 ```
 
 `fast-cu130`を使う場合だけ`REQUIRE_COMFY_KITCHEN_CUDA=1`へ変更します。旧Templateの
-`--vram-headroom 2`は起動時に安定profileへ自動移行されます。`REQUIRE_COMFY_KITCHEN_CUDA=0`
+誤って設定された旧v1.1 profile `--disable-dynamic-vram --reserve-vram 4` は、起動時に
+`--vram-headroom 2`へ自動修正されます。DynamicVRAMを無効化すると、CUDA 12.8の
+INT8 eager fallbackが一時バッファを確保できず、24GB/32GB GPUでOOMしやすくなります。
+`REQUIRE_COMFY_KITCHEN_CUDA=0`
 だけを旧cu130 imageへ設定してもdriver非互換は解消しません。
 
 MiniMax H3のライセンスを確認し、利用者本人または組織がApplicable Territoryを拠点とする場合だけ

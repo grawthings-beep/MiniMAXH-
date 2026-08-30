@@ -103,7 +103,17 @@ def query_acceleration() -> dict[str, object]:
             ),
         }
         result["comfy_kitchen_cuda"] = status
-        result["optimized"] = status["available"] and not status["disabled"]
+        compiled_cuda = str(result["compiled_cuda"] or "0")
+        try:
+            cuda_major = int(compiled_cuda.split(".", 1)[0])
+        except ValueError:
+            cuda_major = 0
+        status["runtime_compatible"] = cuda_major >= 13
+        result["optimized"] = (
+            status["available"]
+            and not status["disabled"]
+            and status["runtime_compatible"]
+        )
         result["ready"] = True
         if not result["optimized"]:
             result["warning"] = (

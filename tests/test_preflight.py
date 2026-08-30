@@ -65,6 +65,66 @@ class ProfileTests(unittest.TestCase):
             ):
                 preflight.query_gpu()
 
+    def test_cu128_reports_eager_fallback_instead_of_false_cuda_optimization(self) -> None:
+        fake_torch = types.SimpleNamespace(
+            __version__="2.9.1+cu128",
+            version=types.SimpleNamespace(cuda="12.8"),
+            cuda=types.SimpleNamespace(
+                is_available=lambda: True,
+                current_device=lambda: 0,
+                get_device_capability=lambda _device: (12, 0),
+            ),
+        )
+        fake_kitchen = types.SimpleNamespace(
+            list_backends=lambda: {
+                "cuda": {
+                    "available": True,
+                    "disabled": False,
+                    "capabilities": ["quantize_int8_tensorwise"],
+                }
+            }
+        )
+
+        with mock.patch.dict(
+            sys.modules,
+            {"torch": fake_torch, "comfy_kitchen": fake_kitchen},
+        ):
+            result = preflight.query_acceleration()
+
+        self.assertTrue(result["gpu_access"])
+        self.assertFalse(result["optimized"])
+        self.assertFalse(result["comfy_kitchen_cuda"]["runtime_compatible"])
+        self.assertIn("compatible eager path", result["warning"])
+
+    def test_cu130_reports_cuda_optimization(self) -> None:
+        fake_torch = types.SimpleNamespace(
+            __version__="2.10.0+cu130",
+            version=types.SimpleNamespace(cuda="13.0"),
+            cuda=types.SimpleNamespace(
+                is_available=lambda: True,
+                current_device=lambda: 0,
+                get_device_capability=lambda _device: (8, 9),
+            ),
+        )
+        fake_kitchen = types.SimpleNamespace(
+            list_backends=lambda: {
+                "cuda": {
+                    "available": True,
+                    "disabled": False,
+                    "capabilities": ["quantize_int8_tensorwise"],
+                }
+            }
+        )
+
+        with mock.patch.dict(
+            sys.modules,
+            {"torch": fake_torch, "comfy_kitchen": fake_kitchen},
+        ):
+            result = preflight.query_acceleration()
+
+        self.assertTrue(result["optimized"])
+        self.assertTrue(result["comfy_kitchen_cuda"]["runtime_compatible"])
+
 
 if __name__ == "__main__":
     unittest.main()
