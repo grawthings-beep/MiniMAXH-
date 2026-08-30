@@ -131,6 +131,10 @@ COMFYUI_ARGS="--vram-headroom 2"
 TINI_SUBREAPER=1
 ```
 
+RunPodのEnvironment variables欄では、値に引用符を含めず
+`COMFYUI_ARGS`へ`--vram-headroom 2`をそのまま入力してください。引用符付きで貼り付けた
+既存Templateも、v1.1.3以降は起動時に安全に外側の引用符を除去します。
+
 `fast-cu130`を使う場合だけ`REQUIRE_COMFY_KITCHEN_CUDA=1`へ変更します。旧Templateの
 誤って設定された旧v1.1 profile `--disable-dynamic-vram --reserve-vram 4` は、起動時に
 `--vram-headroom 2`へ自動修正されます。DynamicVRAMを無効化すると、CUDA 12.8の

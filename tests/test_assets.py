@@ -359,6 +359,8 @@ class AssetTests(unittest.TestCase):
         self.assertIn("installed exactly 3 MiniMax H3 presets", entrypoint)
         self.assertIn("--require-comfy-kitchen-cuda", entrypoint)
         self.assertIn("overriding legacy REQUIRE_COMFY_KITCHEN_CUDA=1", entrypoint)
+        self.assertIn("removed shell-style outer quotes from COMFYUI_ARGS", entrypoint)
+        self.assertNotIn("eval ", entrypoint)
         self.assertIn("replacing the unsafe fixed-reservation profile", entrypoint)
         self.assertIn("--fast-disk can make H3 model offload much slower", entrypoint)
         self.assertIn("download_lora.py", entrypoint)

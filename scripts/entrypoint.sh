@@ -15,6 +15,21 @@ AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED,,}"
 RUNTIME_VARIANT="${MINIMAX_H3_RUNTIME_VARIANT:-community-cu128}"
 
 echo "[runtime] variant=${RUNTIME_VARIANT}"
+
+# RunPod's environment-variable editor expects a raw value, but shell-style
+# examples are often pasted with their surrounding quotes. Strip one matching
+# outer quote pair without evaluating the contents.
+COMFYUI_ARGS="${COMFYUI_ARGS:-}"
+if [[ ${#COMFYUI_ARGS} -ge 2 ]]; then
+  COMFYUI_ARGS_FIRST="${COMFYUI_ARGS:0:1}"
+  COMFYUI_ARGS_LAST="${COMFYUI_ARGS: -1}"
+  if [[ "${COMFYUI_ARGS_FIRST}" == "${COMFYUI_ARGS_LAST}" ]] \
+    && [[ "${COMFYUI_ARGS_FIRST}" == '"' || "${COMFYUI_ARGS_FIRST}" == "'" ]]; then
+    export COMFYUI_ARGS="${COMFYUI_ARGS:1:${#COMFYUI_ARGS}-2}"
+    echo "[runtime] removed shell-style outer quotes from COMFYUI_ARGS"
+  fi
+fi
+
 if [[ "${RUNTIME_VARIANT}" == "community-cu128" ]] \
   && [[ "${REQUIRE_COMFY_KITCHEN_CUDA:-0}" == "1" ]]; then
   echo "[runtime] overriding legacy REQUIRE_COMFY_KITCHEN_CUDA=1 for the cu128 compatibility image"
