@@ -20,9 +20,9 @@ if [[ "${RUNTIME_VARIANT}" == "community-cu128" ]] \
   echo "[runtime] overriding legacy REQUIRE_COMFY_KITCHEN_CUDA=1 for the cu128 compatibility image"
   export REQUIRE_COMFY_KITCHEN_CUDA=0
 fi
-if [[ "${COMFYUI_ARGS:-}" == "--vram-headroom 2" ]]; then
-  echo "[runtime] replacing the legacy DynamicVRAM setting with the stable H3 loader profile"
-  export COMFYUI_ARGS="--disable-dynamic-vram --reserve-vram 4"
+if [[ "${COMFYUI_ARGS:-}" == "--disable-dynamic-vram --reserve-vram 4" ]]; then
+  echo "[runtime] replacing the unsafe fixed-reservation profile with DynamicVRAM headroom"
+  export COMFYUI_ARGS="--vram-headroom 2"
 fi
 
 # One RunPod Civitai secret is enough for both creator-LoRA and mosaic-model

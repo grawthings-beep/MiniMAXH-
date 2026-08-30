@@ -276,7 +276,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("ARG PYTORCH_IMAGE=", dockerfile)
         self.assertIn("ARG MINIMAX_H3_RUNTIME_VARIANT=community-cu128", dockerfile)
         self.assertIn("ARG REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT=0", dockerfile)
-        self.assertIn('ARG COMFYUI_ARGS_DEFAULT="--disable-dynamic-vram --reserve-vram 4"', dockerfile)
+        self.assertIn('ARG COMFYUI_ARGS_DEFAULT="--vram-headroom 2"', dockerfile)
         self.assertIn("ARG COMFYUI_VERSION=v0.31.0", dockerfile)
         self.assertRegex(dockerfile, r"ARG COMFYUI_COMMIT=[0-9a-f]{40}")
         self.assertIn(
@@ -359,7 +359,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("installed exactly 3 MiniMax H3 presets", entrypoint)
         self.assertIn("--require-comfy-kitchen-cuda", entrypoint)
         self.assertIn("overriding legacy REQUIRE_COMFY_KITCHEN_CUDA=1", entrypoint)
-        self.assertIn("replacing the legacy DynamicVRAM setting", entrypoint)
+        self.assertIn("replacing the unsafe fixed-reservation profile", entrypoint)
         self.assertIn("--fast-disk can make H3 model offload much slower", entrypoint)
         self.assertIn("download_lora.py", entrypoint)
         self.assertIn("download_civitai_lora.py", entrypoint)
@@ -387,7 +387,7 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "0")
         self.assertEqual(
             template["env"]["COMFYUI_ARGS"],
-            "--disable-dynamic-vram --reserve-vram 4",
+            "--vram-headroom 2",
         )
         self.assertNotIn("--fast-disk", template["env"]["COMFYUI_ARGS"])
         self.assertEqual(template["env"]["HF_TOKEN"], "")
