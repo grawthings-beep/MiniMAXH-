@@ -84,11 +84,11 @@ class AutoMosaicWorkflowTests(unittest.TestCase):
             gx, gy, gw, gh = map(float, model_group["bounding"])
             acceleration = [
                 node for node in subgraph["nodes"]
-                if node["type"] in {"ApplyMiniMaxH3FirstBlockCache", "MiniMaxH3SigmaShift"}
-                or (
-                    node["type"] == "LoraLoaderModelOnly"
-                    and "turbo_8step" in str(node.get("widgets_values", [""])[0])
-                )
+                if node["type"] in {
+                    "ApplyMiniMaxH3FirstBlockCache",
+                    "MiniMaxH3SigmaShift",
+                    "MiniMaxH3TurboProfile",
+                }
             ]
             for node in acceleration:
                 x, y = map(float, node["pos"])

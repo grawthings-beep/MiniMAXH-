@@ -81,7 +81,8 @@ check_licensee_territory
 if [[ ! -f "${DIRECTOR_ROOT}/nodes/director.py" ]] \
   || [[ ! -f "${STORY_NODE_ROOT}/storyboard.py" ]] \
   || [[ ! -f "${STORY_NODE_ROOT}/exporter.py" ]] \
-  || [[ ! -f "${STORY_NODE_ROOT}/mosaic_nodes.py" ]]; then
+  || [[ ! -f "${STORY_NODE_ROOT}/mosaic_nodes.py" ]] \
+  || [[ ! -f "${STORY_NODE_ROOT}/turbo_nodes.py" ]]; then
   echo "[workflow] required ordered-story custom nodes are missing from the image"
   exit 68
 fi
@@ -128,17 +129,18 @@ cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_01_quality.json" \
   "${COMFYUI_ROOT}/user/default/workflows/01_MiniMax_H3_Quality_2x.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_02_fast_fbcache.json" \
   "${COMFYUI_ROOT}/user/default/workflows/02_MiniMax_H3_Fast_FBCache_2x.json"
-cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_03_turbo_8step.json" \
-  "${COMFYUI_ROOT}/user/default/workflows/03_MiniMax_H3_Turbo_8step_2x.json"
-echo "[workflow] installed exactly 3 MiniMax H3 presets: Quality, Fast FBCache, Turbo 8-step"
+cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_03_turbo.json" \
+  "${COMFYUI_ROOT}/user/default/workflows/03_MiniMax_H3_Turbo_4_8step_768p_2x.json"
+echo "[workflow] installed exactly 3 MiniMax H3 presets: Quality, Fast FBCache, Turbo selectable 4/8-step 768p"
 
 if [[ "${MINIMAX_H3_ENTRYPOINT_SMOKE:-0}" == "1" ]]; then
   test -d "${MODEL_DIR}/auto_mosaic"
   test -f "${STORY_NODE_ROOT}/mosaic_nodes.py"
+  test -f "${STORY_NODE_ROOT}/turbo_nodes.py"
   test -f "${PROJECT_DIR}/manifests/auto_mosaic.json"
   test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_01_quality.json"
   test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_02_fast_fbcache.json"
-  test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_03_turbo_8step.json"
+  test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_03_turbo.json"
   test -f "${FBC_ROOT}/nodes.py"
   echo "[smoke] entrypoint contract passed before network/model startup"
   exit 0
@@ -179,7 +181,7 @@ if ! wait "${AUTO_MOSAIC_DOWNLOAD_PID}"; then
   DOWNLOAD_FAILED=1
 fi
 if ! wait "${TURBO_DOWNLOAD_PID}"; then
-  echo "[download] LightX2V Turbo 8-step LoRA failed"
+  echo "[download] selectable LightX2V Turbo 4/8-step LoRAs failed"
   DOWNLOAD_FAILED=1
 fi
 if [[ "${DOWNLOAD_FAILED}" == "1" ]]; then
@@ -199,10 +201,15 @@ fi
 
 TURBO_REQUIRED="${H3_TURBO_REQUIRED:-1}"
 TURBO_REQUIRED="${TURBO_REQUIRED,,}"
-TURBO_MODEL="${MODEL_DIR}/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
-if [[ "${TURBO_REQUIRED}" =~ ^(1|true|yes|on)$ ]] && [[ ! -s "${TURBO_MODEL}" ]]; then
-  echo "[turbo] required verified LoRA is missing: ${TURBO_MODEL}"
-  exit 74
+if [[ "${TURBO_REQUIRED}" =~ ^(1|true|yes|on)$ ]]; then
+  for TURBO_MODEL in \
+    "${MODEL_DIR}/loras/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors" \
+    "${MODEL_DIR}/loras/minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"; do
+    if [[ ! -s "${TURBO_MODEL}" ]]; then
+      echo "[turbo] required verified LoRA is missing: ${TURBO_MODEL}"
+      exit 74
+    fi
+  done
 fi
 
 for required_path in \

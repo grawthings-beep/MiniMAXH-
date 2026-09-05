@@ -101,7 +101,7 @@ class AssetTests(unittest.TestCase):
             "minimax_h3_r2v_easycache_upscale_auto_mosaic.json",
             "minimax_h3_preset_01_quality.json",
             "minimax_h3_preset_02_fast_fbcache.json",
-            "minimax_h3_preset_03_turbo_8step.json",
+            "minimax_h3_preset_03_turbo.json",
         )
         with tempfile.TemporaryDirectory() as temp:
             result = subprocess.run(
@@ -234,7 +234,7 @@ class AssetTests(unittest.TestCase):
                 ],
             ),
             (
-                "minimax_h3_preset_03_turbo_8step.json",
+                "minimax_h3_preset_03_turbo.json",
                 "minimax_h3_i2v_upscale.json",
                 "i2v",
                 [
@@ -298,7 +298,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("MODEL_VERIFY=size", dockerfile)
         self.assertIn("01_MiniMax_H3_Quality_2x.json", dockerfile)
         self.assertIn("02_MiniMax_H3_Fast_FBCache_2x.json", dockerfile)
-        self.assertIn("03_MiniMax_H3_Turbo_8step_2x.json", dockerfile)
+        self.assertIn("03_MiniMax_H3_Turbo_4_8step_768p_2x.json", dockerfile)
         self.assertNotIn("MiniMax_H3_I2V_Fast_EasyCache.json", dockerfile)
         self.assertIn("HF_XET_HIGH_PERFORMANCE=auto", dockerfile)
         self.assertNotIn("HF_HUB_ENABLE_HF_TRANSFER", dockerfile)
@@ -316,7 +316,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("ultralytics.__version__ == '8.4.104'", dockerfile)
         self.assertIn("AUTO_MOSAIC_REQUIRED=1", dockerfile)
         self.assertIn("verify_auto_mosaic_workflows.py", dockerfile)
-        self.assertIn("'WanAutoMosaicVideo' in p.NODE_CLASS_MAPPINGS", dockerfile)
+        self.assertIn("'WanAutoMosaicVideo', 'MiniMaxH3TurboProfile'", dockerfile)
         self.assertIn("MINIMAX_H3_ENTRYPOINT_SMOKE=1", dockerfile)
 
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -374,7 +374,8 @@ class AssetTests(unittest.TestCase):
         self.assertIn("MODEL_DOWNLOAD_PID", entrypoint)
         self.assertIn("01_MiniMax_H3_Quality_2x.json", entrypoint)
         self.assertIn("02_MiniMax_H3_Fast_FBCache_2x.json", entrypoint)
-        self.assertIn("03_MiniMax_H3_Turbo_8step_2x.json", entrypoint)
+        self.assertIn("03_MiniMax_H3_Turbo_4_8step_768p_2x.json", entrypoint)
+        self.assertIn('${STORY_NODE_ROOT}/turbo_nodes.py', entrypoint)
         self.assertIn("required Director segments-mode memory patch is missing", entrypoint)
         self.assertIn("required Director FL2V Motion Context fix is missing", entrypoint)
         self.assertIn('${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors', entrypoint)
@@ -400,9 +401,14 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(template["env"]["H3_TURBO_REQUIRED"], "1")
         self.assertEqual(template["env"]["H3_TURBO_REPO_ID"], "lightx2v/Minimax-h3-Turbo")
         self.assertEqual(
-            template["env"]["H3_TURBO_SOURCE_PATH"],
-            "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+            template["env"]["H3_TURBO_8STEP_SOURCE_PATH"],
+            "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
         )
+        self.assertEqual(
+            template["env"]["H3_TURBO_4STEP_SOURCE_PATH"],
+            "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
+        )
+        self.assertNotIn("H3_TURBO_SOURCE_PATH", template["env"])
         self.assertEqual(
             template["env"]["MODEL_MANIFEST"],
             "/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json",
@@ -435,7 +441,14 @@ class AssetTests(unittest.TestCase):
         self.assertIn("HMNSFW_AIO_V2.safetensors", notice)
         self.assertIn("ComfyUI_MiniMaxH3_Director", notice)
         self.assertIn("a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7", notice)
-        self.assertIn("minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", notice)
+        self.assertIn(
+            "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+            notice,
+        )
+        self.assertIn(
+            "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
+            notice,
+        )
         self.assertIn("725973c3bfd9de6dce249bc93dc5fe27f820df31", notice)
 
     def test_director_memory_patch_is_narrow_and_prominently_marked(self) -> None:
@@ -532,15 +545,25 @@ class AssetTests(unittest.TestCase):
             self.assertIsNotNone(turbo_spec)
             self.assertIsNotNone(turbo_spec.loader)
             turbo = importlib.util.module_from_spec(turbo_spec)
-            turbo_spec.loader.exec_module(turbo)
-            self.assertEqual(turbo.EXPECTED_SIZE, 1_956_193_000)
+            sys.modules[turbo_spec.name] = turbo
+            try:
+                turbo_spec.loader.exec_module(turbo)
+            finally:
+                sys.modules.pop(turbo_spec.name, None)
+            self.assertEqual(len(turbo.TURBO_ASSETS), 2)
+            assets = {asset.key: asset for asset in turbo.TURBO_ASSETS}
+            self.assertEqual(assets["8STEP"].expected_size, 1_956_193_000)
             self.assertEqual(
-                turbo.EXPECTED_SHA256,
-                "2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e",
+                assets["8STEP"].expected_sha256,
+                "08cfe946033af7d27719b964b6e0a0e50c32138daabbd6ce4137e23df6bf9980",
+            )
+            self.assertEqual(
+                assets["4STEP"].expected_sha256,
+                "c8168ebc17bbacc4296103dda2fec1ba85b24392fa08cf2bfbcef0cff0dc3cc8",
             )
             self.assertEqual(
                 turbo.DEFAULT_REVISION,
-                "05ef678438e84933c406131b59abbf86919b3aac",
+                "2f015e66b37c585cea9dc4ae6f1850ea8788e742",
             )
             self.assertEqual(redirected.get_header("Range"), "bytes=1024-")
             size, tensors = civitai.verify_download(

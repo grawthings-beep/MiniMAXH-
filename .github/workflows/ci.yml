@@ -157,7 +157,7 @@ jobs:
             --custom-node-root custom_nodes/minimax_h3_ordered_storyboard \
             --custom-node-root .ci-FirstBlockCache
           python scripts/verify_workflow.py \
-            --workflow workflows/minimax_h3_preset_03_turbo_8step.json \
+            --workflow workflows/minimax_h3_preset_03_turbo.json \
             --manifest manifests/minimax_h3_i2v_upscale.json \
             --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo \
             --auto-mosaic-manifest manifests/auto_mosaic.json \
