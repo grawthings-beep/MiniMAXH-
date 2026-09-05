@@ -330,6 +330,16 @@ class AssetTests(unittest.TestCase):
         self.assertIn("minimax_h3_director_fl2v_motion_context.patch", ci)
         self.assertIn("apply --recount", ci)
         self.assertIn('replace(b"\\r\\n", b"\\n")', ci)
+        self.assertIn(
+            "--expect-lora H3_Motion_Booster_anime.safetensors "
+            "--expect-lora-strength 0.7",
+            ci,
+        )
+        self.assertIn(
+            "--expect-lora-2 NSFW_ANIME_V7_H3-step00019500.safetensors "
+            "--expect-lora-2-strength 1.0",
+            ci,
+        )
         docker_ci = (ROOT / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
         self.assertIn("community-cu128", docker_ci)
         self.assertIn("fast-cu130", docker_ci)

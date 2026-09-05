@@ -161,7 +161,8 @@ jobs:
             --manifest manifests/minimax_h3_i2v_upscale.json \
             --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo --expect-memory-safe-decode \
             --auto-mosaic-manifest manifests/auto_mosaic.json \
-            --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 \
+            --expect-lora H3_Motion_Booster_anime.safetensors --expect-lora-strength 0.7 \
+            --expect-lora-2 NSFW_ANIME_V7_H3-step00019500.safetensors --expect-lora-2-strength 1.0 \
             --comfyui-root .ci-ComfyUI \
             --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
       - name: Validate shell scripts
