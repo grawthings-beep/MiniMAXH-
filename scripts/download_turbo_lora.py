@@ -1,102 +1,154 @@
 #!/usr/bin/env python3
-"""Download and verify the public LightX2V MiniMax H3 Turbo LoRA."""
+"""Download and verify both selectable LightX2V MiniMax H3 Turbo LoRAs."""
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import shutil
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from download_lora import env_flag, inspect_safetensors, sha256
 
 
 DEFAULT_REPO_ID = "lightx2v/Minimax-h3-Turbo"
-DEFAULT_SOURCE_PATH = "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
-DEFAULT_REVISION = "05ef678438e84933c406131b59abbf86919b3aac"
-DESTINATION_NAME = DEFAULT_SOURCE_PATH
-EXPECTED_SIZE = 1_956_193_000
-EXPECTED_SHA256 = "2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e"
+DEFAULT_REVISION = "2f015e66b37c585cea9dc4ae6f1850ea8788e742"
+
+
+@dataclass(frozen=True)
+class TurboAsset:
+    key: str
+    source_path: str
+    destination_name: str
+    expected_size: int
+    expected_sha256: str
+
+
+TURBO_ASSETS = (
+    TurboAsset(
+        key="8STEP",
+        source_path=(
+            "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+        ),
+        destination_name=(
+            "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+        ),
+        expected_size=1_956_193_000,
+        expected_sha256=(
+            "08cfe946033af7d27719b964b6e0a0e50c32138daabbd6ce4137e23df6bf9980"
+        ),
+    ),
+    TurboAsset(
+        key="4STEP",
+        source_path=(
+            "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
+        ),
+        destination_name=(
+            "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
+        ),
+        expected_size=1_956_193_000,
+        expected_sha256=(
+            "c8168ebc17bbacc4296103dda2fec1ba85b24392fa08cf2bfbcef0cff0dc3cc8"
+        ),
+    ),
+)
 
 
 def validate_source_path(value: str) -> str:
     path = PurePosixPath(value)
     if path.is_absolute() or ".." in path.parts or not path.name:
-        raise ValueError(f"Invalid H3_TURBO_SOURCE_PATH: {value!r}")
+        raise ValueError(f"Invalid Turbo LoRA source path: {value!r}")
     return path.as_posix()
 
 
-def verify(path: Path, expected_size: int, expected_sha: str) -> tuple[int, int]:
+def configured_asset(asset: TurboAsset) -> TurboAsset:
+    prefix = f"H3_TURBO_{asset.key}"
+    source_path = validate_source_path(
+        os.environ.get(f"{prefix}_SOURCE_PATH", asset.source_path).strip()
+    )
+    expected_size = int(
+        os.environ.get(f"{prefix}_SIZE", str(asset.expected_size))
+    )
+    expected_sha = os.environ.get(
+        f"{prefix}_SHA256", asset.expected_sha256
+    ).strip().lower()
+    if len(expected_sha) != 64 or any(
+        character not in "0123456789abcdef" for character in expected_sha
+    ):
+        raise ValueError(
+            f"{prefix}_SHA256 must be a lowercase 64-character SHA256 digest"
+        )
+    return TurboAsset(
+        key=asset.key,
+        source_path=source_path,
+        destination_name=asset.destination_name,
+        expected_size=expected_size,
+        expected_sha256=expected_sha,
+    )
+
+
+def verify(path: Path, asset: TurboAsset) -> tuple[int, int]:
     size, tensor_count = inspect_safetensors(path)
-    if size != expected_size:
+    if size != asset.expected_size:
         raise RuntimeError(
-            f"Turbo LoRA size mismatch: expected {expected_size}, got {size}"
+            f"Turbo {asset.key} LoRA size mismatch: "
+            f"expected {asset.expected_size}, got {size}"
         )
     actual_sha = sha256(path)
-    if actual_sha != expected_sha:
+    if actual_sha != asset.expected_sha256:
         raise RuntimeError(
-            f"Turbo LoRA SHA256 mismatch: expected {expected_sha}, got {actual_sha}"
+            f"Turbo {asset.key} LoRA SHA256 mismatch: "
+            f"expected {asset.expected_sha256}, got {actual_sha}"
         )
     return size, tensor_count
 
 
-def main() -> int:
-    if not env_flag("H3_TURBO_REQUIRED", True):
-        print("[turbo] optional Turbo workflow disabled; skipping LoRA download")
-        return 0
+def download_asset(
+    asset: TurboAsset,
+    *,
+    repo_id: str,
+    resolved_revision: str,
+    lora_dir: Path,
+    retries: int,
+    token: str | None,
+) -> dict[str, object]:
+    from huggingface_hub import hf_hub_download
 
-    from huggingface_hub import HfApi, hf_hub_download
-
-    repo_id = os.environ.get("H3_TURBO_REPO_ID", DEFAULT_REPO_ID).strip()
-    source_path = validate_source_path(
-        os.environ.get("H3_TURBO_SOURCE_PATH", DEFAULT_SOURCE_PATH).strip()
-    )
-    requested_revision = os.environ.get(
-        "H3_TURBO_REVISION", DEFAULT_REVISION
-    ).strip()
-    expected_size = int(os.environ.get("H3_TURBO_SIZE", str(EXPECTED_SIZE)))
-    expected_sha = os.environ.get(
-        "H3_TURBO_SHA256", EXPECTED_SHA256
-    ).strip().lower()
-    if len(expected_sha) != 64 or any(c not in "0123456789abcdef" for c in expected_sha):
-        raise ValueError("H3_TURBO_SHA256 must be a lowercase 64-character SHA256 digest")
-
-    model_root = Path(os.environ.get("COMFYUI_MODEL_DIR", "/opt/ComfyUI/models"))
-    lora_dir = model_root / "loras"
-    destination = lora_dir / DESTINATION_NAME
-    retries = max(1, int(os.environ.get("DOWNLOAD_RETRIES", "3")))
-    token = os.environ.get("HF_TOKEN", "").strip() or None
-    lora_dir.mkdir(parents=True, exist_ok=True)
-
+    destination = lora_dir / asset.destination_name
     if destination.exists():
         try:
-            size, tensor_count = verify(destination, expected_size, expected_sha)
+            size, tensor_count = verify(destination, asset)
             print(
-                f"[turbo] already ready: {destination.name}, {size} bytes, "
-                f"{tensor_count} tensors"
+                f"[turbo:{asset.key.lower()}] already ready: "
+                f"{destination.name}, {size} bytes, {tensor_count} tensors"
             )
-            return 0
+            return {
+                "key": asset.key,
+                "source_path": asset.source_path,
+                "destination": str(destination),
+                "size": size,
+                "sha256": asset.expected_sha256,
+                "tensor_count": tensor_count,
+            }
         except Exception:
             destination.unlink(missing_ok=True)
 
-    api = HfApi(token=token)
     last_error: Exception | None = None
-    resolved_revision = requested_revision
     download_path: Path | None = None
     for attempt in range(1, retries + 1):
         try:
-            info = api.model_info(repo_id, revision=requested_revision, token=token)
-            resolved_revision = info.sha
             print(
-                f"[turbo] download attempt {attempt}/{retries}: "
-                f"{repo_id}@{resolved_revision}:{source_path}"
+                f"[turbo:{asset.key.lower()}] download attempt {attempt}/{retries}: "
+                f"{repo_id}@{resolved_revision}:{asset.source_path}"
             )
             download_path = Path(
                 hf_hub_download(
                     repo_id=repo_id,
-                    filename=source_path,
+                    filename=asset.source_path,
                     revision=resolved_revision,
                     token=token,
                     local_dir=lora_dir,
@@ -107,40 +159,102 @@ def main() -> int:
             last_error = error
             if attempt < retries:
                 delay = attempt * 5
-                print(f"[turbo] download failed; retrying in {delay}s", file=sys.stderr)
+                print(
+                    f"[turbo:{asset.key.lower()}] download failed; "
+                    f"retrying in {delay}s",
+                    file=sys.stderr,
+                )
                 time.sleep(delay)
     if download_path is None:
-        raise RuntimeError("LightX2V Turbo LoRA download failed") from last_error
+        raise RuntimeError(f"LightX2V Turbo {asset.key} LoRA download failed") from last_error
 
     if download_path.resolve() != destination.resolve():
         shutil.copyfile(download_path, destination)
     try:
-        size, tensor_count = verify(destination, expected_size, expected_sha)
+        size, tensor_count = verify(destination, asset)
     except Exception:
         destination.unlink(missing_ok=True)
         raise
 
-    record = {
-        "repo_id": repo_id,
-        "source_path": source_path,
-        "requested_revision": requested_revision,
-        "resolved_revision": resolved_revision,
+    print(
+        f"[turbo:{asset.key.lower()}] ready: {destination.name}, {size} bytes, "
+        f"{tensor_count} tensors; SHA256 verified"
+    )
+    return {
+        "key": asset.key,
+        "source_path": asset.source_path,
         "destination": str(destination),
         "size": size,
-        "sha256": expected_sha,
+        "sha256": asset.expected_sha256,
         "tensor_count": tensor_count,
+    }
+
+
+def main() -> int:
+    if not env_flag("H3_TURBO_REQUIRED", True):
+        print("[turbo] optional Turbo workflow disabled; skipping LoRA downloads")
+        return 0
+
+    from huggingface_hub import HfApi
+
+    if os.environ.get("H3_TURBO_SOURCE_PATH"):
+        print(
+            "[turbo] H3_TURBO_SOURCE_PATH is obsolete and ignored; both pinned 768p "
+            "profiles are controlled by H3_TURBO_8STEP_SOURCE_PATH and "
+            "H3_TURBO_4STEP_SOURCE_PATH"
+        )
+
+    repo_id = os.environ.get("H3_TURBO_REPO_ID", DEFAULT_REPO_ID).strip()
+    requested_revision = os.environ.get(
+        "H3_TURBO_REVISION", DEFAULT_REVISION
+    ).strip()
+    assets = tuple(configured_asset(asset) for asset in TURBO_ASSETS)
+    model_root = Path(os.environ.get("COMFYUI_MODEL_DIR", "/opt/ComfyUI/models"))
+    lora_dir = model_root / "loras"
+    retries = max(1, int(os.environ.get("DOWNLOAD_RETRIES", "3")))
+    token = os.environ.get("HF_TOKEN", "").strip() or None
+    lora_dir.mkdir(parents=True, exist_ok=True)
+
+    api = HfApi(token=token)
+    info = api.model_info(repo_id, revision=requested_revision, token=token)
+    resolved_revision = info.sha
+
+    # Each Pod is ephemeral. Fetch the two independent Xet files concurrently so
+    # adding the selectable 4-step profile does not serialize another ~2 GB wait.
+    results: list[dict[str, object]] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(assets)) as executor:
+        futures = [
+            executor.submit(
+                download_asset,
+                asset,
+                repo_id=repo_id,
+                resolved_revision=resolved_revision,
+                lora_dir=lora_dir,
+                retries=retries,
+                token=token,
+            )
+            for asset in assets
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            results.append(future.result())
+
+    record = {
+        "repo_id": repo_id,
+        "requested_revision": requested_revision,
+        "resolved_revision": resolved_revision,
+        "profiles": sorted(results, key=lambda item: str(item["key"])),
     }
     record_path = Path(
         os.environ.get(
             "H3_TURBO_RECORD_PATH",
-            "/opt/ComfyUI/user/default/minimax_h3_turbo_source.json",
+            "/opt/ComfyUI/user/default/minimax_h3_turbo_sources.json",
         )
     )
     record_path.parent.mkdir(parents=True, exist_ok=True)
     record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     print(
-        f"[turbo] ready: {destination.name}, {size} bytes, "
-        f"{tensor_count} tensors; SHA256 verified"
+        f"[turbo] both selectable 768p profiles are ready at "
+        f"{resolved_revision}"
     )
     return 0
 

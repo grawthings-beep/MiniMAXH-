@@ -49,11 +49,23 @@ FIRST_BLOCK_CACHE_VALUES = [
     2,
     False,
 ]
-TURBO_LORA_MODEL = "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
-TURBO_LORA_URL = (
-    "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/"
-    f"05ef678438e84933c406131b59abbf86919b3aac/{TURBO_LORA_MODEL}"
+TURBO_REVISION = "2f015e66b37c585cea9dc4ae6f1850ea8788e742"
+TURBO_8STEP_MODEL = (
+    "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
 )
+TURBO_4STEP_MODEL = (
+    "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
+)
+TURBO_8STEP_URL = (
+    "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/"
+    f"{TURBO_REVISION}/{TURBO_8STEP_MODEL}"
+)
+TURBO_4STEP_URL = (
+    "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/"
+    f"{TURBO_REVISION}/{TURBO_4STEP_MODEL}"
+)
+TURBO_PROFILE_8STEP = "8-step v1.0 768p (recommended)"
+TURBO_PROFILE_4STEP = "4-step v1.2 768p (fastest)"
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -415,10 +427,12 @@ def add_first_block_cache(workflow: dict[str, Any], label: str) -> dict[str, Any
     return fast
 
 
-def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
-    """Add LightX2V Turbo while leaving the optional creator LoRA disabled by default."""
+def add_turbo_profiles(workflow: dict[str, Any], label: str) -> dict[str, Any]:
+    """Add one-control 4/8-step 768p Turbo selection with a safe 8-step default."""
     turbo = copy.deepcopy(workflow)
-    turbo["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f'{turbo["id"]}:lightx2v-turbo-8step'))
+    turbo["id"] = str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f'{turbo["id"]}:lightx2v-turbo-4-8step-768p')
+    )
     graph = next(
         candidate
         for candidate in graph_candidates(turbo)
@@ -431,7 +445,6 @@ def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         node
         for node in nodes
         if node["type"] == "LoraLoaderModelOnly"
-        and node.get("widgets_values", [None])[0] != TURBO_LORA_MODEL
     )
     creator["widgets_values"][1] = 0.0
     creator["title"] = (
@@ -444,30 +457,48 @@ def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
     turbo_id = next_numeric_id(nodes)
     turbo_order = int(unet["order"]) + 1
     shift_orders(nodes, turbo_order, 1)
-    turbo_lora = {
+    turbo_profile = {
         "id": turbo_id,
-        "type": "LoraLoaderModelOnly",
+        "type": "MiniMaxH3TurboProfile",
         "pos": [-2020, 3930],
-        "size": [430, 110],
+        "size": [520, 130],
         "flags": {},
         "order": turbo_order,
         "mode": 0,
-        "inputs": [{"name": "model", "type": "MODEL", "link": None}],
-        "outputs": [{"name": "MODEL", "type": "MODEL", "links": []}],
-        "title": "LightX2V MiniMax H3 Turbo 8-step (fixed 1.0)",
+        "inputs": [
+            {"name": "model", "type": "MODEL", "link": None},
+            {
+                "name": "profile",
+                "type": "COMBO",
+                "widget": {"name": "profile"},
+                "link": None,
+            },
+        ],
+        "outputs": [
+            {"name": "MODEL", "type": "MODEL", "links": []},
+            {"name": "steps", "type": "INT", "links": []},
+        ],
+        "title": "Turbo Mode — select 8-step quality or 4-step fastest",
         "properties": {
-            "Node name for S&R": "LoraLoaderModelOnly",
+            "Node name for S&R": "MiniMaxH3TurboProfile",
             "models": [
                 {
-                    "name": TURBO_LORA_MODEL,
-                    "url": TURBO_LORA_URL,
+                    "name": TURBO_8STEP_MODEL,
+                    "url": TURBO_8STEP_URL,
                     "directory": "loras",
-                }
+                },
+                {
+                    "name": TURBO_4STEP_MODEL,
+                    "url": TURBO_4STEP_URL,
+                    "directory": "loras",
+                },
             ],
         },
-        "widgets_values": [TURBO_LORA_MODEL, 1.0],
+        "widgets_values": [TURBO_PROFILE_8STEP],
     }
-    _append_model_node(graph, source=unet, consumers=unet_consumers, node=turbo_lora)
+    _append_model_node(
+        graph, source=unet, consumers=unet_consumers, node=turbo_profile
+    )
 
     creator_consumers = [
         link for link in links if link_origin(link) == int(creator["id"])
@@ -506,11 +537,47 @@ def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
             },
         ],
         "outputs": [{"name": "MODEL", "type": "MODEL", "links": []}],
-        "title": "Turbo Sigma Shift (video 12 / audio 3)",
+        "title": "Turbo 768p Sigma Shift (video 6 / audio 3)",
         "properties": {"Node name for S&R": "MiniMaxH3SigmaShift"},
-        "widgets_values": [12.0, 3.0],
+        "widgets_values": [6.0, 3.0],
     }
     _append_model_node(graph, source=creator, consumers=creator_consumers, node=sigma)
+
+    scheduler = next(node for node in nodes if node["type"] == "BasicScheduler")
+    step_link_id = max(link_id(link) for link in links) + 1
+    scheduler["inputs"].append(
+        {
+            "name": "steps",
+            "type": "INT",
+            "widget": {"name": "steps"},
+            "link": step_link_id,
+        }
+    )
+    turbo_profile["outputs"][1]["links"] = [step_link_id]
+    if isinstance(links[0], dict):
+        links.append(
+            {
+                "id": step_link_id,
+                "origin_id": turbo_id,
+                "origin_slot": 1,
+                "target_id": int(scheduler["id"]),
+                "target_slot": len(scheduler["inputs"]) - 1,
+                "type": "INT",
+            }
+        )
+        state = graph.setdefault("state", {})
+        state["lastLinkId"] = max(int(state.get("lastLinkId", 0)), step_link_id)
+    else:
+        links.append(
+            [
+                step_link_id,
+                turbo_id,
+                1,
+                int(scheduler["id"]),
+                len(scheduler["inputs"]) - 1,
+                "INT",
+            ]
+        )
 
     unet["pos"] = [-2020, 3800]
     creator["pos"] = [-2020, 4080]
@@ -518,20 +585,26 @@ def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         if group.get("title") == "Models":
             group["bounding"] = [-2050, 3770, 700, 1570]
     sampler = next(node for node in nodes if node["type"] == "KSamplerSelect")
-    scheduler = next(node for node in nodes if node["type"] == "BasicScheduler")
     sampler["widgets_values"] = ["euler"]
     scheduler["widgets_values"] = ["simple", 8, 1]
-    graph["name"] = f'{graph.get("name", label)} - LightX2V Turbo 8-step'
+    graph["name"] = f'{graph.get("name", label)} - LightX2V Turbo 4/8-step 768p'
     turbo.setdefault("extra", {})["acceleration"] = {
-        "type": "LightX2V Turbo LoRA",
-        "steps": 8,
+        "type": "LightX2V Turbo profile selector",
+        "profiles": {
+            TURBO_PROFILE_8STEP: {"model": TURBO_8STEP_MODEL, "steps": 8},
+            TURBO_PROFILE_4STEP: {"model": TURBO_4STEP_MODEL, "steps": 4},
+        },
+        "default_profile": TURBO_PROFILE_8STEP,
         "sampler": "euler",
         "scheduler": "simple",
-        "shift_video": 12,
+        "shift_video": 6,
         "shift_audio": 3,
-        "source_revision": "05ef678438e84933c406131b59abbf86919b3aac",
+        "source_revision": TURBO_REVISION,
         "creator_lora_default_strength": 0.0,
-        "memory_note": "Avoids the 208-patch dual-LoRA default on 32GB GPUs",
+        "memory_note": (
+            "Only the selected Turbo state dict is retained; creator LoRA remains "
+            "disabled by default to avoid dual-LoRA patch pressure"
+        ),
     }
     note = next(
         (
@@ -550,11 +623,13 @@ def add_turbo_8step(workflow: dict[str, Any], label: str) -> dict[str, Any]:
             "the creator LoRA at strength `0.00` by default.",
         )
         note["widgets_values"][0] += (
-            "\n\n## 03 Turbo · LightX2V 8-step\n"
-            "Turbo LoRA 1.0 → optional creator LoRA → SigmaShift 12/3、Euler/simple/8 stepsの構成です。"
+            "\n\n## 03 Turbo · LightX2V 4/8-step 768p\n"
+            "`Turbo Mode`だけで8-step v1.0（推奨）または4-step v1.2（最速）を選択できます。"
+            "選択に連動して正しいLoRAとstepsが切り替わり、両方ともSigmaShift 6/3、"
+            "Euler/simpleを使用します。"
             "32GBで208 patchesを避けるためcreator LoRAは初期値0.0です。必要な場合だけ手動で有効化し、"
             "二回目以降に不安定になる場合は0.0へ戻してください。音声や速い動きが崩れる場合は"
-            "02 Fastまたは01 Qualityへ戻してください。"
+            "8-step、02 Fast、または01 Qualityへ戻してください。"
         )
     return turbo
 
@@ -1106,15 +1181,15 @@ def main() -> int:
         output_prefix="video/MiniMax_H3_02_Fast_FBCache_2x",
     )
     turbo = configure_ui_preset(
-        add_turbo_8step(quality, "I2V Turbo"),
-        preset="03-turbo-8step",
-        title="03 · Turbo · 8 steps · Selectable LoRA · 2x · Mosaic toggle",
-        output_prefix="video/MiniMax_H3_03_Turbo_8step_2x",
+        add_turbo_profiles(quality, "I2V Turbo"),
+        preset="03-turbo-4-8step-768p",
+        title="03 · Turbo · 4/8-step 768p · Selectable LoRA · 2x · Mosaic toggle",
+        output_prefix="video/MiniMax_H3_03_Turbo_4_8step_768p_2x",
     )
     presets = {
         "minimax_h3_preset_01_quality.json": quality,
         "minimax_h3_preset_02_fast_fbcache.json": fast,
-        "minimax_h3_preset_03_turbo_8step.json": turbo,
+        "minimax_h3_preset_03_turbo.json": turbo,
     }
     for filename, preset in presets.items():
         write_json(args.output_dir / filename, preset)

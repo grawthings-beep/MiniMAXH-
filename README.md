@@ -12,7 +12,7 @@ ComfyUIへ表示するMiniMax H3ワークフローは、次の3本だけです�
 |---|---|---|
 | `01_MiniMax_H3_Quality_2x` | 20 steps / `res_multistep` | 最終品質と比較基準 |
 | `02_MiniMax_H3_Fast_FBCache_2x` | 20 steps / FirstBlockCache Safe | 品質を大きく落とさず高速化 |
-| `03_MiniMax_H3_Turbo_8step_2x` | 8 steps / Euler / shift 12・3 | 通常の高速生成 |
+| `03_MiniMax_H3_Turbo_4_8step_768p_2x` | 8-step v1.0 / 4-step v1.2選択、Euler、shift 6・3 | 通常の高速生成または最速draft |
 
 3本すべてが次に対応します。
 
@@ -45,17 +45,19 @@ Community Cloudのhost driver差を吸収するため、同じworkflowを2種類
 - `community-cu128`はComfyKitchen eager fallbackを許可
 - `fast-cu130`だけComfyKitchen CUDAを必須化
 - FastはFirstBlockCacheの`H3 Safe`（threshold `0.08`、10〜95%、最大2連続hit）
-- TurboはLightX2V FL2VA Turbo 8-step v1.0を強度`1.0`でcreator LoRAの前へ適用
+- Turboは1つの`Turbo Mode`でLightX2V FL2VA 768pの8-step v1.0（既定）または4-step v1.2を選択
+- 選択したTurbo LoRAだけを強度`1.0`でcreator LoRAの前へ適用し、stepsも自動連動
 - Turboのcreator LoRAは32GBで二重LoRA 208 patchesを避けるため初期値`0.0`
-- Turboは公式推奨どおり`Euler`、`simple`、8 steps、video shift `12`、audio shift `3`
+- Turboは両モードとも`Euler`、`simple`、video shift `6`、audio shift `3`
 - EasyCacheとFirstBlockCacheは併用しない
 - TurboとFirstBlockCacheも既定では併用しない
 - `--fast-disk`はモデル退避I/Oを増やす場合があるため既定で使わない
 
 FirstBlockCache custom nodeはcommit
 `725973c3bfd9de6dce249bc93dc5fe27f820df31`を固定します。Turbo LoRAはHugging Face
-revision `05ef678438e84933c406131b59abbf86919b3aac`、サイズ`1956193000` bytes、
-SHA256 `2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e`を検証します。
+revision `2f015e66b37c585cea9dc4ae6f1850ea8788e742`を固定し、各`1956193000` bytesと次の
+SHA256を検証します。8-step: `08cfe946033af7d27719b964b6e0a0e50c32138daabbd6ce4137e23df6bf9980`、
+4-step: `c8168ebc17bbacc4296103dda2fec1ba85b24392fa08cf2bfbcef0cff0dc3cc8`。
 
 ## 必要容量と推奨マシン
 
@@ -67,9 +69,9 @@ SHA256 `2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e`を検�
 | Audio VAE | 0.61 GB |
 | Real-ESRGAN x2plus | 0.067 GB |
 | creator LoRA 2本 | 0.620 GB |
-| LightX2V Turbo 8-step LoRA | 1.956 GB |
+| LightX2V Turbo 8-step/4-step LoRA | 3.912 GB |
 | 自動モザイクモデル | 0.019 GB |
-| 起動時取得合計 | 約45.1 GB |
+| 起動時取得合計 | 約47.1 GB |
 
 - Container Disk: `120 GB`
 - Volume Disk: `0 GB`
@@ -113,8 +115,9 @@ H3_CIVITAI_LORA_URL=https://civitai.red/api/download/models/3206518?fileId=30880
 
 H3_TURBO_REQUIRED=1
 H3_TURBO_REPO_ID=lightx2v/Minimax-h3-Turbo
-H3_TURBO_SOURCE_PATH=minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors
-H3_TURBO_REVISION=05ef678438e84933c406131b59abbf86919b3aac
+H3_TURBO_8STEP_SOURCE_PATH=minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors
+H3_TURBO_4STEP_SOURCE_PATH=minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors
+H3_TURBO_REVISION=2f015e66b37c585cea9dc4ae6f1850ea8788e742
 
 AUTO_MOSAIC_REQUIRED=1
 AUTO_MOSAIC_MANIFEST=/opt/minimax-h3/manifests/auto_mosaic.json
@@ -153,7 +156,7 @@ MiniMax H3のライセンスを確認し、利用者本人または組織がAppl
 1. GPU、driver、VRAM、RAM、disk、ComfyKitchen CUDAを診断
 2. H3ベースモデル4ファイルとReal-ESRGANを取得
 3. HMMotion V1とHMNSFW AIO V2 creator LoRAを取得
-4. LightX2V Turbo 8-step LoRAをHugging Face Xetで取得
+4. LightX2V Turbo 8-step/4-step 768p LoRAをHugging Face Xetで同時取得
 5. YOLO11 segmentationモデルをCivitaiから再開可能download
 6. サイズ、SHA256、safetensors header、ZIP CRCを対象ごとに検証
 7. 全必須モデルとcustom nodeが揃った場合だけComfyUIを起動
@@ -180,10 +183,10 @@ MiniMax H3のライセンスを確認し、利用者本人または組織がAppl
 Quality/Fastではcreator LoRAだけが適用されます。Turboではモデルチェーンを次の順序に固定します。
 
 ```text
-INT8 FL2VA → LightX2V Turbo 1.0 → 選択creator LoRA → SigmaShift → Scheduler/Guider
+INT8 FL2VA → Turbo Mode（8-step/4-step＋steps出力）→ 選択creator LoRA → SigmaShift 6/3 → Scheduler/Guider
 ```
 
-Turbo LoRAをcreator LoRAの後ろへ動かしたり、強度を変更したりしないでください。creator LoRAは
+`Turbo Mode`のプルダウン以外の配線を変更する必要はありません。creator LoRAは
 プルダウンでV1/V2を選び、強度を調整できます。Quality/Fastの既定は
 `HMNSFW_AIO_V2.safetensors / 0.5`、Turboだけは安定性のため`0.0`です。
 
@@ -193,11 +196,11 @@ Turbo LoRAをcreator LoRAの後ろへ動かしたり、強度を変更したり�
 python -m unittest discover -s tests -v
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_01_quality.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_02_fast_fbcache.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --expect-first-block-cache
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_03_turbo_8step.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 --expect-turbo
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_03_turbo.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 --expect-turbo
 bash -n scripts/entrypoint.sh scripts/download_models.sh
 ```
 
-実際の生成smoke testにはNVIDIA GPUと約45.1GBのダウンロードが必要です。
+実際の生成smoke testにはNVIDIA GPUと約47.1GBのダウンロードが必要です。
 
 ## Sources
 
