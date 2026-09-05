@@ -30,12 +30,12 @@ jobs:
           - variant: community-cu128
             pytorch_image: pytorch/pytorch:2.9.1-cuda12.8-cudnn9-runtime@sha256:7b324d212a4450795b49edba9949b7cdc72429148a64e974334bfe5774d51385
             require_comfy_kitchen_cuda: "0"
-            comfyui_args: "--vram-headroom 2"
+            comfyui_args: "--lowvram --vram-headroom 2"
             publish_default: true
           - variant: fast-cu130
             pytorch_image: pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime@sha256:1f57418aedd9a4d0d3a59646619e1d4f82cacc33817247cead4f749e1f452d4b
             require_comfy_kitchen_cuda: "1"
-            comfyui_args: "--vram-headroom 2"
+            comfyui_args: "--lowvram --vram-headroom 2"
             publish_default: false
     steps:
       - uses: actions/checkout@v4

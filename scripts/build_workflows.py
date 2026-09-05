@@ -66,6 +66,8 @@ TURBO_4STEP_URL = (
 )
 TURBO_PROFILE_8STEP = "8-step v1.0 768p (recommended)"
 TURBO_PROFILE_4STEP = "4-step v1.2 768p (fastest)"
+CREATOR_CONTROL_TYPE = "H3_CREATOR_LORA"
+TURBO_CONTROL_TYPE = "H3_TURBO_PROFILE"
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -775,6 +777,274 @@ def add_lora(
     return lora_workflow
 
 
+def add_memory_safe_decode(workflow: dict[str, Any], label: str) -> dict[str, Any]:
+    """Unload H3 before bounded spatiotemporal video-VAE decoding."""
+    safe = copy.deepcopy(workflow)
+    graph = next(
+        candidate
+        for candidate in graph_candidates(safe)
+        if any(node["type"] == "SamplerCustomAdvanced" for node in candidate.get("nodes", []))
+        and any(node["type"] == "VAEDecode" for node in candidate.get("nodes", []))
+        and any(node["type"] == "VAEDecodeAudio" for node in candidate.get("nodes", []))
+    )
+    nodes = graph["nodes"]
+    links = graph["links"]
+    sampler = next(node for node in nodes if node["type"] == "SamplerCustomAdvanced")
+    video_decode = next(node for node in nodes if node["type"] == "VAEDecode")
+    audio_decode = next(node for node in nodes if node["type"] == "VAEDecodeAudio")
+    decode_ids = {int(video_decode["id"]), int(audio_decode["id"])}
+    latent_links = [
+        link
+        for link in links
+        if link_origin(link) == int(sampler["id"])
+        and link_target(link) in decode_ids
+        and str(link["type"] if isinstance(link, dict) else link[5]) == "LATENT"
+    ]
+    if {link_target(link) for link in latent_links} != decode_ids:
+        raise RuntimeError("Sampler must feed both H3 video and audio VAE decoders")
+
+    guard_id = next_numeric_id(nodes)
+    guard_link_id = max(link_id(link) for link in links) + 1
+    old_link_ids = sorted(link_id(link) for link in latent_links)
+    for link in latent_links:
+        set_link_origin(link, guard_id)
+
+    sampler_output = sampler["outputs"][0]
+    sampler_output["links"] = [
+        current
+        for current in (sampler_output.get("links") or [])
+        if int(current) not in old_link_ids
+    ] + [guard_link_id]
+    guard = {
+        "id": guard_id,
+        "type": "MiniMaxH3ReleaseVRAMLatent",
+        "pos": [-30, 4720],
+        "size": [300, 80],
+        "flags": {},
+        "order": max(int(node.get("order", 0)) for node in nodes) + 1,
+        "mode": 0,
+        "inputs": [{"name": "samples", "type": "LATENT", "link": guard_link_id}],
+        "outputs": [{"name": "samples", "type": "LATENT", "links": old_link_ids}],
+        "title": "VRAM GUARD — unload H3 before VAE decode",
+        "properties": {"Node name for S&R": "MiniMaxH3ReleaseVRAMLatent"},
+        "widgets_values": [],
+    }
+    nodes.append(guard)
+    if isinstance(links[0], dict):
+        links.append(
+            {
+                "id": guard_link_id,
+                "origin_id": int(sampler["id"]),
+                "origin_slot": 0,
+                "target_id": guard_id,
+                "target_slot": 0,
+                "type": "LATENT",
+            }
+        )
+        state = graph.setdefault("state", {})
+        state["lastNodeId"] = max(int(state.get("lastNodeId", 0)), guard_id)
+        state["lastLinkId"] = max(int(state.get("lastLinkId", 0)), guard_link_id)
+    else:
+        links.append([guard_link_id, int(sampler["id"]), 0, guard_id, 0, "LATENT"])
+        safe["last_node_id"] = max(int(safe.get("last_node_id", 0)), guard_id)
+        safe["last_link_id"] = max(int(safe.get("last_link_id", 0)), guard_link_id)
+
+    video_decode["type"] = "MiniMaxH3VAEDecodeTiled"
+    video_decode["title"] = "H3 VAE Decode — nested-safe native tiling"
+    video_decode["size"] = [360, 100]
+    video_decode["widgets_values"] = []
+    video_decode.setdefault("properties", {})["Node name for S&R"] = (
+        "MiniMaxH3VAEDecodeTiled"
+    )
+    audio_decode["pos"] = [-30, 5120]
+    graph["name"] = f'{graph.get("name", label)} - Memory-safe tiled VAE decode'
+
+    safe.setdefault("extra", {})["memory_safety"] = {
+        "model_unload_before_decode": True,
+        "video_vae_tiled": True,
+        "nested_video_latent_unwrap": True,
+        "native_spatial_tile_px": 256,
+        "native_temporal_chunk_frames": 17,
+    }
+    note = next(
+        (
+            node
+            for node in safe.get("nodes", [])
+            if node["type"] == "MarkdownNote"
+            and "About this workflow" in node.get("widgets_values", [""])[0]
+        ),
+        None,
+    )
+    if note:
+        note["widgets_values"][0] += (
+            "\n\n## Memory-safe VAE transition\n"
+            "Sampling後に`MiniMaxH3ReleaseVRAMLatent`で生成モデルをGPUから明示解放し、"
+            "Video VAEはH3ネイティブの256px spatial tile / 17-frame temporal chunkで"
+            "nested latentのvideo側だけをdecodeします。"
+            "32GB GPUでsampling完了直後にプロセスごと再起動するOOMを防ぐための安全経路です。"
+        )
+    return safe
+
+
+def _connect_visible_control(
+    workflow: dict[str, Any],
+    graph: dict[str, Any],
+    *,
+    composite: dict[str, Any],
+    control: dict[str, Any],
+    target: dict[str, Any],
+    target_slot: int,
+    input_name: str,
+    socket_type: str,
+) -> None:
+    """Wire a top-level control through a subgraph virtual input."""
+    internal_link_id = max(link_id(link) for link in graph["links"]) + 1
+    virtual_slot = len(graph.setdefault("inputs", []))
+    graph["inputs"].append(
+        {
+            "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f'{workflow["id"]}:{input_name}')),
+            "name": input_name,
+            "type": socket_type,
+            "linkIds": [internal_link_id],
+            "pos": [-2456, 4964 + 20 * virtual_slot],
+        }
+    )
+    target["inputs"][target_slot]["link"] = internal_link_id
+    graph["links"].append(
+        {
+            "id": internal_link_id,
+            "origin_id": -10,
+            "origin_slot": virtual_slot,
+            "target_id": int(target["id"]),
+            "target_slot": target_slot,
+            "type": socket_type,
+        }
+    )
+    state = graph.setdefault("state", {})
+    state["lastLinkId"] = max(int(state.get("lastLinkId", 0)), internal_link_id)
+
+    top_link_id = max(link_id(link) for link in workflow["links"]) + 1
+    composite_slot = len(composite["inputs"])
+    composite["inputs"].append(
+        {"name": input_name, "type": socket_type, "link": top_link_id}
+    )
+    control["outputs"][0]["links"] = [top_link_id]
+    workflow["nodes"].append(control)
+    workflow["links"].append(
+        [top_link_id, int(control["id"]), 0, int(composite["id"]), composite_slot, socket_type]
+    )
+    workflow["last_node_id"] = max(int(workflow.get("last_node_id", 0)), int(control["id"]))
+    workflow["last_link_id"] = max(int(workflow.get("last_link_id", 0)), top_link_id)
+
+
+def expose_lora_controls(workflow: dict[str, Any], *, turbo: bool) -> dict[str, Any]:
+    """Move creator and Turbo LoRA choices onto the main canvas."""
+    visible = copy.deepcopy(workflow)
+    graph = next(
+        candidate
+        for candidate in graph_candidates(visible)
+        if any(node["type"] == "LoraLoaderModelOnly" for node in candidate.get("nodes", []))
+    )
+    composite = next(
+        node for node in visible["nodes"] if str(node["type"]) == str(graph["id"])
+    )
+    creator = next(node for node in graph["nodes"] if node["type"] == "LoraLoaderModelOnly")
+    creator_model, creator_strength = creator.get("widgets_values", [HMNSFW_V2_MODEL, 0.0])[:2]
+    creator_models = copy.deepcopy(creator.get("properties", {}).get("models", []))
+    creator["type"] = "MiniMaxH3CreatorLoRAApply"
+    creator["title"] = "Apply top-level Creator LoRA control"
+    creator["properties"]["Node name for S&R"] = "MiniMaxH3CreatorLoRAApply"
+    creator["widgets_values"] = []
+    creator["inputs"].append(
+        {"name": "creator_lora", "type": CREATOR_CONTROL_TYPE, "link": None}
+    )
+
+    next_id = next_numeric_id(visible["nodes"])
+    creator_control = {
+        "id": next_id,
+        "type": "MiniMaxH3CreatorLoRAControl",
+        "pos": [-210 if turbo else -730, 4550],
+        "size": [480, 150],
+        "flags": {},
+        "order": max(int(node.get("order", 0)) for node in visible["nodes"]) + 1,
+        "mode": 0,
+        "inputs": [
+            {"name": "lora_name", "type": "COMBO", "widget": {"name": "lora_name"}, "link": None},
+            {"name": "strength", "type": "FLOAT", "widget": {"name": "strength"}, "link": None},
+        ],
+        "outputs": [{"name": "creator_lora", "type": CREATOR_CONTROL_TYPE, "links": []}],
+        "title": "OPTIONAL CREATOR LoRA — select here (0.0 = no load)",
+        "properties": {
+            "Node name for S&R": "MiniMaxH3CreatorLoRAControl",
+            "models": creator_models,
+        },
+        "widgets_values": [creator_model, float(creator_strength)],
+    }
+    _connect_visible_control(
+        visible,
+        graph,
+        composite=composite,
+        control=creator_control,
+        target=creator,
+        target_slot=1,
+        input_name="creator_lora_control",
+        socket_type=CREATOR_CONTROL_TYPE,
+    )
+
+    controls = [creator_control]
+    if turbo:
+        selector = next(node for node in graph["nodes"] if node["type"] == "MiniMaxH3TurboProfile")
+        selector["inputs"].append(
+            {"name": "profile_control", "type": TURBO_CONTROL_TYPE, "link": None}
+        )
+        turbo_control = {
+            "id": next_numeric_id(visible["nodes"]),
+            "type": "MiniMaxH3TurboLoRAControl",
+            "pos": [-730, 4550],
+            "size": [480, 110],
+            "flags": {},
+            "order": max(int(node.get("order", 0)) for node in visible["nodes"]) + 1,
+            "mode": 0,
+            "inputs": [
+                {"name": "profile", "type": "COMBO", "widget": {"name": "profile"}, "link": None}
+            ],
+            "outputs": [{"name": "turbo_profile", "type": TURBO_CONTROL_TYPE, "links": []}],
+            "title": "TURBO LoRA — choose 8-step or 4-step here",
+            "properties": {
+                "Node name for S&R": "MiniMaxH3TurboLoRAControl",
+                "models": copy.deepcopy(selector.get("properties", {}).get("models", [])),
+            },
+            "widgets_values": [TURBO_PROFILE_8STEP],
+        }
+        _connect_visible_control(
+            visible,
+            graph,
+            composite=composite,
+            control=turbo_control,
+            target=selector,
+            target_slot=2,
+            input_name="turbo_lora_control",
+            socket_type=TURBO_CONTROL_TYPE,
+        )
+        controls.append(turbo_control)
+
+    visible.setdefault("groups", []).append(
+        {
+            "id": max((int(group.get("id", 0)) for group in visible.get("groups", [])), default=0) + 1,
+            "title": "LoRA CONTROLS — no subgraph expansion needed",
+            "bounding": [-760, 4490, 1050 if turbo else 540, 250],
+            "color": "#8f6fbd",
+            "flags": {},
+        }
+    )
+    visible.setdefault("extra", {})["visible_lora_controls"] = {
+        "creator": True,
+        "turbo": turbo,
+        "creator_zero_strength_skips_file_load": True,
+    }
+    return visible
+
+
 def add_upscale(workflow: dict[str, Any], label: str) -> dict[str, Any]:
     """Insert a conservative 2x frame upscaler before the final video mux."""
     upscaled = copy.deepcopy(workflow)
@@ -1168,23 +1438,32 @@ def main() -> int:
             add_auto_mosaic(variant, stem),
         )
 
-    quality = configure_ui_preset(
+    quality_internal = configure_ui_preset(
         add_auto_mosaic(selectable_i2v, "quality-preset"),
         preset="01-quality",
         title="01 · Quality · 20 steps · Selectable LoRA · 2x · Mosaic toggle",
         output_prefix="video/MiniMax_H3_01_Quality_2x",
     )
-    fast = configure_ui_preset(
-        add_first_block_cache(quality, "I2V Fast"),
+    fast_internal = configure_ui_preset(
+        add_first_block_cache(quality_internal, "I2V Fast"),
         preset="02-fast-firstblockcache",
         title="02 · Fast · FBCache Safe · Selectable LoRA · 2x · Mosaic toggle",
         output_prefix="video/MiniMax_H3_02_Fast_FBCache_2x",
     )
-    turbo = configure_ui_preset(
-        add_turbo_profiles(quality, "I2V Turbo"),
+    turbo_internal = configure_ui_preset(
+        add_turbo_profiles(quality_internal, "I2V Turbo"),
         preset="03-turbo-4-8step-768p",
         title="03 · Turbo · 4/8-step 768p · Selectable LoRA · 2x · Mosaic toggle",
         output_prefix="video/MiniMax_H3_03_Turbo_4_8step_768p_2x",
+    )
+    quality = expose_lora_controls(
+        add_memory_safe_decode(quality_internal, "Quality"), turbo=False
+    )
+    fast = expose_lora_controls(
+        add_memory_safe_decode(fast_internal, "Fast FBCache"), turbo=False
+    )
+    turbo = expose_lora_controls(
+        add_memory_safe_decode(turbo_internal, "Turbo 4/8-step 768p"), turbo=True
     )
     presets = {
         "minimax_h3_preset_01_quality.json": quality,

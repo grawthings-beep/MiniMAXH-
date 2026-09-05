@@ -1,8 +1,8 @@
 {
   "id": "873430c1-8064-50df-a8de-1cd74d954f03",
   "revision": 0,
-  "last_node_id": 120,
-  "last_link_id": 228,
+  "last_node_id": 122,
+  "last_link_id": 230,
   "nodes": [
     {
       "id": 92,
@@ -178,6 +178,16 @@
             "name": "vae_name_1"
           },
           "link": null
+        },
+        {
+          "name": "creator_lora_control",
+          "type": "H3_CREATOR_LORA",
+          "link": 229
+        },
+        {
+          "name": "turbo_lora_control",
+          "type": "H3_TURBO_PROFILE",
+          "link": 230
         }
       ],
       "outputs": [
@@ -224,7 +234,7 @@
       "title": "Note: MiniMax H3",
       "properties": {},
       "widgets_values": [
-        "## MiniMax H3\n\n[MiniMax H3](https://www.minimax.io/blog/minimax-h3) is MiniMax's general-purpose, omni-modal generation model. It jointly understands text, image, video, and audio, and generates video with **native stereo audio**: voice, sound effects, and music are modeled jointly in a single forward pass, not layered on afterward. Output is up to 2K resolution, 24fps, and up to about 15 seconds.\n\n## About this workflow\n\nThis template runs the **Image to Video** task (`MiniMaxH3ImageToVideo` node), which covers both:\n\n- **t2va** (text-to-video), when no images are connected\n- **fl2va** (first/last-frame image-to-video), when `first_frame` and/or `last_frame` are connected\n\n**Key inputs**\n\n- **first_frame / last_frame**: optional keyframes; the model generates the motion between them\n- **prompt**: describe the shots, motion, and the accompanying audio (dialogue, SFX, music) in one block\n- **width / height**: set via Resolution Selector. H3's native canvas is a 768px short edge, capped at 768x1344 pixels, rounded to a multiple of 32\n- **duration (seconds)**: converted to a valid frame `length` by the Math Expression node, snapping up to the model's 17-frame-per-block (17k+5) grid at 24fps\n\n## Selectable MiniMax H3 LoRA (V2 default)\n`HMNSFW_AIO_V2.safetensors` remains selectable, but this Turbo preset disables the creator LoRA at strength `0.00` by default. The base INT8 ConvRot model feeds the LoRA loader, and the patched MODEL feeds both `BasicScheduler` and `BasicGuider`. Change the strength on the LoRA node for A/B tests; `0.0` disables its effect without rewiring the graph. Both installed creator LoRAs appear in this node's dropdown when `H3_LORA_SELECTION=all`. The Civitai V2 asset is downloaded at Pod startup using `CIVITAI_TOKEN`; its author recommends strength 0.5 or lower and trained it against BF16, so compare INT8 output carefully.\n\n## Real-ESRGAN 2x output\nEvery decoded frame is tiled through the official RealESRGAN x2 model before `CreateVideo`; generated stereo audio and 24fps timing remain unchanged. The short edge doubles from H3's native 768px to 1536px. This is a conservative frame upscaler, so it improves sharpness and detail but does not repair motion or anatomy errors already present in the generated frames.\n\n## CPU auto mosaic variant\n`WanAutoMosaicVideo` runs exactly once on generated frames immediately before `CreateVideo` (after Real-ESRGAN when present). It uses YOLO11 instance contours on CPU with JUST / 0.30 confidence / 0.50 IoU / automatic short-edge÷50 blocks and up to 3-frame circular gap repair. Default classes are pussy, penis, and testicles; anus is deliberately excluded. Set `enabled=false` to pass the original completed frames through without loading the detector.\n\n## 03 Turbo · LightX2V 4/8-step 768p\n`Turbo Mode`だけで8-step v1.0（推奨）または4-step v1.2（最速）を選択できます。選択に連動して正しいLoRAとstepsが切り替わり、両方ともSigmaShift 6/3、Euler/simpleを使用します。32GBで208 patchesを避けるためcreator LoRAは初期値0.0です。必要な場合だけ手動で有効化し、二回目以降に不安定になる場合は0.0へ戻してください。音声や速い動きが崩れる場合は8-step、02 Fast、または01 Qualityへ戻してください。"
+        "## MiniMax H3\n\n[MiniMax H3](https://www.minimax.io/blog/minimax-h3) is MiniMax's general-purpose, omni-modal generation model. It jointly understands text, image, video, and audio, and generates video with **native stereo audio**: voice, sound effects, and music are modeled jointly in a single forward pass, not layered on afterward. Output is up to 2K resolution, 24fps, and up to about 15 seconds.\n\n## About this workflow\n\nThis template runs the **Image to Video** task (`MiniMaxH3ImageToVideo` node), which covers both:\n\n- **t2va** (text-to-video), when no images are connected\n- **fl2va** (first/last-frame image-to-video), when `first_frame` and/or `last_frame` are connected\n\n**Key inputs**\n\n- **first_frame / last_frame**: optional keyframes; the model generates the motion between them\n- **prompt**: describe the shots, motion, and the accompanying audio (dialogue, SFX, music) in one block\n- **width / height**: set via Resolution Selector. H3's native canvas is a 768px short edge, capped at 768x1344 pixels, rounded to a multiple of 32\n- **duration (seconds)**: converted to a valid frame `length` by the Math Expression node, snapping up to the model's 17-frame-per-block (17k+5) grid at 24fps\n\n## Selectable MiniMax H3 LoRA (V2 default)\n`HMNSFW_AIO_V2.safetensors` remains selectable, but this Turbo preset disables the creator LoRA at strength `0.00` by default. The base INT8 ConvRot model feeds the LoRA loader, and the patched MODEL feeds both `BasicScheduler` and `BasicGuider`. Change the strength on the LoRA node for A/B tests; `0.0` disables its effect without rewiring the graph. Both installed creator LoRAs appear in this node's dropdown when `H3_LORA_SELECTION=all`. The Civitai V2 asset is downloaded at Pod startup using `CIVITAI_TOKEN`; its author recommends strength 0.5 or lower and trained it against BF16, so compare INT8 output carefully.\n\n## Real-ESRGAN 2x output\nEvery decoded frame is tiled through the official RealESRGAN x2 model before `CreateVideo`; generated stereo audio and 24fps timing remain unchanged. The short edge doubles from H3's native 768px to 1536px. This is a conservative frame upscaler, so it improves sharpness and detail but does not repair motion or anatomy errors already present in the generated frames.\n\n## CPU auto mosaic variant\n`WanAutoMosaicVideo` runs exactly once on generated frames immediately before `CreateVideo` (after Real-ESRGAN when present). It uses YOLO11 instance contours on CPU with JUST / 0.30 confidence / 0.50 IoU / automatic short-edge÷50 blocks and up to 3-frame circular gap repair. Default classes are pussy, penis, and testicles; anus is deliberately excluded. Set `enabled=false` to pass the original completed frames through without loading the detector.\n\n## 03 Turbo · LightX2V 4/8-step 768p\n`Turbo Mode`だけで8-step v1.0（推奨）または4-step v1.2（最速）を選択できます。選択に連動して正しいLoRAとstepsが切り替わり、両方ともSigmaShift 6/3、Euler/simpleを使用します。32GBで208 patchesを避けるためcreator LoRAは初期値0.0です。必要な場合だけ手動で有効化し、二回目以降に不安定になる場合は0.0へ戻してください。音声や速い動きが崩れる場合は8-step、02 Fast、または01 Qualityへ戻してください。\n\n## Memory-safe VAE transition\nSampling後に`MiniMaxH3ReleaseVRAMLatent`で生成モデルをGPUから明示解放し、Video VAEはH3ネイティブの256px spatial tile / 17-frame temporal chunkでnested latentのvideo側だけをdecodeします。32GB GPUでsampling完了直後にプロセスごと再起動するOOMを防ぐための安全経路です。"
       ],
       "color": "#222",
       "bgcolor": "#000"
@@ -359,6 +369,116 @@
         "Node name for S&R": "GetImageSize"
       },
       "widgets_values": []
+    },
+    {
+      "id": 121,
+      "type": "MiniMaxH3CreatorLoRAControl",
+      "pos": [
+        -210,
+        4550
+      ],
+      "size": [
+        480,
+        150
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "lora_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_name"
+          },
+          "link": null
+        },
+        {
+          "name": "strength",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "creator_lora",
+          "type": "H3_CREATOR_LORA",
+          "links": [
+            229
+          ]
+        }
+      ],
+      "title": "OPTIONAL CREATOR LoRA — select here (0.0 = no load)",
+      "properties": {
+        "Node name for S&R": "MiniMaxH3CreatorLoRAControl",
+        "models": [
+          {
+            "name": "HMNSFW_AIO_V2.safetensors",
+            "url": "https://civitai.red/api/download/models/3206518?fileId=3088013",
+            "directory": "loras"
+          }
+        ]
+      },
+      "widgets_values": [
+        "HMNSFW_AIO_V2.safetensors",
+        0.0
+      ]
+    },
+    {
+      "id": 122,
+      "type": "MiniMaxH3TurboLoRAControl",
+      "pos": [
+        -730,
+        4550
+      ],
+      "size": [
+        480,
+        110
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "profile",
+          "type": "COMBO",
+          "widget": {
+            "name": "profile"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "turbo_profile",
+          "type": "H3_TURBO_PROFILE",
+          "links": [
+            230
+          ]
+        }
+      ],
+      "title": "TURBO LoRA — choose 8-step or 4-step here",
+      "properties": {
+        "Node name for S&R": "MiniMaxH3TurboLoRAControl",
+        "models": [
+          {
+            "name": "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+            "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/2f015e66b37c585cea9dc4ae6f1850ea8788e742/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+            "directory": "loras"
+          },
+          {
+            "name": "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
+            "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/2f015e66b37c585cea9dc4ae6f1850ea8788e742/minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
+            "directory": "loras"
+          }
+        ]
+      },
+      "widgets_values": [
+        "8-step v1.0 768p (recommended)"
+      ]
     }
   ],
   "links": [
@@ -401,6 +521,22 @@
       120,
       0,
       "IMAGE"
+    ],
+    [
+      229,
+      121,
+      0,
+      105,
+      6,
+      "H3_CREATOR_LORA"
+    ],
+    [
+      230,
+      122,
+      0,
+      105,
+      7,
+      "H3_TURBO_PROFILE"
     ]
   ],
   "groups": [
@@ -415,6 +551,18 @@
       ],
       "color": "#3f789e",
       "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "LoRA CONTROLS — no subgraph expansion needed",
+      "bounding": [
+        -760,
+        4490,
+        1050,
+        250
+      ],
+      "color": "#8f6fbd",
+      "flags": {}
     }
   ],
   "definitions": {
@@ -425,12 +573,12 @@
         "state": {
           "lastGroupId": 5,
           "lastNodeId": 120,
-          "lastLinkId": 234,
+          "lastLinkId": 237,
           "lastRerouteId": 0
         },
         "revision": 0,
         "config": {},
-        "name": "Image to Video (MiniMax H3) - Selectable MiniMax H3 LoRA (V2 default) - Real-ESRGAN 2x - CPU Auto Mosaic - LightX2V Turbo 4/8-step 768p",
+        "name": "Image to Video (MiniMax H3) - Selectable MiniMax H3 LoRA (V2 default) - Real-ESRGAN 2x - CPU Auto Mosaic - LightX2V Turbo 4/8-step 768p - Memory-safe tiled VAE decode",
         "inputNode": {
           "id": -10,
           "bounding": [
@@ -583,6 +731,30 @@
               -2456,
               4944
             ]
+          },
+          {
+            "id": "bc56acc3-efe3-5f46-861b-76717d5e9694",
+            "name": "creator_lora_control",
+            "type": "H3_CREATOR_LORA",
+            "linkIds": [
+              236
+            ],
+            "pos": [
+              -2456,
+              5184
+            ]
+          },
+          {
+            "id": "1f8f23e9-17fc-5388-aca3-94c00e1dfd12",
+            "name": "turbo_lora_control",
+            "type": "H3_TURBO_PROFILE",
+            "linkIds": [
+              237
+            ],
+            "pos": [
+              -2456,
+              5204
+            ]
           }
         ],
         "outputs": [
@@ -706,7 +878,7 @@
             "type": "VAEDecodeAudio",
             "pos": [
               -30,
-              4970
+              5120
             ],
             "size": [
               230,
@@ -748,14 +920,14 @@
           },
           {
             "id": 10,
-            "type": "VAEDecode",
+            "type": "MiniMaxH3VAEDecodeTiled",
             "pos": [
               -30,
               4850
             ],
             "size": [
-              230,
-              60
+              360,
+              100
             ],
             "flags": {
               "collapsed": false
@@ -787,9 +959,10 @@
               }
             ],
             "properties": {
-              "Node name for S&R": "VAEDecode"
+              "Node name for S&R": "MiniMaxH3VAEDecodeTiled"
             },
-            "widgets_values": []
+            "widgets_values": [],
+            "title": "H3 VAE Decode — nested-safe native tiling"
           },
           {
             "id": 17,
@@ -924,8 +1097,7 @@
                 "name": "output",
                 "type": "LATENT",
                 "links": [
-                  225,
-                  226
+                  235
                 ]
               },
               {
@@ -1387,7 +1559,7 @@
           },
           {
             "id": 112,
-            "type": "LoraLoaderModelOnly",
+            "type": "MiniMaxH3CreatorLoRAApply",
             "pos": [
               -2020,
               4080
@@ -1405,6 +1577,11 @@
                 "name": "model",
                 "type": "MODEL",
                 "link": 228
+              },
+              {
+                "name": "creator_lora",
+                "type": "H3_CREATOR_LORA",
+                "link": 236
               }
             ],
             "outputs": [
@@ -1417,9 +1594,9 @@
                 ]
               }
             ],
-            "title": "Optional creator LoRA (OFF by default for 32GB stability; enable manually)",
+            "title": "Apply top-level Creator LoRA control",
             "properties": {
-              "Node name for S&R": "LoraLoaderModelOnly",
+              "Node name for S&R": "MiniMaxH3CreatorLoRAApply",
               "models": [
                 {
                   "name": "HMNSFW_AIO_V2.safetensors",
@@ -1428,10 +1605,7 @@
                 }
               ]
             },
-            "widgets_values": [
-              "HMNSFW_AIO_V2.safetensors",
-              0.0
-            ]
+            "widgets_values": []
           },
           {
             "id": 113,
@@ -1652,6 +1826,11 @@
                   "name": "profile"
                 },
                 "link": null
+              },
+              {
+                "name": "profile_control",
+                "type": "H3_TURBO_PROFILE",
+                "link": 237
               }
             ],
             "outputs": [
@@ -1745,6 +1924,43 @@
               6.0,
               3.0
             ]
+          },
+          {
+            "id": 118,
+            "type": "MiniMaxH3ReleaseVRAMLatent",
+            "pos": [
+              -30,
+              4720
+            ],
+            "size": [
+              300,
+              80
+            ],
+            "flags": {},
+            "order": 21,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "samples",
+                "type": "LATENT",
+                "link": 235
+              }
+            ],
+            "outputs": [
+              {
+                "name": "samples",
+                "type": "LATENT",
+                "links": [
+                  225,
+                  226
+                ]
+              }
+            ],
+            "title": "VRAM GUARD — unload H3 before VAE decode",
+            "properties": {
+              "Node name for S&R": "MiniMaxH3ReleaseVRAMLatent"
+            },
+            "widgets_values": []
           }
         ],
         "groups": [
@@ -2016,7 +2232,7 @@
           },
           {
             "id": 225,
-            "origin_id": 14,
+            "origin_id": 118,
             "origin_slot": 0,
             "target_id": 10,
             "target_slot": 0,
@@ -2024,7 +2240,7 @@
           },
           {
             "id": 226,
-            "origin_id": 14,
+            "origin_id": 118,
             "origin_slot": 0,
             "target_id": 23,
             "target_slot": 0,
@@ -2093,6 +2309,30 @@
             "target_id": 9,
             "target_slot": 1,
             "type": "INT"
+          },
+          {
+            "id": 235,
+            "origin_id": 14,
+            "origin_slot": 0,
+            "target_id": 118,
+            "target_slot": 0,
+            "type": "LATENT"
+          },
+          {
+            "id": 236,
+            "origin_id": -10,
+            "origin_slot": 11,
+            "target_id": 112,
+            "target_slot": 1,
+            "type": "H3_CREATOR_LORA"
+          },
+          {
+            "id": 237,
+            "origin_id": -10,
+            "origin_slot": 12,
+            "target_id": 116,
+            "target_slot": 2,
+            "type": "H3_TURBO_PROFILE"
           }
         ],
         "extra": {}
@@ -2141,6 +2381,18 @@
       "source_revision": "2f015e66b37c585cea9dc4ae6f1850ea8788e742",
       "creator_lora_default_strength": 0.0,
       "memory_note": "Only the selected Turbo state dict is retained; creator LoRA remains disabled by default to avoid dual-LoRA patch pressure"
+    },
+    "memory_safety": {
+      "model_unload_before_decode": true,
+      "video_vae_tiled": true,
+      "nested_video_latent_unwrap": true,
+      "native_spatial_tile_px": 256,
+      "native_temporal_chunk_frames": 17
+    },
+    "visible_lora_controls": {
+      "creator": true,
+      "turbo": true,
+      "creator_zero_strength_skips_file_load": true
     }
   },
   "version": 0.4

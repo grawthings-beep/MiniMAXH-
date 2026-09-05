@@ -51,6 +51,20 @@ class AutoMosaicWorkflowTests(unittest.TestCase):
         self.assertEqual(len(presets), 3)
         for path in presets:
             workflow = json.loads(path.read_text(encoding="utf-8"))
+            top_types = {node["type"] for node in workflow["nodes"]}
+            self.assertIn("MiniMaxH3CreatorLoRAControl", top_types, path.name)
+            if path.name.endswith("03_turbo.json"):
+                self.assertIn("MiniMaxH3TurboLoRAControl", top_types, path.name)
+            else:
+                self.assertNotIn("MiniMaxH3TurboLoRAControl", top_types, path.name)
+            internal_types = {
+                node["type"]
+                for subgraph in workflow["definitions"]["subgraphs"]
+                for node in subgraph["nodes"]
+            }
+            self.assertIn("MiniMaxH3ReleaseVRAMLatent", internal_types, path.name)
+            self.assertIn("MiniMaxH3VAEDecodeTiled", internal_types, path.name)
+            self.assertNotIn("VAEDecode", internal_types, path.name)
             mosaics = [
                 node
                 for graph in graphs(workflow)
@@ -97,6 +111,28 @@ class AutoMosaicWorkflowTests(unittest.TestCase):
                     gx <= x and gy <= y and x + width <= gx + gw and y + height <= gy + gh,
                     (path.name, node["id"]),
                 )
+
+    def test_ui_preset_links_are_bidirectionally_serialized(self):
+        for path in sorted(WORKFLOWS.glob("minimax_h3_preset_*.json")):
+            workflow = json.loads(path.read_text(encoding="utf-8"))
+            for graph in graphs(workflow):
+                by_id = {int(node["id"]): node for node in graph.get("nodes", [])}
+                for raw_link in graph.get("links", []):
+                    link_id, origin_id, origin_slot, target_id, target_slot, _ = link_fields(raw_link)
+                    if origin_id >= 0:
+                        self.assertIn(origin_id, by_id, (path.name, link_id, "origin"))
+                        self.assertIn(
+                            link_id,
+                            by_id[origin_id]["outputs"][origin_slot].get("links") or [],
+                            (path.name, link_id, "origin output"),
+                        )
+                    if target_id >= 0:
+                        self.assertIn(target_id, by_id, (path.name, link_id, "target"))
+                        self.assertEqual(
+                            by_id[target_id]["inputs"][target_slot].get("link"),
+                            link_id,
+                            (path.name, link_id, "target input"),
+                        )
 
     def test_auto_workflows_have_one_bidirectionally_serialized_final_node(self):
         for filename in AUTO_FILES:

@@ -36,6 +36,6 @@
     "MODEL_MANIFEST": "/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json",
     "MODEL_VERIFY": "size",
     "REQUIRE_COMFY_KITCHEN_CUDA": "0",
-    "COMFYUI_ARGS": "--vram-headroom 2"
+    "COMFYUI_ARGS": "--lowvram --vram-headroom 2"
   }
 }

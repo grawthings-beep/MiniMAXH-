@@ -216,7 +216,7 @@ class AssetTests(unittest.TestCase):
                 "minimax_h3_i2v_upscale.json",
                 "i2v",
                 [
-                    "--expect-upscale", "--expect-auto-mosaic",
+                    "--expect-upscale", "--expect-auto-mosaic", "--expect-memory-safe-decode",
                     "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
                     "--expect-lora", "HMNSFW_AIO_V2.safetensors",
                     "--expect-lora-strength", "0.5",
@@ -227,7 +227,7 @@ class AssetTests(unittest.TestCase):
                 "minimax_h3_i2v_upscale.json",
                 "i2v",
                 [
-                    "--expect-upscale", "--expect-auto-mosaic", "--expect-first-block-cache",
+                    "--expect-upscale", "--expect-auto-mosaic", "--expect-first-block-cache", "--expect-memory-safe-decode",
                     "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
                     "--expect-lora", "HMNSFW_AIO_V2.safetensors",
                     "--expect-lora-strength", "0.5",
@@ -238,7 +238,7 @@ class AssetTests(unittest.TestCase):
                 "minimax_h3_i2v_upscale.json",
                 "i2v",
                 [
-                    "--expect-upscale", "--expect-auto-mosaic", "--expect-turbo",
+                    "--expect-upscale", "--expect-auto-mosaic", "--expect-turbo", "--expect-memory-safe-decode",
                     "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
                     "--expect-lora", "HMNSFW_AIO_V2.safetensors",
                     "--expect-lora-strength", "0.0",
@@ -276,7 +276,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("ARG PYTORCH_IMAGE=", dockerfile)
         self.assertIn("ARG MINIMAX_H3_RUNTIME_VARIANT=community-cu128", dockerfile)
         self.assertIn("ARG REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT=0", dockerfile)
-        self.assertIn('ARG COMFYUI_ARGS_DEFAULT="--vram-headroom 2"', dockerfile)
+        self.assertIn('ARG COMFYUI_ARGS_DEFAULT="--lowvram --vram-headroom 2"', dockerfile)
         self.assertIn("ARG COMFYUI_VERSION=v0.31.0", dockerfile)
         self.assertRegex(dockerfile, r"ARG COMFYUI_COMMIT=[0-9a-f]{40}")
         self.assertIn(
@@ -316,7 +316,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("ultralytics.__version__ == '8.4.104'", dockerfile)
         self.assertIn("AUTO_MOSAIC_REQUIRED=1", dockerfile)
         self.assertIn("verify_auto_mosaic_workflows.py", dockerfile)
-        self.assertIn("'WanAutoMosaicVideo', 'MiniMaxH3TurboProfile'", dockerfile)
+        self.assertIn("'MiniMaxH3ReleaseVRAMLatent'", dockerfile)
         self.assertIn("MINIMAX_H3_ENTRYPOINT_SMOKE=1", dockerfile)
 
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -359,6 +359,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("installed exactly 3 MiniMax H3 presets", entrypoint)
         self.assertIn("--require-comfy-kitchen-cuda", entrypoint)
         self.assertIn("overriding legacy REQUIRE_COMFY_KITCHEN_CUDA=1", entrypoint)
+        self.assertIn("RTX 5090/r580+ users should select the fast-cu130", entrypoint)
         self.assertIn("replacing the unsafe fixed-reservation profile", entrypoint)
         self.assertIn("--fast-disk can make H3 model offload much slower", entrypoint)
         self.assertIn("download_lora.py", entrypoint)
@@ -376,6 +377,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("02_MiniMax_H3_Fast_FBCache_2x.json", entrypoint)
         self.assertIn("03_MiniMax_H3_Turbo_4_8step_768p_2x.json", entrypoint)
         self.assertIn('${STORY_NODE_ROOT}/turbo_nodes.py', entrypoint)
+        self.assertIn('${STORY_NODE_ROOT}/memory_nodes.py', entrypoint)
         self.assertIn("required Director segments-mode memory patch is missing", entrypoint)
         self.assertIn("required Director FL2V Motion Context fix is missing", entrypoint)
         self.assertIn('${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors', entrypoint)
@@ -388,7 +390,7 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "0")
         self.assertEqual(
             template["env"]["COMFYUI_ARGS"],
-            "--vram-headroom 2",
+            "--lowvram --vram-headroom 2",
         )
         self.assertNotIn("--fast-disk", template["env"]["COMFYUI_ARGS"])
         self.assertEqual(template["env"]["HF_TOKEN"], "")

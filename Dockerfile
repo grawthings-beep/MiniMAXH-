@@ -7,7 +7,7 @@ ARG MINIMAX_H3_DIRECTOR_COMMIT=a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7
 ARG MINIMAX_H3_FBC_COMMIT=725973c3bfd9de6dce249bc93dc5fe27f820df31
 ARG MINIMAX_H3_RUNTIME_VARIANT=community-cu128
 ARG REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT=0
-ARG COMFYUI_ARGS_DEFAULT="--vram-headroom 2"
+ARG COMFYUI_ARGS_DEFAULT="--lowvram --vram-headroom 2"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -226,7 +226,7 @@ RUN pip install --no-cache-dir \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_preset_01_quality.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
-      --mode i2v --expect-upscale --expect-auto-mosaic \
+      --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode \
       --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
       --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
       --comfyui-root "${COMFYUI_ROOT}" \
@@ -234,7 +234,7 @@ RUN pip install --no-cache-dir \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_preset_02_fast_fbcache.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
-      --mode i2v --expect-upscale --expect-auto-mosaic --expect-first-block-cache \
+      --mode i2v --expect-upscale --expect-auto-mosaic --expect-first-block-cache --expect-memory-safe-decode \
       --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
       --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
       --comfyui-root "${COMFYUI_ROOT}" \
@@ -243,13 +243,13 @@ RUN pip install --no-cache-dir \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_preset_03_turbo.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
-      --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo \
+      --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo --expect-memory-safe-decode \
       --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
       --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 \
       --comfyui-root "${COMFYUI_ROOT}" \
       --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
     && cd "${COMFYUI_ROOT}" \
-    && python -c "import sys; sys.path.insert(0, '${COMFYUI_ROOT}/custom_nodes'); import minimax_h3_ordered_storyboard as p; assert {'WanAutoMosaicVideo', 'MiniMaxH3TurboProfile'} <= p.NODE_CLASS_MAPPINGS.keys()"
+    && python -c "import sys; sys.path.insert(0, '${COMFYUI_ROOT}/custom_nodes'); import minimax_h3_ordered_storyboard as p; assert {'WanAutoMosaicVideo', 'MiniMaxH3TurboProfile', 'MiniMaxH3TurboLoRAControl', 'MiniMaxH3CreatorLoRAControl', 'MiniMaxH3CreatorLoRAApply', 'MiniMaxH3ReleaseVRAMLatent', 'MiniMaxH3VAEDecodeTiled'} <= p.NODE_CLASS_MAPPINGS.keys()"
 
 RUN ACCEPT_MINIMAX_H3_LICENSE=1 \
     MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
