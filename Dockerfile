@@ -35,8 +35,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     H3_CIVITAI_LORA_URL=https://civitai.red/api/download/models/3206518?fileId=3088013 \
     H3_TURBO_REQUIRED=1 \
     H3_TURBO_REPO_ID=lightx2v/Minimax-h3-Turbo \
-    H3_TURBO_SOURCE_PATH=minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors \
-    H3_TURBO_REVISION=05ef678438e84933c406131b59abbf86919b3aac \
+    H3_TURBO_8STEP_SOURCE_PATH=minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors \
+    H3_TURBO_4STEP_SOURCE_PATH=minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors \
+    H3_TURBO_REVISION=2f015e66b37c585cea9dc4ae6f1850ea8788e742 \
     AUTO_MOSAIC_REQUIRED=1 \
     AUTO_MOSAIC_MANIFEST=/opt/minimax-h3/manifests/auto_mosaic.json \
     MINIMAX_H3_RUNTIME_VARIANT=${MINIMAX_H3_RUNTIME_VARIANT} \
@@ -128,8 +129,8 @@ RUN pip install --no-cache-dir \
       "${COMFYUI_ROOT}/user/default/workflows/01_MiniMax_H3_Quality_2x.json" \
     && cp /opt/minimax-h3/workflows/minimax_h3_preset_02_fast_fbcache.json \
       "${COMFYUI_ROOT}/user/default/workflows/02_MiniMax_H3_Fast_FBCache_2x.json" \
-    && cp /opt/minimax-h3/workflows/minimax_h3_preset_03_turbo_8step.json \
-      "${COMFYUI_ROOT}/user/default/workflows/03_MiniMax_H3_Turbo_8step_2x.json" \
+    && cp /opt/minimax-h3/workflows/minimax_h3_preset_03_turbo.json \
+      "${COMFYUI_ROOT}/user/default/workflows/03_MiniMax_H3_Turbo_4_8step_768p_2x.json" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_i2v.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v.json \
@@ -240,7 +241,7 @@ RUN pip install --no-cache-dir \
       --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
       --custom-node-root "${MINIMAX_H3_FBC_ROOT}" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
-      --workflow /opt/minimax-h3/workflows/minimax_h3_preset_03_turbo_8step.json \
+      --workflow /opt/minimax-h3/workflows/minimax_h3_preset_03_turbo.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
       --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo \
       --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
@@ -248,7 +249,7 @@ RUN pip install --no-cache-dir \
       --comfyui-root "${COMFYUI_ROOT}" \
       --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
     && cd "${COMFYUI_ROOT}" \
-    && python -c "import sys; sys.path.insert(0, '${COMFYUI_ROOT}/custom_nodes'); import minimax_h3_ordered_storyboard as p; assert 'WanAutoMosaicVideo' in p.NODE_CLASS_MAPPINGS"
+    && python -c "import sys; sys.path.insert(0, '${COMFYUI_ROOT}/custom_nodes'); import minimax_h3_ordered_storyboard as p; assert {'WanAutoMosaicVideo', 'MiniMaxH3TurboProfile'} <= p.NODE_CLASS_MAPPINGS.keys()"
 
 RUN ACCEPT_MINIMAX_H3_LICENSE=1 \
     MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \

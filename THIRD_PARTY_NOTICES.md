@@ -26,9 +26,10 @@ This repository does not redistribute MiniMax H3 weights.
   workflows come from `Comfy-Org/workflow_templates`; exact source revisions
   and local derivation are documented in `workflows/UPSTREAM.md`.
 - The H3 text encoder is derived from Qwen3-VL-32B, licensed under Apache-2.0.
-- The public LightX2V MiniMax H3 Turbo 8-step LoRA is downloaded at Pod startup
-  from pinned Hugging Face revision `05ef678438e84933c406131b59abbf86919b3aac`
-  and is published under Apache-2.0.
+- The public LightX2V MiniMax H3 Turbo 8-step v1.0 and 4-step v1.2 768p LoRAs
+  are downloaded at Pod startup from pinned Hugging Face revision
+  `2f015e66b37c585cea9dc4ae6f1850ea8788e742` and are published under
+  Apache-2.0.
 - `ultralytics==8.4.104` is installed for CPU-only YOLO11 instance-segmentation
   inference. The separately downloaded auto-mosaic model is not redistributed;
   its current Civitai terms remain the operator's responsibility.

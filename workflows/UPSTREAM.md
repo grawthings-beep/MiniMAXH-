@@ -20,13 +20,15 @@ variants, and both I2V Quality + selectable LoRA + 2x variants from these pinned
 upstream assets.
 
 The same builder derives the only three workflows installed in the RunPod UI:
-Quality, FirstBlockCache Safe, and LightX2V Turbo 8-step. All three include the
+Quality, FirstBlockCache Safe, and selectable LightX2V Turbo 4/8-step 768p. All three include the
 selectable creator LoRA, 2x tail, and toggleable CPU auto-mosaic. The Fast graph
 uses `duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache` commit
 `725973c3bfd9de6dce249bc93dc5fe27f820df31`. The Turbo graph follows the
 ModelTC reference graph at commit `02e26d591f7a04d5d1a074c9566d5dd4f22f6225`
 and uses the public LightX2V weight revision
-`05ef678438e84933c406131b59abbf86919b3aac`.
+`2f015e66b37c585cea9dc4ae6f1850ea8788e742`. Its local profile node switches
+the pinned 8-step v1.0 and 4-step v1.2 768p LoRAs together with the scheduler
+step count; both profiles retain the upstream 6/3 video/audio shifts.
 
 The 2x variants use ComfyUI's built-in `UpscaleModelLoader` and
 `ImageUpscaleWithModel` nodes with the official `RealESRGAN_x2plus.pth` release:

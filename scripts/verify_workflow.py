@@ -12,7 +12,13 @@ from pathlib import Path
 FRONTEND_BUILTINS = {"MarkdownNote"}
 HMMOTION_LORA = "hmmotion_minimax-h3_epoch12.safetensors"
 HMNSFW_V2_LORA = "HMNSFW_AIO_V2.safetensors"
-TURBO_LORA = "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
+TURBO_8STEP_LORA = (
+    "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+)
+TURBO_4STEP_LORA = (
+    "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
+)
+TURBO_PROFILE_8STEP = "8-step v1.0 768p (recommended)"
 AUTO_MOSAIC_MODEL = "auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"
 AUTO_MOSAIC_DEFAULTS = [
     "ntd11_anime_nsfw_segm_v5.pt",
@@ -85,6 +91,10 @@ def graph_candidates(workflow: dict[str, object]) -> list[dict[str, object]]:
     for subgraph in workflow.get("definitions", {}).get("subgraphs", []):
         graphs.append(subgraph)
     return graphs
+
+
+def link_id(link: object) -> int:
+    return int(link["id"] if isinstance(link, dict) else link[0])
 
 
 def link_origin(link: object) -> int:
@@ -285,17 +295,23 @@ def verify_first_block_cache(workflow: dict[str, object]) -> None:
         raise RuntimeError("FirstBlockCache and EasyCache must never be combined")
 
 
-def verify_turbo_8step(workflow: dict[str, object]) -> None:
+def verify_turbo_profiles(workflow: dict[str, object]) -> None:
     graph = graph_with_types(
         workflow,
-        {"UNETLoader", "LoraLoaderModelOnly", "MiniMaxH3SigmaShift", "BasicScheduler", "KSamplerSelect"},
+        {
+            "UNETLoader",
+            "MiniMaxH3TurboProfile",
+            "LoraLoaderModelOnly",
+            "MiniMaxH3SigmaShift",
+            "BasicScheduler",
+            "KSamplerSelect",
+        },
     )
     nodes = graph["nodes"]
     links = graph["links"]
     unet = next(node for node in nodes if node["type"] == "UNETLoader")
-    loras = [node for node in nodes if node["type"] == "LoraLoaderModelOnly"]
-    turbo = next(node for node in loras if node.get("widgets_values", [None])[0] == TURBO_LORA)
-    creator = next(node for node in loras if node is not turbo)
+    turbo = next(node for node in nodes if node["type"] == "MiniMaxH3TurboProfile")
+    creator = next(node for node in nodes if node["type"] == "LoraLoaderModelOnly")
     sigma = next(node for node in nodes if node["type"] == "MiniMaxH3SigmaShift")
     scheduler = next(node for node in nodes if node["type"] == "BasicScheduler")
     guider = next(node for node in nodes if node["type"] == "BasicGuider")
@@ -310,17 +326,43 @@ def verify_turbo_8step(workflow: dict[str, object]) -> None:
     }
     if not expected <= actual:
         raise RuntimeError(f"Turbo model chain is incomplete: {sorted(expected - actual)}")
-    if turbo.get("widgets_values") != [TURBO_LORA, 1.0]:
-        raise RuntimeError("Turbo LoRA must remain fixed at strength 1.0")
+    if turbo.get("widgets_values") != [TURBO_PROFILE_8STEP]:
+        raise RuntimeError("Turbo profile must default to the recommended 8-step 768p mode")
+    turbo_models = turbo.get("properties", {}).get("models", [])
+    if {
+        (entry.get("name"), entry.get("directory")) for entry in turbo_models
+    } != {
+        (TURBO_8STEP_LORA, "loras"),
+        (TURBO_4STEP_LORA, "loras"),
+    }:
+        raise RuntimeError("Turbo selector must declare both pinned 768p LoRAs")
     creator_values = creator.get("widgets_values", [])
     if len(creator_values) < 2 or creator_values[1] != 0.0:
         raise RuntimeError(
             "Turbo creator LoRA must default to 0.0 to avoid dual-LoRA patch pressure"
         )
-    if sigma.get("widgets_values") != [12.0, 3.0]:
-        raise RuntimeError("Turbo SigmaShift must remain video=12/audio=3")
+    if sigma.get("widgets_values") != [6.0, 3.0]:
+        raise RuntimeError("Turbo 768p SigmaShift must remain video=6/audio=3")
     if scheduler.get("widgets_values") != ["simple", 8, 1]:
-        raise RuntimeError("Turbo scheduler must remain simple at 8 steps")
+        raise RuntimeError("Turbo scheduler must retain the visible 8-step default")
+    step_input = next(
+        (item for item in scheduler.get("inputs", []) if item.get("name") == "steps"),
+        None,
+    )
+    if step_input is None or step_input.get("link") is None:
+        raise RuntimeError("Turbo selector steps output is not connected to BasicScheduler")
+    step_link = next(
+        (link for link in links if link_id(link) == int(step_input["link"])),
+        None,
+    )
+    if step_link is None or (
+        link_origin(step_link),
+        link_target(step_link),
+        link_type(step_link),
+    ) != (int(turbo["id"]), int(scheduler["id"]), "INT"):
+        raise RuntimeError("Turbo profile does not control the scheduler step count")
+    if int(step_link["origin_slot"] if isinstance(step_link, dict) else step_link[2]) != 1:
+        raise RuntimeError("Turbo scheduler must use the selector's steps output")
     if sampler.get("widgets_values") != ["euler"]:
         raise RuntimeError("Turbo sampler must remain Euler")
     if any(node["type"] in {"EasyCache", "ApplyMiniMaxH3FirstBlockCache"} for node in nodes):
@@ -568,7 +610,9 @@ def main() -> int:
             raise RuntimeError("Auto-mosaic manifest does not provide the pinned workflow model")
         expected_models.add(AUTO_MOSAIC_MODEL)
     if args.expect_turbo:
-        expected_models.add(f"loras/{TURBO_LORA}")
+        expected_models.update(
+            {f"loras/{TURBO_8STEP_LORA}", f"loras/{TURBO_4STEP_LORA}"}
+        )
     if args.expect_lora:
         expected_models.add(f"loras/{args.expect_lora}")
     actual_models = workflow_models(nodes)
@@ -616,8 +660,8 @@ def main() -> int:
     elif "ApplyMiniMaxH3FirstBlockCache" in node_types:
         raise RuntimeError("FirstBlockCache is enabled without an explicit Fast expectation")
     if args.expect_turbo:
-        verify_turbo_8step(workflow)
-    elif "MiniMaxH3SigmaShift" in node_types:
+        verify_turbo_profiles(workflow)
+    elif {"MiniMaxH3SigmaShift", "MiniMaxH3TurboProfile"} & node_types:
         raise RuntimeError("Turbo SigmaShift is enabled in a non-Turbo workflow")
     if args.require_video_reference:
         verify_video_reference_wiring(workflow)
@@ -676,7 +720,7 @@ def main() -> int:
 
     native_count = len(node_types - subgraph_ids)
     speed = (
-        "Turbo 8-step"
+        "Turbo selectable 4/8-step 768p"
         if args.expect_turbo
         else "FirstBlockCache Fast"
         if args.expect_first_block_cache
