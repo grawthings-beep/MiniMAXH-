@@ -183,7 +183,11 @@ def verify_upscale_wiring(
         raise RuntimeError("The 2x upscale nodes are missing")
     nodes = graph["nodes"]
     links = graph["links"]
-    vae_decode = next(node for node in nodes if node["type"] == "VAEDecode")
+    vae_decode = next(
+        node
+        for node in nodes
+        if node["type"] in {"VAEDecode", "MiniMaxH3VAEDecodeTiled"}
+    )
     loader = next(node for node in nodes if node["type"] == "UpscaleModelLoader")
     upscaler = next(node for node in nodes if node["type"] == "ImageUpscaleWithModel")
     create_video = next(node for node in nodes if node["type"] == "CreateVideo")
@@ -211,12 +215,23 @@ def verify_upscale_wiring(
 def verify_lora_wiring(
     workflow: dict[str, object], expected_model: str, expected_strength: float
 ) -> None:
+    external_control = next(
+        (
+            node
+            for node in workflow.get("nodes", [])
+            if node["type"] == "MiniMaxH3CreatorLoRAControl"
+        ),
+        None,
+    )
+    loader_type = (
+        "MiniMaxH3CreatorLoRAApply" if external_control is not None else "LoraLoaderModelOnly"
+    )
     graph = next(
         (
             candidate
             for candidate in graph_candidates(workflow)
             if any(
-                node["type"] == "LoraLoaderModelOnly"
+                node["type"] == loader_type
                 for node in candidate.get("nodes", [])
             )
         ),
@@ -230,8 +245,7 @@ def verify_lora_wiring(
     lora = next(
         node
         for node in nodes
-        if node["type"] == "LoraLoaderModelOnly"
-        and node.get("widgets_values", [None])[0] == expected_model
+        if node["type"] == loader_type
     )
     scheduler = next(node for node in nodes if node["type"] == "BasicScheduler")
     guider = next(node for node in nodes if node["type"] == "BasicGuider")
@@ -260,18 +274,46 @@ def verify_lora_wiring(
         int(lora["id"]), int(guider["id"])
     ):
         raise RuntimeError("Creator LoRA does not reach both scheduler and guider")
-    if lora.get("widgets_values") != [expected_model, expected_strength]:
+    settings_node = external_control or lora
+    if settings_node.get("widgets_values") != [expected_model, expected_strength]:
         raise RuntimeError(
             f"LoRA defaults have changed; expected {expected_model} at {expected_strength}"
         )
-    model_entries = lora.get("properties", {}).get("models", [])
+    model_entries = settings_node.get("properties", {}).get("models", [])
     if len(model_entries) != 1 or model_entries[0].get("directory") != "loras":
         raise RuntimeError("The LoRA model metadata is incomplete")
+    if external_control is not None:
+        composite = next(
+            node for node in workflow["nodes"] if str(node["type"]) == str(graph["id"])
+        )
+        top_edges = {
+            (link_origin(link), link_target(link), link_type(link))
+            for link in workflow["links"]
+        }
+        if (
+            int(external_control["id"]),
+            int(composite["id"]),
+            "H3_CREATOR_LORA",
+        ) not in top_edges:
+            raise RuntimeError("Visible creator LoRA control is not connected to the H3 subgraph")
+        if not any(
+            link_origin(link) < 0
+            and link_target(link) == int(lora["id"])
+            and link_type(link) == "H3_CREATOR_LORA"
+            for link in links
+        ):
+            raise RuntimeError("H3 subgraph input does not drive the creator LoRA applicator")
 
 
 def verify_first_block_cache(workflow: dict[str, object]) -> None:
+    all_types = {str(node["type"]) for node in all_nodes(workflow)}
+    creator_type = (
+        "MiniMaxH3CreatorLoRAApply"
+        if "MiniMaxH3CreatorLoRAApply" in all_types
+        else "LoraLoaderModelOnly"
+    )
     graph = graph_with_types(
-        workflow, {"UNETLoader", "ApplyMiniMaxH3FirstBlockCache", "LoraLoaderModelOnly"}
+        workflow, {"UNETLoader", "ApplyMiniMaxH3FirstBlockCache", creator_type}
     )
     nodes = graph["nodes"]
     links = graph["links"]
@@ -279,7 +321,7 @@ def verify_first_block_cache(workflow: dict[str, object]) -> None:
     cache = next(
         node for node in nodes if node["type"] == "ApplyMiniMaxH3FirstBlockCache"
     )
-    creator = next(node for node in nodes if node["type"] == "LoraLoaderModelOnly")
+    creator = next(node for node in nodes if node["type"] == creator_type)
     actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
     expected = {
         (int(unet["id"]), int(cache["id"]), "MODEL"),
@@ -296,12 +338,18 @@ def verify_first_block_cache(workflow: dict[str, object]) -> None:
 
 
 def verify_turbo_profiles(workflow: dict[str, object]) -> None:
+    all_types = {str(node["type"]) for node in all_nodes(workflow)}
+    creator_type = (
+        "MiniMaxH3CreatorLoRAApply"
+        if "MiniMaxH3CreatorLoRAApply" in all_types
+        else "LoraLoaderModelOnly"
+    )
     graph = graph_with_types(
         workflow,
         {
             "UNETLoader",
             "MiniMaxH3TurboProfile",
-            "LoraLoaderModelOnly",
+            creator_type,
             "MiniMaxH3SigmaShift",
             "BasicScheduler",
             "KSamplerSelect",
@@ -311,7 +359,7 @@ def verify_turbo_profiles(workflow: dict[str, object]) -> None:
     links = graph["links"]
     unet = next(node for node in nodes if node["type"] == "UNETLoader")
     turbo = next(node for node in nodes if node["type"] == "MiniMaxH3TurboProfile")
-    creator = next(node for node in nodes if node["type"] == "LoraLoaderModelOnly")
+    creator = next(node for node in nodes if node["type"] == creator_type)
     sigma = next(node for node in nodes if node["type"] == "MiniMaxH3SigmaShift")
     scheduler = next(node for node in nodes if node["type"] == "BasicScheduler")
     guider = next(node for node in nodes if node["type"] == "BasicGuider")
@@ -336,7 +384,15 @@ def verify_turbo_profiles(workflow: dict[str, object]) -> None:
         (TURBO_4STEP_LORA, "loras"),
     }:
         raise RuntimeError("Turbo selector must declare both pinned 768p LoRAs")
-    creator_values = creator.get("widgets_values", [])
+    creator_control = next(
+        (
+            node
+            for node in workflow.get("nodes", [])
+            if node["type"] == "MiniMaxH3CreatorLoRAControl"
+        ),
+        creator,
+    )
+    creator_values = creator_control.get("widgets_values", [])
     if len(creator_values) < 2 or creator_values[1] != 0.0:
         raise RuntimeError(
             "Turbo creator LoRA must default to 0.0 to avoid dual-LoRA patch pressure"
@@ -367,6 +423,71 @@ def verify_turbo_profiles(workflow: dict[str, object]) -> None:
         raise RuntimeError("Turbo sampler must remain Euler")
     if any(node["type"] in {"EasyCache", "ApplyMiniMaxH3FirstBlockCache"} for node in nodes):
         raise RuntimeError("Turbo preset must not stack another approximate cache")
+    visible_turbo = next(
+        (
+            node
+            for node in workflow.get("nodes", [])
+            if node["type"] == "MiniMaxH3TurboLoRAControl"
+        ),
+        None,
+    )
+    if visible_turbo is None or visible_turbo.get("widgets_values") != [TURBO_PROFILE_8STEP]:
+        raise RuntimeError("Turbo 4/8-step LoRA selector must be visible on the main canvas")
+    composite = next(
+        node for node in workflow["nodes"] if str(node["type"]) == str(graph["id"])
+    )
+    top_edges = {
+        (link_origin(link), link_target(link), link_type(link))
+        for link in workflow["links"]
+    }
+    if (
+        int(visible_turbo["id"]),
+        int(composite["id"]),
+        "H3_TURBO_PROFILE",
+    ) not in top_edges:
+        raise RuntimeError("Visible Turbo LoRA selector is not connected to the H3 subgraph")
+    if not any(
+        link_origin(link) < 0
+        and link_target(link) == int(turbo["id"])
+        and link_type(link) == "H3_TURBO_PROFILE"
+        for link in links
+    ):
+        raise RuntimeError("H3 subgraph input does not drive the Turbo profile applicator")
+
+
+def verify_memory_safe_decode(workflow: dict[str, object]) -> None:
+    graph = graph_with_types(
+        workflow,
+        {
+            "SamplerCustomAdvanced",
+            "MiniMaxH3ReleaseVRAMLatent",
+            "MiniMaxH3VAEDecodeTiled",
+            "VAEDecodeAudio",
+        },
+    )
+    nodes = graph["nodes"]
+    links = graph["links"]
+    sampler = next(node for node in nodes if node["type"] == "SamplerCustomAdvanced")
+    guard = next(node for node in nodes if node["type"] == "MiniMaxH3ReleaseVRAMLatent")
+    video = next(
+        node for node in nodes if node["type"] == "MiniMaxH3VAEDecodeTiled"
+    )
+    audio = next(node for node in nodes if node["type"] == "VAEDecodeAudio")
+    if video.get("widgets_values"):
+        raise RuntimeError("H3 native tiled VAE decode must not expose ignored tile controls")
+    actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
+    expected = {
+        (int(sampler["id"]), int(guard["id"]), "LATENT"),
+        (int(guard["id"]), int(video["id"]), "LATENT"),
+        (int(guard["id"]), int(audio["id"]), "LATENT"),
+    }
+    if not expected <= actual:
+        raise RuntimeError(f"Memory-safe decode wiring is incomplete: {sorted(expected - actual)}")
+    if any(
+        (int(sampler["id"]), int(target["id"]), "LATENT") in actual
+        for target in (video, audio)
+    ):
+        raise RuntimeError("A VAE decoder bypasses the post-sampling VRAM guard")
 
 
 def graph_with_types(
@@ -576,6 +697,7 @@ def main() -> int:
     parser.add_argument("--expect-turbo", action="store_true")
     parser.add_argument("--expect-upscale", action="store_true")
     parser.add_argument("--expect-auto-mosaic", action="store_true")
+    parser.add_argument("--expect-memory-safe-decode", action="store_true")
     parser.add_argument("--auto-mosaic-manifest", type=Path)
     parser.add_argument(
         "--expect-lora",
@@ -665,6 +787,10 @@ def main() -> int:
         raise RuntimeError("Turbo SigmaShift is enabled in a non-Turbo workflow")
     if args.require_video_reference:
         verify_video_reference_wiring(workflow)
+    if args.expect_memory_safe_decode:
+        verify_memory_safe_decode(workflow)
+    elif {"MiniMaxH3ReleaseVRAMLatent", "MiniMaxH3VAEDecodeTiled"} & node_types:
+        raise RuntimeError("Memory-safe decode is enabled without an explicit expectation")
     if args.mode == "story":
         pass
     elif args.expect_upscale:

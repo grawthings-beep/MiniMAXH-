@@ -18,11 +18,12 @@ echo "[runtime] variant=${RUNTIME_VARIANT}"
 if [[ "${RUNTIME_VARIANT}" == "community-cu128" ]] \
   && [[ "${REQUIRE_COMFY_KITCHEN_CUDA:-0}" == "1" ]]; then
   echo "[runtime] overriding legacy REQUIRE_COMFY_KITCHEN_CUDA=1 for the cu128 compatibility image"
+  echo "[runtime] WARNING: this does not enable CUDA 13 kernels; RTX 5090/r580+ users should select the fast-cu130 Docker image"
   export REQUIRE_COMFY_KITCHEN_CUDA=0
 fi
 if [[ "${COMFYUI_ARGS:-}" == "--disable-dynamic-vram --reserve-vram 4" ]]; then
   echo "[runtime] replacing the unsafe fixed-reservation profile with DynamicVRAM headroom"
-  export COMFYUI_ARGS="--vram-headroom 2"
+  export COMFYUI_ARGS="--lowvram --vram-headroom 2"
 fi
 
 # One RunPod Civitai secret is enough for both creator-LoRA and mosaic-model
@@ -82,7 +83,8 @@ if [[ ! -f "${DIRECTOR_ROOT}/nodes/director.py" ]] \
   || [[ ! -f "${STORY_NODE_ROOT}/storyboard.py" ]] \
   || [[ ! -f "${STORY_NODE_ROOT}/exporter.py" ]] \
   || [[ ! -f "${STORY_NODE_ROOT}/mosaic_nodes.py" ]] \
-  || [[ ! -f "${STORY_NODE_ROOT}/turbo_nodes.py" ]]; then
+  || [[ ! -f "${STORY_NODE_ROOT}/turbo_nodes.py" ]] \
+  || [[ ! -f "${STORY_NODE_ROOT}/memory_nodes.py" ]]; then
   echo "[workflow] required ordered-story custom nodes are missing from the image"
   exit 68
 fi
@@ -137,6 +139,7 @@ if [[ "${MINIMAX_H3_ENTRYPOINT_SMOKE:-0}" == "1" ]]; then
   test -d "${MODEL_DIR}/auto_mosaic"
   test -f "${STORY_NODE_ROOT}/mosaic_nodes.py"
   test -f "${STORY_NODE_ROOT}/turbo_nodes.py"
+  test -f "${STORY_NODE_ROOT}/memory_nodes.py"
   test -f "${PROJECT_DIR}/manifests/auto_mosaic.json"
   test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_01_quality.json"
   test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_02_fast_fbcache.json"

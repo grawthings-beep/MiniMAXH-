@@ -21,11 +21,12 @@ ComfyUIへ表示するMiniMax H3ワークフローは、次の3本だけです�
 - 起動時に取得したcreator LoRAの選択と強度変更
 - `RealESRGAN_x2plus`による完成フレーム2倍化
 - 完成動画だけを対象にするCPU自動モザイク
+- sampling直後のモデル解放とH3ネイティブタイルVideo VAE Decode
 - H3ネイティブの24fpsステレオ音声
 
 2xが不要なら`ImageUpscaleWithModel`をbypassします。モザイクは
-`WanAutoMosaicVideo`ノードの`enabled`でON/OFFできます。LoRAは強度`0.0`で効果を
-無効化できます。
+`WanAutoMosaicVideo`ノードの`enabled`でON/OFFできます。LoRA操作はサブグラフ外の
+紫色`LoRA CONTROLS`グループへ常時表示され、強度`0.0`ならLoRAファイルをロードしません。
 
 旧I2V/R2V/Storyboard/EasyCache派生JSONは互換性・再生成テスト用としてrepo内に残しますが、
 RunPodのワークフロー一覧へはコピーしません。起動時に旧`MiniMax_H3`配布ワークフローを消し、
@@ -52,6 +53,8 @@ Community Cloudのhost driver差を吸収するため、同じworkflowを2種類
 - EasyCacheとFirstBlockCacheは併用しない
 - TurboとFirstBlockCacheも既定では併用しない
 - `--fast-disk`はモデル退避I/Oを増やす場合があるため既定で使わない
+- 全3プリセットでsampling後にH3/text encoderをGPUから解放し、nested AV latentから
+  video側だけを分離して、H3 VAE内蔵の256px空間タイル・17-frame時間chunkでdecode
 
 FirstBlockCache custom nodeはcommit
 `725973c3bfd9de6dce249bc93dc5fe27f820df31`を固定します。Turbo LoRAはHugging Face
@@ -130,13 +133,13 @@ DOWNLOAD_RETRIES=3
 MODEL_VERIFY=size
 MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json
 REQUIRE_COMFY_KITCHEN_CUDA=0
-COMFYUI_ARGS="--vram-headroom 2"
+COMFYUI_ARGS=--lowvram --vram-headroom 2
 TINI_SUBREAPER=1
 ```
 
 `fast-cu130`を使う場合だけ`REQUIRE_COMFY_KITCHEN_CUDA=1`へ変更します。旧Templateの
 誤って設定された旧v1.1 profile `--disable-dynamic-vram --reserve-vram 4` は、起動時に
-`--vram-headroom 2`へ自動修正されます。DynamicVRAMを無効化すると、CUDA 12.8の
+`--lowvram --vram-headroom 2`へ自動修正されます。DynamicVRAMを無効化すると、CUDA 12.8の
 INT8 eager fallbackが一時バッファを確保できず、24GB/32GB GPUでOOMしやすくなります。
 `REQUIRE_COMFY_KITCHEN_CUDA=0`
 だけを旧cu130 imageへ設定してもdriver非互換は解消しません。
@@ -182,17 +185,22 @@ Quality/Fastではcreator LoRAだけが適用されます。Turboではモデル
 INT8 FL2VA → Turbo Mode（8-step/4-step＋steps出力）→ 選択creator LoRA → SigmaShift 6/3 → Scheduler/Guider
 ```
 
-`Turbo Mode`のプルダウン以外の配線を変更する必要はありません。creator LoRAは
-プルダウンでV1/V2を選び、強度を調整できます。Quality/Fastの既定は
+メインキャンバスの`TURBO LoRA`プルダウン以外の配線を変更する必要はありません。
+creator LoRAも隣の`OPTIONAL CREATOR LoRA`でV1/V2を選び、強度を調整できます。
+サブグラフを展開する必要はありません。Quality/Fastの既定は
 `HMNSFW_AIO_V2.safetensors / 0.5`、Turboだけは安定性のため`0.0`です。
+
+RTX 5090かつr580以上のhostでは`community-cu128`ではなく`fast-cu130`を使用してください。
+`REQUIRE_COMFY_KITCHEN_CUDA=1`だけではCUDA 13 backendへ切り替わりません。Docker image自体を
+`ghcr.io/grawthings-beep/minimax-h3-i2v:fast-cu130`へ変更する必要があります。
 
 ## 検証
 
 ```bash
 python -m unittest discover -s tests -v
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_01_quality.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_02_fast_fbcache.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --expect-first-block-cache
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_03_turbo.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 --expect-turbo
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_01_quality.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_02_fast_fbcache.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --expect-first-block-cache
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_03_turbo.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 --expect-turbo
 bash -n scripts/entrypoint.sh scripts/download_models.sh
 ```
 
