@@ -80,7 +80,12 @@ class TurboProfileTests(unittest.TestCase):
         self.assertEqual(steps_4, 4)
         self.assertEqual(len(loads), 2, "same active profile should reuse its state dict")
         self.assertEqual(len(patches), 3)
-        self.assertTrue(all(call[3:5] == (1.0, 0.0) for call in patches))
+        self.assertTrue(
+            all(
+                call[3:5] == (turbo.TURBO_DEFAULT_STRENGTH, 0.0)
+                for call in patches
+            )
+        )
         self.assertTrue(
             str(selector._loaded_lora[0]).endswith(turbo.TURBO_4STEP_MODEL)
         )
@@ -90,9 +95,12 @@ class TurboProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unknown MiniMax H3 Turbo profile"):
             selector.apply_profile("base", "invalid")
 
-    def test_visible_turbo_control_emits_selected_profile(self):
+    def test_visible_turbo_control_emits_selected_profile_and_strength(self):
         control = turbo.MiniMaxH3TurboLoRAControl()
-        self.assertEqual(control.select(turbo.PROFILE_4STEP), (turbo.PROFILE_4STEP,))
+        self.assertEqual(
+            control.select(turbo.PROFILE_4STEP, 0.65),
+            ({"profile": turbo.PROFILE_4STEP, "strength": 0.65},),
+        )
 
     def test_creator_control_filters_turbo_loras_and_disabled_skips_load(self):
         folder_paths = types.ModuleType("folder_paths")
@@ -100,23 +108,30 @@ class TurboProfileTests(unittest.TestCase):
             turbo.TURBO_8STEP_MODEL,
             "custom_creator.safetensors",
             "HMNSFW_AIO_V2.safetensors",
+            turbo.ANIME_MOTION_MODEL,
+            turbo.ANIME_STYLE_MODEL,
         ]
         with mock.patch.dict(sys.modules, {"folder_paths": folder_paths}):
-            choices = turbo.MiniMaxH3CreatorLoRAControl.INPUT_TYPES()["required"][
-                "lora_name"
-            ][0]
+            inputs = turbo.MiniMaxH3CreatorLoRAControl.INPUT_TYPES()["required"]
+            choices = inputs["lora_1_name"][0]
         self.assertEqual(choices[0], turbo.CREATOR_LORA_DISABLED)
         self.assertNotIn(turbo.TURBO_8STEP_MODEL, choices)
         self.assertIn("custom_creator.safetensors", choices)
+        self.assertIn(turbo.ANIME_MOTION_MODEL, choices)
+        self.assertIn(turbo.ANIME_STYLE_MODEL, choices)
+        self.assertEqual(inputs["lora_2_name"][0], choices)
 
         config = turbo.MiniMaxH3CreatorLoRAControl().select(
-            "HMNSFW_AIO_V2.safetensors", 0.0
+            "HMNSFW_AIO_V2.safetensors",
+            0.0,
+            turbo.ANIME_STYLE_MODEL,
+            0.0,
         )[0]
         applicator = turbo.MiniMaxH3CreatorLoRAApply()
         self.assertEqual(applicator.apply("base", config), ("base",))
-        self.assertIsNone(applicator._loaded_lora)
+        self.assertEqual(applicator._loaded_loras, {})
 
-    def test_creator_apply_loads_only_enabled_active_lora(self):
+    def test_creator_apply_stacks_and_caches_only_enabled_active_loras(self):
         loads = []
         folder_paths = types.ModuleType("folder_paths")
         folder_paths.get_full_path_or_raise = (
@@ -135,13 +150,32 @@ class TurboProfileTests(unittest.TestCase):
                 None,
             )
         )
-        config = {"lora_name": "custom_creator.safetensors", "strength": 0.5}
+        config = {
+            "loras": [
+                {"lora_name": "custom_creator.safetensors", "strength": 0.5},
+                {"lora_name": turbo.ANIME_STYLE_MODEL, "strength": 1.0},
+            ]
+        }
         applicator = turbo.MiniMaxH3CreatorLoRAApply()
         with mock.patch.dict(sys.modules, {"folder_paths": folder_paths, "comfy": comfy}):
             first = applicator.apply("base", config)
             second = applicator.apply("base", config)
         self.assertEqual(first, second)
-        self.assertEqual(len(loads), 1)
+        self.assertEqual(len(loads), 2)
+        self.assertEqual(len(applicator._loaded_loras), 2)
+        self.assertIn("custom_creator.safetensors:0.5", first[0])
+        self.assertTrue(first[0].endswith(f"{turbo.ANIME_STYLE_MODEL}:1.0"))
+
+    def test_creator_apply_rejects_duplicate_slots(self):
+        applicator = turbo.MiniMaxH3CreatorLoRAApply()
+        config = {
+            "loras": [
+                {"lora_name": turbo.ANIME_STYLE_MODEL, "strength": 1.0},
+                {"lora_name": turbo.ANIME_STYLE_MODEL, "strength": 0.5},
+            ]
+        }
+        with self.assertRaisesRegex(ValueError, "at most one slot"):
+            applicator.apply("base", config)
 
 
 if __name__ == "__main__":

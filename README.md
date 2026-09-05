@@ -115,12 +115,20 @@ H3_LORA_REPO_ID=uwgm/nikke-civitai-backup
 H3_LORA_SOURCE_PATH=hmmotion_minimax-h3_epoch12.safetensors
 H3_LORA_REVISION=main
 H3_CIVITAI_LORA_URL=https://civitai.red/api/download/models/3206518?fileId=3088013
+H3_ANIME_MOTION_URL=https://civitai.com/api/download/models/3299686
+H3_ANIME_MOTION_METADATA_URL=https://civitai.com/api/v1/model-versions/3299686
+H3_ANIME_MOTION_FILENAME=H3_Motion_Booster_anime.safetensors
+H3_ANIME_STYLE_REPO_ID=Kutches/minmax
+H3_ANIME_STYLE_SOURCE_PATH=NSFW_ANIME_V7_H3-step00019500.safetensors
+H3_ANIME_STYLE_REVISION=29bca53f5e27ed855fc00e54519443387ddf8691
 
 H3_TURBO_REQUIRED=1
-H3_TURBO_REPO_ID=lightx2v/Minimax-h3-Turbo
-H3_TURBO_8STEP_SOURCE_PATH=minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors
+H3_TURBO_8STEP_REPO_ID=Kutches/minmax
+H3_TURBO_8STEP_SOURCE_PATH=minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors
+H3_TURBO_8STEP_REVISION=29bca53f5e27ed855fc00e54519443387ddf8691
+H3_TURBO_4STEP_REPO_ID=lightx2v/Minimax-h3-Turbo
 H3_TURBO_4STEP_SOURCE_PATH=minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors
-H3_TURBO_REVISION=2f015e66b37c585cea9dc4ae6f1850ea8788e742
+H3_TURBO_4STEP_REVISION=2f015e66b37c585cea9dc4ae6f1850ea8788e742
 
 AUTO_MOSAIC_REQUIRED=1
 AUTO_MOSAIC_MANIFEST=/opt/minimax-h3/manifests/auto_mosaic.json
@@ -154,8 +162,8 @@ MiniMax H3のライセンスを確認し、利用者本人または組織がAppl
 
 1. GPU、driver、VRAM、RAM、disk、ComfyKitchen CUDAを診断
 2. H3ベースモデル4ファイルとReal-ESRGANを取得
-3. HMMotion V1とHMNSFW AIO V2 creator LoRAを取得
-4. LightX2V Turbo 8-step/4-step 768p LoRAをHugging Face Xetで同時取得
+3. HMMotion V1、HMNSFW AIO V2、Shake Harder ANIME、2D Anime NSFW v0.4を並列取得
+4. LightX2V Turbo 8-step FL2VA/4-step 768p LoRAをHugging Face Xetで同時取得
 5. YOLO11 segmentationモデルをCivitaiから再開可能download
 6. サイズ、SHA256、safetensors header、ZIP CRCを対象ごとに検証
 7. 全必須モデルとcustom nodeが揃った場合だけComfyUIを起動
@@ -185,10 +193,12 @@ Quality/Fastではcreator LoRAだけが適用されます。Turboではモデル
 INT8 FL2VA → Turbo Mode（8-step/4-step＋steps出力）→ 選択creator LoRA → SigmaShift 6/3 → Scheduler/Guider
 ```
 
-メインキャンバスの`TURBO LoRA`プルダウン以外の配線を変更する必要はありません。
-creator LoRAも隣の`OPTIONAL CREATOR LoRA`でV1/V2を選び、強度を調整できます。
+メインキャンバスの`TURBO LoRA`でprofileと強度を変更できます。隣の
+`CREATOR LoRA STACK`は2スロットあり、4本のcreator/style LoRAを任意に2本まで重ねられます。
 サブグラフを展開する必要はありません。Quality/Fastの既定は
-`HMNSFW_AIO_V2.safetensors / 0.5`、Turboだけは安定性のため`0.0`です。
+`HMNSFW_AIO_V2.safetensors / 0.5`＋slot 2 Disabledです。Turboの既定は
+`Turbo 8-step / 0.70`＋`Shake Harder ANIME / 0.70`＋
+`2D Anime Style NSFW v0.4 19.5k / 1.00`です。OOM時はslot 2、slot 1の順にDisabledへ戻してください。
 
 RTX 5090かつr580以上のhostでは`community-cu128`ではなく`fast-cu130`を使用してください。
 `REQUIRE_COMFY_KITCHEN_CUDA=1`だけではCUDA 13 backendへ切り替わりません。Docker image自体を
@@ -200,7 +210,7 @@ RTX 5090かつr580以上のhostでは`community-cu128`ではなく`fast-cu130`�
 python -m unittest discover -s tests -v
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_01_quality.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5
 python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_02_fast_fbcache.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --expect-first-block-cache
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_03_turbo.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 --expect-turbo
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_03_turbo.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora H3_Motion_Booster_anime.safetensors --expect-lora-strength 0.7 --expect-lora-2 NSFW_ANIME_V7_H3-step00019500.safetensors --expect-lora-2-strength 1.0 --expect-turbo
 bash -n scripts/entrypoint.sh scripts/download_models.sh
 ```
 

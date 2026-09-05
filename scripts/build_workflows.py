@@ -28,6 +28,23 @@ HMNSFW_V2_URL = (
     "https://civitai.red/api/download/models/3206518?fileId=3088013"
 )
 HMNSFW_V2_STRENGTH = 0.5
+ANIME_MOTION_MODEL = "H3_Motion_Booster_anime.safetensors"
+ANIME_MOTION_URL = "https://civitai.com/api/download/models/3299686"
+ANIME_MOTION_STRENGTH = 0.7
+ANIME_STYLE_MODEL = "NSFW_ANIME_V7_H3-step00019500.safetensors"
+KUTCHES_REVISION = "29bca53f5e27ed855fc00e54519443387ddf8691"
+ANIME_STYLE_URL = (
+    "https://huggingface.co/Kutches/minmax/resolve/"
+    f"{KUTCHES_REVISION}/{ANIME_STYLE_MODEL}"
+)
+ANIME_STYLE_STRENGTH = 1.0
+CREATOR_DISABLED = "Disabled (Turbo/base model only)"
+CREATOR_MODEL_ENTRIES = (
+    {"name": HMNSFW_V2_MODEL, "url": HMNSFW_V2_URL, "directory": "loras"},
+    {"name": LORA_MODEL, "url": LORA_URL, "directory": "loras"},
+    {"name": ANIME_MOTION_MODEL, "url": ANIME_MOTION_URL, "directory": "loras"},
+    {"name": ANIME_STYLE_MODEL, "url": ANIME_STYLE_URL, "directory": "loras"},
+)
 AUTO_MOSAIC_MODEL = "ntd11_anime_nsfw_segm_v5.pt"
 AUTO_MOSAIC_URL = "https://civitai.com/api/download/models/2266294"
 AUTO_MOSAIC_DEFAULTS = [
@@ -49,23 +66,24 @@ FIRST_BLOCK_CACHE_VALUES = [
     2,
     False,
 ]
-TURBO_REVISION = "2f015e66b37c585cea9dc4ae6f1850ea8788e742"
+TURBO_4STEP_REVISION = "2f015e66b37c585cea9dc4ae6f1850ea8788e742"
 TURBO_8STEP_MODEL = (
-    "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+    "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
 )
 TURBO_4STEP_MODEL = (
     "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
 )
 TURBO_8STEP_URL = (
-    "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/"
-    f"{TURBO_REVISION}/{TURBO_8STEP_MODEL}"
+    "https://huggingface.co/Kutches/minmax/resolve/"
+    f"{KUTCHES_REVISION}/{TURBO_8STEP_MODEL}"
 )
 TURBO_4STEP_URL = (
     "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/"
-    f"{TURBO_REVISION}/{TURBO_4STEP_MODEL}"
+    f"{TURBO_4STEP_REVISION}/{TURBO_4STEP_MODEL}"
 )
-TURBO_PROFILE_8STEP = "8-step v1.0 768p (recommended)"
+TURBO_PROFILE_8STEP = "8-step v1.0 FL2VA (recommended)"
 TURBO_PROFILE_4STEP = "4-step v1.2 768p (fastest)"
+TURBO_DEFAULT_STRENGTH = 0.7
 CREATOR_CONTROL_TYPE = "H3_CREATOR_LORA"
 TURBO_CONTROL_TYPE = "H3_TURBO_PROFILE"
 
@@ -448,9 +466,21 @@ def add_turbo_profiles(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         for node in nodes
         if node["type"] == "LoraLoaderModelOnly"
     )
-    creator["widgets_values"][1] = 0.0
+    creator["widgets_values"] = [
+        ANIME_MOTION_MODEL,
+        ANIME_MOTION_STRENGTH,
+        ANIME_STYLE_MODEL,
+        ANIME_STYLE_STRENGTH,
+    ]
+    creator.setdefault("properties", {})["models"] = copy.deepcopy(
+        [
+            entry
+            for entry in CREATOR_MODEL_ENTRIES
+            if entry["name"] in {ANIME_MOTION_MODEL, ANIME_STYLE_MODEL}
+        ]
+    )
     creator["title"] = (
-        "Optional creator LoRA (OFF by default for 32GB stability; enable manually)"
+        "Anime motion 0.70 + 2D Anime v0.4 1.00 (visible on main canvas)"
     )
     unet_consumers = [link for link in links if link_origin(link) == int(unet["id"])]
     if {link_target(link) for link in unet_consumers} != {int(creator["id"])}:
@@ -475,6 +505,12 @@ def add_turbo_profiles(workflow: dict[str, Any], label: str) -> dict[str, Any]:
                 "widget": {"name": "profile"},
                 "link": None,
             },
+            {
+                "name": "strength",
+                "type": "FLOAT",
+                "widget": {"name": "strength"},
+                "link": None,
+            },
         ],
         "outputs": [
             {"name": "MODEL", "type": "MODEL", "links": []},
@@ -496,7 +532,7 @@ def add_turbo_profiles(workflow: dict[str, Any], label: str) -> dict[str, Any]:
                 },
             ],
         },
-        "widgets_values": [TURBO_PROFILE_8STEP],
+        "widgets_values": [TURBO_PROFILE_8STEP, TURBO_DEFAULT_STRENGTH],
     }
     _append_model_node(
         graph, source=unet, consumers=unet_consumers, node=turbo_profile
@@ -601,11 +637,18 @@ def add_turbo_profiles(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         "scheduler": "simple",
         "shift_video": 6,
         "shift_audio": 3,
-        "source_revision": TURBO_REVISION,
-        "creator_lora_default_strength": 0.0,
+        "source_revisions": {
+            "8-step": KUTCHES_REVISION,
+            "4-step": TURBO_4STEP_REVISION,
+        },
+        "turbo_default_strength": TURBO_DEFAULT_STRENGTH,
+        "creator_lora_defaults": [
+            [ANIME_MOTION_MODEL, ANIME_MOTION_STRENGTH],
+            [ANIME_STYLE_MODEL, ANIME_STYLE_STRENGTH],
+        ],
         "memory_note": (
-            "Only the selected Turbo state dict is retained; creator LoRA remains "
-            "disabled by default to avoid dual-LoRA patch pressure"
+            "Only the selected Turbo state dict and active creator LoRAs are "
+            "retained; disable either creator slot if more headroom is needed"
         ),
     }
     note = next(
@@ -621,16 +664,16 @@ def add_turbo_profiles(workflow: dict[str, Any], label: str) -> dict[str, Any]:
         note["widgets_values"][0] = note["widgets_values"][0].replace(
             "`HMNSFW_AIO_V2.safetensors` is applied to the diffusion model with the built-in "
             "`LoraLoaderModelOnly` node at strength `0.50`.",
-            "`HMNSFW_AIO_V2.safetensors` remains selectable, but this Turbo preset disables "
-            "the creator LoRA at strength `0.00` by default.",
+            "`HMNSFW_AIO_V2.safetensors` remains selectable; this Turbo preset instead "
+            "defaults to the two-slot anime motion/style stack.",
         )
         note["widgets_values"][0] += (
             "\n\n## 03 Turbo · LightX2V 4/8-step 768p\n"
             "`Turbo Mode`だけで8-step v1.0（推奨）または4-step v1.2（最速）を選択できます。"
             "選択に連動して正しいLoRAとstepsが切り替わり、両方ともSigmaShift 6/3、"
             "Euler/simpleを使用します。"
-            "32GBで208 patchesを避けるためcreator LoRAは初期値0.0です。必要な場合だけ手動で有効化し、"
-            "二回目以降に不安定になる場合は0.0へ戻してください。音声や速い動きが崩れる場合は"
+            "Turbo強度は0.70、Shake Harder ANIMEは0.70、2D Anime NSFW v0.4は1.00が初期値です。"
+            "メモリ不足時はcreator slot 2、次にslot 1をDisabledへ戻してください。音声や速い動きが崩れる場合は"
             "8-step、02 Fast、または01 Qualityへ戻してください。"
         )
     return turbo
@@ -949,8 +992,18 @@ def expose_lora_controls(workflow: dict[str, Any], *, turbo: bool) -> dict[str, 
         node for node in visible["nodes"] if str(node["type"]) == str(graph["id"])
     )
     creator = next(node for node in graph["nodes"] if node["type"] == "LoraLoaderModelOnly")
-    creator_model, creator_strength = creator.get("widgets_values", [HMNSFW_V2_MODEL, 0.0])[:2]
+    creator_values = list(
+        creator.get("widgets_values", [HMNSFW_V2_MODEL, 0.0])
+    )
+    creator_values.extend([CREATOR_DISABLED, 0.0])
+    creator_1_model, creator_1_strength, creator_2_model, creator_2_strength = (
+        creator_values[:4]
+    )
     creator_models = copy.deepcopy(creator.get("properties", {}).get("models", []))
+    declared_names = {entry.get("name") for entry in creator_models}
+    for entry in CREATOR_MODEL_ENTRIES:
+        if entry["name"] not in declared_names:
+            creator_models.append(copy.deepcopy(entry))
     creator["type"] = "MiniMaxH3CreatorLoRAApply"
     creator["title"] = "Apply top-level Creator LoRA control"
     creator["properties"]["Node name for S&R"] = "MiniMaxH3CreatorLoRAApply"
@@ -964,21 +1017,28 @@ def expose_lora_controls(workflow: dict[str, Any], *, turbo: bool) -> dict[str, 
         "id": next_id,
         "type": "MiniMaxH3CreatorLoRAControl",
         "pos": [-210 if turbo else -730, 4550],
-        "size": [480, 150],
+        "size": [480, 230],
         "flags": {},
         "order": max(int(node.get("order", 0)) for node in visible["nodes"]) + 1,
         "mode": 0,
         "inputs": [
-            {"name": "lora_name", "type": "COMBO", "widget": {"name": "lora_name"}, "link": None},
-            {"name": "strength", "type": "FLOAT", "widget": {"name": "strength"}, "link": None},
+            {"name": "lora_1_name", "type": "COMBO", "widget": {"name": "lora_1_name"}, "link": None},
+            {"name": "lora_1_strength", "type": "FLOAT", "widget": {"name": "lora_1_strength"}, "link": None},
+            {"name": "lora_2_name", "type": "COMBO", "widget": {"name": "lora_2_name"}, "link": None},
+            {"name": "lora_2_strength", "type": "FLOAT", "widget": {"name": "lora_2_strength"}, "link": None},
         ],
         "outputs": [{"name": "creator_lora", "type": CREATOR_CONTROL_TYPE, "links": []}],
-        "title": "OPTIONAL CREATOR LoRA — select here (0.0 = no load)",
+        "title": "CREATOR LoRA STACK — two independent slots",
         "properties": {
             "Node name for S&R": "MiniMaxH3CreatorLoRAControl",
             "models": creator_models,
         },
-        "widgets_values": [creator_model, float(creator_strength)],
+        "widgets_values": [
+            creator_1_model,
+            float(creator_1_strength),
+            creator_2_model,
+            float(creator_2_strength),
+        ],
     }
     _connect_visible_control(
         visible,
@@ -1001,20 +1061,21 @@ def expose_lora_controls(workflow: dict[str, Any], *, turbo: bool) -> dict[str, 
             "id": next_numeric_id(visible["nodes"]),
             "type": "MiniMaxH3TurboLoRAControl",
             "pos": [-730, 4550],
-            "size": [480, 110],
+            "size": [480, 150],
             "flags": {},
             "order": max(int(node.get("order", 0)) for node in visible["nodes"]) + 1,
             "mode": 0,
             "inputs": [
-                {"name": "profile", "type": "COMBO", "widget": {"name": "profile"}, "link": None}
+                {"name": "profile", "type": "COMBO", "widget": {"name": "profile"}, "link": None},
+                {"name": "strength", "type": "FLOAT", "widget": {"name": "strength"}, "link": None},
             ],
             "outputs": [{"name": "turbo_profile", "type": TURBO_CONTROL_TYPE, "links": []}],
-            "title": "TURBO LoRA — choose 8-step or 4-step here",
+            "title": "TURBO LoRA — profile and strength",
             "properties": {
                 "Node name for S&R": "MiniMaxH3TurboLoRAControl",
                 "models": copy.deepcopy(selector.get("properties", {}).get("models", [])),
             },
-            "widgets_values": [TURBO_PROFILE_8STEP],
+            "widgets_values": [TURBO_PROFILE_8STEP, TURBO_DEFAULT_STRENGTH],
         }
         _connect_visible_control(
             visible,
@@ -1022,7 +1083,7 @@ def expose_lora_controls(workflow: dict[str, Any], *, turbo: bool) -> dict[str, 
             composite=composite,
             control=turbo_control,
             target=selector,
-            target_slot=2,
+            target_slot=3,
             input_name="turbo_lora_control",
             socket_type=TURBO_CONTROL_TYPE,
         )
@@ -1032,7 +1093,7 @@ def expose_lora_controls(workflow: dict[str, Any], *, turbo: bool) -> dict[str, 
         {
             "id": max((int(group.get("id", 0)) for group in visible.get("groups", [])), default=0) + 1,
             "title": "LoRA CONTROLS — no subgraph expansion needed",
-            "bounding": [-760, 4490, 1050 if turbo else 540, 250],
+            "bounding": [-760, 4490, 1050 if turbo else 540, 340],
             "color": "#8f6fbd",
             "flags": {},
         }
@@ -1041,6 +1102,8 @@ def expose_lora_controls(workflow: dict[str, Any], *, turbo: bool) -> dict[str, 
         "creator": True,
         "turbo": turbo,
         "creator_zero_strength_skips_file_load": True,
+        "creator_slots": 2,
+        "turbo_strength_visible": turbo,
     }
     return visible
 

@@ -240,8 +240,10 @@ class AssetTests(unittest.TestCase):
                 [
                     "--expect-upscale", "--expect-auto-mosaic", "--expect-turbo", "--expect-memory-safe-decode",
                     "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
-                    "--expect-lora", "HMNSFW_AIO_V2.safetensors",
-                    "--expect-lora-strength", "0.0",
+                    "--expect-lora", "H3_Motion_Booster_anime.safetensors",
+                    "--expect-lora-strength", "0.7",
+                    "--expect-lora-2", "NSFW_ANIME_V7_H3-step00019500.safetensors",
+                    "--expect-lora-2-strength", "1.0",
                 ],
             ),
         )
@@ -311,7 +313,12 @@ class AssetTests(unittest.TestCase):
         self.assertIn("H3_LORA_SELECTION=all", dockerfile)
         self.assertIn("H3_LORA_REPO_ID=uwgm/nikke-civitai-backup", dockerfile)
         self.assertIn("H3_TURBO_REQUIRED=1", dockerfile)
-        self.assertIn("lightx2v/Minimax-h3-Turbo", dockerfile)
+        self.assertIn("H3_TURBO_8STEP_REPO_ID=Kutches/minmax", dockerfile)
+        self.assertIn(
+            "H3_TURBO_4STEP_REPO_ID=lightx2v/Minimax-h3-Turbo", dockerfile
+        )
+        self.assertIn("H3_ANIME_MOTION_FILENAME=H3_Motion_Booster_anime.safetensors", dockerfile)
+        self.assertIn("H3_ANIME_STYLE_REPO_ID=Kutches/minmax", dockerfile)
         self.assertIn("civitai.red/api/download/models/3206518?fileId=3088013", dockerfile)
         self.assertIn("ultralytics.__version__ == '8.4.104'", dockerfile)
         self.assertIn("AUTO_MOSAIC_REQUIRED=1", dockerfile)
@@ -371,6 +378,8 @@ class AssetTests(unittest.TestCase):
         self.assertIn("download_auto_mosaic.py", entrypoint)
         self.assertIn("download_turbo_lora.py", entrypoint)
         self.assertIn("TURBO_DOWNLOAD_PID", entrypoint)
+        self.assertIn("download_anime_loras.py", entrypoint)
+        self.assertIn("ANIME_LORA_DOWNLOAD_PID", entrypoint)
         self.assertIn("entrypoint contract passed before network/model startup", entrypoint)
         self.assertIn("MODEL_DOWNLOAD_PID", entrypoint)
         self.assertIn("01_MiniMax_H3_Quality_2x.json", entrypoint)
@@ -381,6 +390,11 @@ class AssetTests(unittest.TestCase):
         self.assertIn("required Director segments-mode memory patch is missing", entrypoint)
         self.assertIn("required Director FL2V Motion Context fix is missing", entrypoint)
         self.assertIn('${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors', entrypoint)
+        self.assertIn('${MODEL_DIR}/loras/H3_Motion_Booster_anime.safetensors', entrypoint)
+        self.assertIn(
+            '${MODEL_DIR}/loras/NSFW_ANIME_V7_H3-step00019500.safetensors',
+            entrypoint,
+        )
 
     def test_runpod_template_uses_safe_performance_defaults(self) -> None:
         template = json.loads((ROOT / "runpod-template.example.json").read_text(encoding="utf-8"))
@@ -401,16 +415,29 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(template["env"]["H3_LORA_SELECTION"], "all")
         self.assertEqual(template["env"]["H3_LORA_REPO_ID"], "uwgm/nikke-civitai-backup")
         self.assertEqual(template["env"]["H3_TURBO_REQUIRED"], "1")
-        self.assertEqual(template["env"]["H3_TURBO_REPO_ID"], "lightx2v/Minimax-h3-Turbo")
+        self.assertNotIn("H3_TURBO_REPO_ID", template["env"])
+        self.assertEqual(template["env"]["H3_TURBO_8STEP_REPO_ID"], "Kutches/minmax")
+        self.assertEqual(
+            template["env"]["H3_TURBO_4STEP_REPO_ID"],
+            "lightx2v/Minimax-h3-Turbo",
+        )
         self.assertEqual(
             template["env"]["H3_TURBO_8STEP_SOURCE_PATH"],
-            "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+            "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
         )
         self.assertEqual(
             template["env"]["H3_TURBO_4STEP_SOURCE_PATH"],
             "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
         )
         self.assertNotIn("H3_TURBO_SOURCE_PATH", template["env"])
+        self.assertEqual(
+            template["env"]["H3_ANIME_MOTION_FILENAME"],
+            "H3_Motion_Booster_anime.safetensors",
+        )
+        self.assertEqual(
+            template["env"]["H3_ANIME_STYLE_SOURCE_PATH"],
+            "NSFW_ANIME_V7_H3-step00019500.safetensors",
+        )
         self.assertEqual(
             template["env"]["MODEL_MANIFEST"],
             "/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json",
@@ -441,10 +468,12 @@ class AssetTests(unittest.TestCase):
         self.assertIn("BSD 3-Clause License", notice)
         self.assertIn("hmmotion_minimax-h3_epoch12.safetensors", notice)
         self.assertIn("HMNSFW_AIO_V2.safetensors", notice)
+        self.assertIn("H3_Motion_Booster_anime.safetensors", notice)
+        self.assertIn("NSFW_ANIME_V7_H3-step00019500.safetensors", notice)
         self.assertIn("ComfyUI_MiniMaxH3_Director", notice)
         self.assertIn("a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7", notice)
         self.assertIn(
-            "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+            "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
             notice,
         )
         self.assertIn(
@@ -557,21 +586,80 @@ class AssetTests(unittest.TestCase):
             self.assertEqual(assets["8STEP"].expected_size, 1_956_193_000)
             self.assertEqual(
                 assets["8STEP"].expected_sha256,
-                "08cfe946033af7d27719b964b6e0a0e50c32138daabbd6ce4137e23df6bf9980",
+                "2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e",
+            )
+            self.assertEqual(assets["8STEP"].repo_id, "Kutches/minmax")
+            self.assertEqual(
+                assets["8STEP"].revision,
+                "29bca53f5e27ed855fc00e54519443387ddf8691",
             )
             self.assertEqual(
                 assets["4STEP"].expected_sha256,
                 "c8168ebc17bbacc4296103dda2fec1ba85b24392fa08cf2bfbcef0cff0dc3cc8",
             )
-            self.assertEqual(
-                turbo.DEFAULT_REVISION,
-                "2f015e66b37c585cea9dc4ae6f1850ea8788e742",
-            )
+            self.assertEqual(assets["4STEP"].repo_id, "lightx2v/Minimax-h3-Turbo")
             self.assertEqual(redirected.get_header("Range"), "bytes=1024-")
             size, tensors = civitai.verify_download(
                 model, model.stat().st_size, hashlib.sha256(model.read_bytes()).hexdigest()
             )
             self.assertEqual((size, tensors), (model.stat().st_size, 1))
+
+    def test_anime_lora_downloader_pins_style_and_resolves_exact_motion_file(self) -> None:
+        scripts_path = str(ROOT / "scripts")
+        sys.path.insert(0, scripts_path)
+        try:
+            anime_path = ROOT / "scripts" / "download_anime_loras.py"
+            spec = importlib.util.spec_from_file_location(
+                "download_anime_loras_test", anime_path
+            )
+            self.assertIsNotNone(spec)
+            self.assertIsNotNone(spec.loader)
+            anime = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(anime)
+        finally:
+            sys.path.remove(scripts_path)
+
+        self.assertEqual(anime.MOTION_VERSION_ID, 3_299_686)
+        self.assertEqual(anime.MOTION_DESTINATION, "H3_Motion_Booster_anime.safetensors")
+        self.assertEqual(
+            anime.validate_metadata_url(anime.MOTION_METADATA_URL),
+            anime.MOTION_METADATA_URL,
+        )
+        with self.assertRaises(ValueError):
+            anime.validate_metadata_url(
+                "https://example.com/api/v1/model-versions/3299686"
+            )
+        self.assertEqual(anime.STYLE_REPO_ID, "Kutches/minmax")
+        self.assertEqual(
+            anime.STYLE_REVISION,
+            "29bca53f5e27ed855fc00e54519443387ddf8691",
+        )
+        self.assertEqual(anime.STYLE_SIZE, 596_450_480)
+        self.assertEqual(
+            anime.STYLE_SHA256,
+            "c69a8e719b6784a8e475004cd47d34d1ddefbb5daa2d7670632cd3b459490b8d",
+        )
+        payload = {
+            "files": [
+                {
+                    "id": 12345,
+                    "name": anime.MOTION_DESTINATION,
+                    "hashes": {"SHA256": "a" * 64},
+                },
+                {
+                    "id": 54321,
+                    "name": "another_checkpoint.safetensors",
+                    "hashes": {"SHA256": "b" * 64},
+                },
+            ]
+        }
+        self.assertEqual(
+            anime.motion_file_metadata(payload, anime.MOTION_DESTINATION),
+            (12345, "a" * 64),
+        )
+        self.assertIn("fileId=12345", anime._motion_download_url(anime.MOTION_DEFAULT_URL, 12345))
+        with self.assertRaisesRegex(RuntimeError, "does not expose exactly one"):
+            anime.motion_file_metadata(payload, "wrong.safetensors")
 
     def test_verifier_accepts_a_matching_file(self) -> None:
         payload = b"minimax-h3-test"

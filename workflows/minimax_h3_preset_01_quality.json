@@ -374,25 +374,41 @@
       ],
       "size": [
         480,
-        150
+        230
       ],
       "flags": {},
       "order": 9,
       "mode": 0,
       "inputs": [
         {
-          "name": "lora_name",
+          "name": "lora_1_name",
           "type": "COMBO",
           "widget": {
-            "name": "lora_name"
+            "name": "lora_1_name"
           },
           "link": null
         },
         {
-          "name": "strength",
+          "name": "lora_1_strength",
           "type": "FLOAT",
           "widget": {
-            "name": "strength"
+            "name": "lora_1_strength"
+          },
+          "link": null
+        },
+        {
+          "name": "lora_2_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_2_name"
+          },
+          "link": null
+        },
+        {
+          "name": "lora_2_strength",
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_2_strength"
           },
           "link": null
         }
@@ -406,7 +422,7 @@
           ]
         }
       ],
-      "title": "OPTIONAL CREATOR LoRA — select here (0.0 = no load)",
+      "title": "CREATOR LoRA STACK — two independent slots",
       "properties": {
         "Node name for S&R": "MiniMaxH3CreatorLoRAControl",
         "models": [
@@ -414,12 +430,29 @@
             "name": "HMNSFW_AIO_V2.safetensors",
             "url": "https://civitai.red/api/download/models/3206518?fileId=3088013",
             "directory": "loras"
+          },
+          {
+            "name": "hmmotion_minimax-h3_epoch12.safetensors",
+            "url": "https://huggingface.co/uwgm/nikke-civitai-backup/resolve/main/hmmotion_minimax-h3_epoch12.safetensors",
+            "directory": "loras"
+          },
+          {
+            "name": "H3_Motion_Booster_anime.safetensors",
+            "url": "https://civitai.com/api/download/models/3299686",
+            "directory": "loras"
+          },
+          {
+            "name": "NSFW_ANIME_V7_H3-step00019500.safetensors",
+            "url": "https://huggingface.co/Kutches/minmax/resolve/29bca53f5e27ed855fc00e54519443387ddf8691/NSFW_ANIME_V7_H3-step00019500.safetensors",
+            "directory": "loras"
           }
         ]
       },
       "widgets_values": [
         "HMNSFW_AIO_V2.safetensors",
-        0.5
+        0.5,
+        "Disabled (Turbo/base model only)",
+        0.0
       ]
     }
   ],
@@ -493,7 +526,7 @@
         -760,
         4490,
         540,
-        250
+        340
       ],
       "color": "#8f6fbd",
       "flags": {}
@@ -2128,7 +2161,9 @@
     "visible_lora_controls": {
       "creator": true,
       "turbo": false,
-      "creator_zero_strength_skips_file_load": true
+      "creator_zero_strength_skips_file_load": true,
+      "creator_slots": 2,
+      "turbo_strength_visible": false
     }
   },
   "version": 0.4

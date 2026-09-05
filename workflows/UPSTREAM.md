@@ -25,10 +25,13 @@ selectable creator LoRA, 2x tail, and toggleable CPU auto-mosaic. The Fast graph
 uses `duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache` commit
 `725973c3bfd9de6dce249bc93dc5fe27f820df31`. The Turbo graph follows the
 ModelTC reference graph at commit `02e26d591f7a04d5d1a074c9566d5dd4f22f6225`
-and uses the public LightX2V weight revision
-`2f015e66b37c585cea9dc4ae6f1850ea8788e742`. Its local profile node switches
-the pinned 8-step v1.0 and 4-step v1.2 768p LoRAs together with the scheduler
-step count; both profiles retain the upstream 6/3 video/audio shifts.
+and uses the exact 8-step v1.0 FL2VA file mirrored by `Kutches/minmax` at
+`29bca53f5e27ed855fc00e54519443387ddf8691`, plus the 4-step v1.2 768p file at
+LightX2V revision `2f015e66b37c585cea9dc4ae6f1850ea8788e742`. Its local profile node switches
+the pinned LoRA and scheduler step count together, exposes Turbo strength on the
+main canvas, and retains the upstream 6/3 video/audio shifts. The same canvas
+also exposes a two-slot creator stack; the Turbo preset defaults to Shake Harder
+ANIME at 0.70 plus 2D Anime Style NSFW v0.4 19.5k at 1.00.
 
 The 2x variants use ComfyUI's built-in `UpscaleModelLoader` and
 `ImageUpscaleWithModel` nodes with the official `RealESRGAN_x2plus.pth` release:

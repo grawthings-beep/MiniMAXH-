@@ -12,13 +12,23 @@ from pathlib import Path
 FRONTEND_BUILTINS = {"MarkdownNote"}
 HMMOTION_LORA = "hmmotion_minimax-h3_epoch12.safetensors"
 HMNSFW_V2_LORA = "HMNSFW_AIO_V2.safetensors"
+ANIME_MOTION_LORA = "H3_Motion_Booster_anime.safetensors"
+ANIME_STYLE_LORA = "NSFW_ANIME_V7_H3-step00019500.safetensors"
+CREATOR_DISABLED = "Disabled (Turbo/base model only)"
+SELECTABLE_CREATOR_LORAS = {
+    HMMOTION_LORA,
+    HMNSFW_V2_LORA,
+    ANIME_MOTION_LORA,
+    ANIME_STYLE_LORA,
+}
 TURBO_8STEP_LORA = (
-    "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+    "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
 )
 TURBO_4STEP_LORA = (
     "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
 )
-TURBO_PROFILE_8STEP = "8-step v1.0 768p (recommended)"
+TURBO_PROFILE_8STEP = "8-step v1.0 FL2VA (recommended)"
+TURBO_DEFAULT_STRENGTH = 0.7
 AUTO_MOSAIC_MODEL = "auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"
 AUTO_MOSAIC_DEFAULTS = [
     "ntd11_anime_nsfw_segm_v5.pt",
@@ -213,7 +223,11 @@ def verify_upscale_wiring(
 
 
 def verify_lora_wiring(
-    workflow: dict[str, object], expected_model: str, expected_strength: float
+    workflow: dict[str, object],
+    expected_model: str,
+    expected_strength: float,
+    expected_model_2: str | None = None,
+    expected_strength_2: float = 0.0,
 ) -> None:
     external_control = next(
         (
@@ -275,12 +289,25 @@ def verify_lora_wiring(
     ):
         raise RuntimeError("Creator LoRA does not reach both scheduler and guider")
     settings_node = external_control or lora
-    if settings_node.get("widgets_values") != [expected_model, expected_strength]:
+    expected_values = [expected_model, expected_strength]
+    if external_control is not None:
+        expected_values.extend(
+            [expected_model_2 or CREATOR_DISABLED, expected_strength_2]
+        )
+    if settings_node.get("widgets_values") != expected_values:
         raise RuntimeError(
-            f"LoRA defaults have changed; expected {expected_model} at {expected_strength}"
+            f"LoRA defaults have changed; expected {expected_values}"
         )
     model_entries = settings_node.get("properties", {}).get("models", [])
-    if len(model_entries) != 1 or model_entries[0].get("directory") != "loras":
+    declared = {
+        entry.get("name")
+        for entry in model_entries
+        if entry.get("directory") == "loras"
+    }
+    expected_declared = (
+        SELECTABLE_CREATOR_LORAS if external_control is not None else {expected_model}
+    )
+    if declared != expected_declared:
         raise RuntimeError("The LoRA model metadata is incomplete")
     if external_control is not None:
         composite = next(
@@ -374,8 +401,8 @@ def verify_turbo_profiles(workflow: dict[str, object]) -> None:
     }
     if not expected <= actual:
         raise RuntimeError(f"Turbo model chain is incomplete: {sorted(expected - actual)}")
-    if turbo.get("widgets_values") != [TURBO_PROFILE_8STEP]:
-        raise RuntimeError("Turbo profile must default to the recommended 8-step 768p mode")
+    if turbo.get("widgets_values") != [TURBO_PROFILE_8STEP, TURBO_DEFAULT_STRENGTH]:
+        raise RuntimeError("Turbo profile must default to 8-step FL2VA at strength 0.70")
     turbo_models = turbo.get("properties", {}).get("models", [])
     if {
         (entry.get("name"), entry.get("directory")) for entry in turbo_models
@@ -393,9 +420,9 @@ def verify_turbo_profiles(workflow: dict[str, object]) -> None:
         creator,
     )
     creator_values = creator_control.get("widgets_values", [])
-    if len(creator_values) < 2 or creator_values[1] != 0.0:
+    if creator_values != [ANIME_MOTION_LORA, 0.7, ANIME_STYLE_LORA, 1.0]:
         raise RuntimeError(
-            "Turbo creator LoRA must default to 0.0 to avoid dual-LoRA patch pressure"
+            "Turbo creator stack must default to motion 0.70 + 2D anime 1.00"
         )
     if sigma.get("widgets_values") != [6.0, 3.0]:
         raise RuntimeError("Turbo 768p SigmaShift must remain video=6/audio=3")
@@ -431,7 +458,10 @@ def verify_turbo_profiles(workflow: dict[str, object]) -> None:
         ),
         None,
     )
-    if visible_turbo is None or visible_turbo.get("widgets_values") != [TURBO_PROFILE_8STEP]:
+    if visible_turbo is None or visible_turbo.get("widgets_values") != [
+        TURBO_PROFILE_8STEP,
+        TURBO_DEFAULT_STRENGTH,
+    ]:
         raise RuntimeError("Turbo 4/8-step LoRA selector must be visible on the main canvas")
     composite = next(
         node for node in workflow["nodes"] if str(node["type"]) == str(graph["id"])
@@ -703,9 +733,11 @@ def main() -> int:
         "--expect-lora",
         nargs="?",
         const=HMMOTION_LORA,
-        choices=(HMMOTION_LORA, HMNSFW_V2_LORA),
+        choices=tuple(sorted(SELECTABLE_CREATOR_LORAS)),
     )
     parser.add_argument("--expect-lora-strength", type=float)
+    parser.add_argument("--expect-lora-2", choices=tuple(sorted(SELECTABLE_CREATOR_LORAS)))
+    parser.add_argument("--expect-lora-2-strength", type=float)
     parser.add_argument("--require-video-reference", action="store_true")
     args = parser.parse_args()
 
@@ -737,6 +769,10 @@ def main() -> int:
         )
     if args.expect_lora:
         expected_models.add(f"loras/{args.expect_lora}")
+    if args.expect_lora_2:
+        expected_models.add(f"loras/{args.expect_lora_2}")
+    if any(node["type"] == "MiniMaxH3CreatorLoRAControl" for node in workflow.get("nodes", [])):
+        expected_models.update(f"loras/{name}" for name in SELECTABLE_CREATOR_LORAS)
     actual_models = workflow_models(nodes)
     if actual_models != expected_models:
         missing = sorted(expected_models - actual_models)
@@ -805,7 +841,13 @@ def main() -> int:
             if args.expect_lora_strength is not None
             else 1.0
         )
-        verify_lora_wiring(workflow, args.expect_lora, expected_strength)
+        verify_lora_wiring(
+            workflow,
+            args.expect_lora,
+            expected_strength,
+            args.expect_lora_2,
+            args.expect_lora_2_strength or 0.0,
+        )
     elif not args.expect_lora and "LoraLoaderModelOnly" in node_types:
         raise RuntimeError("LoRA is enabled in a non-LoRA workflow")
 
