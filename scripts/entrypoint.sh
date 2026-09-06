@@ -120,10 +120,6 @@ if [[ "${LORA_REQUIRED}" =~ ^(1|true|yes|on)$ ]]; then
     echo "[lora] CIVITAI_TOKEN is required for the selected Civitai V2 LoRA"
     exit 67
   fi
-  if lora_selected "motion_booster_anime" && [[ -z "${CIVITAI_TOKEN:-}" ]]; then
-    echo "[lora] CIVITAI_TOKEN is required for Shake Harder ANIME"
-    exit 76
-  fi
 fi
 
 mkdir -p "${MODEL_DIR}" "${MODEL_DIR}/auto_mosaic" \
@@ -171,8 +167,6 @@ python "${SCRIPT_DIR}/download_auto_mosaic.py" &
 AUTO_MOSAIC_DOWNLOAD_PID=$!
 python "${SCRIPT_DIR}/download_turbo_lora.py" &
 TURBO_DOWNLOAD_PID=$!
-python "${SCRIPT_DIR}/download_anime_loras.py" &
-ANIME_LORA_DOWNLOAD_PID=$!
 "${SCRIPT_DIR}/download_models.sh" &
 MODEL_DOWNLOAD_PID=$!
 
@@ -191,10 +185,6 @@ if ! wait "${AUTO_MOSAIC_DOWNLOAD_PID}"; then
 fi
 if ! wait "${TURBO_DOWNLOAD_PID}"; then
   echo "[download] selectable LightX2V Turbo 4/8-step LoRAs failed"
-  DOWNLOAD_FAILED=1
-fi
-if ! wait "${ANIME_LORA_DOWNLOAD_PID}"; then
-  echo "[download] selectable anime motion/style LoRAs failed"
   DOWNLOAD_FAILED=1
 fi
 if [[ "${DOWNLOAD_FAILED}" == "1" ]]; then
@@ -216,7 +206,7 @@ TURBO_REQUIRED="${H3_TURBO_REQUIRED:-1}"
 TURBO_REQUIRED="${TURBO_REQUIRED,,}"
 if [[ "${TURBO_REQUIRED}" =~ ^(1|true|yes|on)$ ]]; then
   for TURBO_MODEL in \
-    "${MODEL_DIR}/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors" \
+    "${MODEL_DIR}/loras/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors" \
     "${MODEL_DIR}/loras/minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"; do
     if [[ ! -s "${TURBO_MODEL}" ]]; then
       echo "[turbo] required verified LoRA is missing: ${TURBO_MODEL}"
@@ -225,20 +215,9 @@ if [[ "${TURBO_REQUIRED}" =~ ^(1|true|yes|on)$ ]]; then
   done
 fi
 
-REQUIRED_PRESET_MODELS=("${MODEL_DIR}/upscale_models/RealESRGAN_x2plus.pth")
-lora_selected "hmmotion_v1" && REQUIRED_PRESET_MODELS+=(
-  "${MODEL_DIR}/loras/hmmotion_minimax-h3_epoch12.safetensors"
-)
-lora_selected "hmnsfw_aio_v2" && REQUIRED_PRESET_MODELS+=(
-  "${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors"
-)
-lora_selected "motion_booster_anime" && REQUIRED_PRESET_MODELS+=(
-  "${MODEL_DIR}/loras/H3_Motion_Booster_anime.safetensors"
-)
-lora_selected "nsfw_anime_v04" && REQUIRED_PRESET_MODELS+=(
-  "${MODEL_DIR}/loras/NSFW_ANIME_V7_H3-step00019500.safetensors"
-)
-for required_path in "${REQUIRED_PRESET_MODELS[@]}"; do
+for required_path in \
+  "${MODEL_DIR}/loras/HMNSFW_AIO_V2.safetensors" \
+  "${MODEL_DIR}/upscale_models/RealESRGAN_x2plus.pth"; do
   if [[ ! -s "${required_path}" ]]; then
     echo "[workflow] one of the 3 presets is missing a required model: ${required_path}"
     exit 75

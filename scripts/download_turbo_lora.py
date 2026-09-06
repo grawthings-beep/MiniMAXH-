@@ -15,11 +15,13 @@ from pathlib import Path, PurePosixPath
 from download_lora import env_flag, inspect_safetensors, sha256
 
 
+DEFAULT_REPO_ID = "lightx2v/Minimax-h3-Turbo"
+DEFAULT_REVISION = "2f015e66b37c585cea9dc4ae6f1850ea8788e742"
+
+
 @dataclass(frozen=True)
 class TurboAsset:
     key: str
-    repo_id: str
-    revision: str
     source_path: str
     destination_name: str
     expected_size: int
@@ -29,23 +31,19 @@ class TurboAsset:
 TURBO_ASSETS = (
     TurboAsset(
         key="8STEP",
-        repo_id="Kutches/minmax",
-        revision="29bca53f5e27ed855fc00e54519443387ddf8691",
         source_path=(
-            "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
+            "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
         ),
         destination_name=(
-            "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
+            "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
         ),
         expected_size=1_956_193_000,
         expected_sha256=(
-            "2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e"
+            "08cfe946033af7d27719b964b6e0a0e50c32138daabbd6ce4137e23df6bf9980"
         ),
     ),
     TurboAsset(
         key="4STEP",
-        repo_id="lightx2v/Minimax-h3-Turbo",
-        revision="2f015e66b37c585cea9dc4ae6f1850ea8788e742",
         source_path=(
             "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
         ),
@@ -86,8 +84,6 @@ def configured_asset(asset: TurboAsset) -> TurboAsset:
         )
     return TurboAsset(
         key=asset.key,
-        repo_id=os.environ.get(f"{prefix}_REPO_ID", asset.repo_id).strip(),
-        revision=os.environ.get(f"{prefix}_REVISION", asset.revision).strip(),
         source_path=source_path,
         destination_name=asset.destination_name,
         expected_size=expected_size,
@@ -114,17 +110,13 @@ def verify(path: Path, asset: TurboAsset) -> tuple[int, int]:
 def download_asset(
     asset: TurboAsset,
     *,
+    repo_id: str,
+    resolved_revision: str,
     lora_dir: Path,
     retries: int,
     token: str | None,
 ) -> dict[str, object]:
-    from huggingface_hub import HfApi, hf_hub_download
-
-    resolved_revision = HfApi(token=token).model_info(
-        asset.repo_id,
-        revision=asset.revision,
-        token=token,
-    ).sha
+    from huggingface_hub import hf_hub_download
 
     destination = lora_dir / asset.destination_name
     if destination.exists():
@@ -136,9 +128,6 @@ def download_asset(
             )
             return {
                 "key": asset.key,
-                "repo_id": asset.repo_id,
-                "requested_revision": asset.revision,
-                "resolved_revision": resolved_revision,
                 "source_path": asset.source_path,
                 "destination": str(destination),
                 "size": size,
@@ -154,11 +143,11 @@ def download_asset(
         try:
             print(
                 f"[turbo:{asset.key.lower()}] download attempt {attempt}/{retries}: "
-                f"{asset.repo_id}@{resolved_revision}:{asset.source_path}"
+                f"{repo_id}@{resolved_revision}:{asset.source_path}"
             )
             download_path = Path(
                 hf_hub_download(
-                    repo_id=asset.repo_id,
+                    repo_id=repo_id,
                     filename=asset.source_path,
                     revision=resolved_revision,
                     token=token,
@@ -193,9 +182,6 @@ def download_asset(
     )
     return {
         "key": asset.key,
-        "repo_id": asset.repo_id,
-        "requested_revision": asset.revision,
-        "resolved_revision": resolved_revision,
         "source_path": asset.source_path,
         "destination": str(destination),
         "size": size,
@@ -209,6 +195,8 @@ def main() -> int:
         print("[turbo] optional Turbo workflow disabled; skipping LoRA downloads")
         return 0
 
+    from huggingface_hub import HfApi
+
     if os.environ.get("H3_TURBO_SOURCE_PATH"):
         print(
             "[turbo] H3_TURBO_SOURCE_PATH is obsolete and ignored; both pinned 768p "
@@ -216,17 +204,20 @@ def main() -> int:
             "H3_TURBO_4STEP_SOURCE_PATH"
         )
 
-    if os.environ.get("H3_TURBO_REPO_ID") or os.environ.get("H3_TURBO_REVISION"):
-        print(
-            "[turbo] common H3_TURBO_REPO_ID/H3_TURBO_REVISION are obsolete and "
-            "ignored; each profile is independently pinned"
-        )
+    repo_id = os.environ.get("H3_TURBO_REPO_ID", DEFAULT_REPO_ID).strip()
+    requested_revision = os.environ.get(
+        "H3_TURBO_REVISION", DEFAULT_REVISION
+    ).strip()
     assets = tuple(configured_asset(asset) for asset in TURBO_ASSETS)
     model_root = Path(os.environ.get("COMFYUI_MODEL_DIR", "/opt/ComfyUI/models"))
     lora_dir = model_root / "loras"
     retries = max(1, int(os.environ.get("DOWNLOAD_RETRIES", "3")))
     token = os.environ.get("HF_TOKEN", "").strip() or None
     lora_dir.mkdir(parents=True, exist_ok=True)
+
+    api = HfApi(token=token)
+    info = api.model_info(repo_id, revision=requested_revision, token=token)
+    resolved_revision = info.sha
 
     # Each Pod is ephemeral. Fetch the two independent Xet files concurrently so
     # adding the selectable 4-step profile does not serialize another ~2 GB wait.
@@ -236,6 +227,8 @@ def main() -> int:
             executor.submit(
                 download_asset,
                 asset,
+                repo_id=repo_id,
+                resolved_revision=resolved_revision,
                 lora_dir=lora_dir,
                 retries=retries,
                 token=token,
@@ -246,6 +239,9 @@ def main() -> int:
             results.append(future.result())
 
     record = {
+        "repo_id": repo_id,
+        "requested_revision": requested_revision,
+        "resolved_revision": resolved_revision,
         "profiles": sorted(results, key=lambda item: str(item["key"])),
     }
     record_path = Path(
@@ -257,7 +253,8 @@ def main() -> int:
     record_path.parent.mkdir(parents=True, exist_ok=True)
     record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     print(
-        "[turbo] both independently pinned selectable profiles are ready"
+        f"[turbo] both selectable 768p profiles are ready at "
+        f"{resolved_revision}"
     )
     return 0
 

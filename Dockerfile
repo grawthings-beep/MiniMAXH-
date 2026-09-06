@@ -33,19 +33,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     H3_LORA_SOURCE_PATH=hmmotion_minimax-h3_epoch12.safetensors \
     H3_LORA_REVISION=main \
     H3_CIVITAI_LORA_URL=https://civitai.red/api/download/models/3206518?fileId=3088013 \
-    H3_ANIME_MOTION_URL=https://civitai.com/api/download/models/3299686 \
-    H3_ANIME_MOTION_METADATA_URL=https://civitai.com/api/v1/model-versions/3299686 \
-    H3_ANIME_MOTION_FILENAME=H3_Motion_Booster_anime.safetensors \
-    H3_ANIME_STYLE_REPO_ID=Kutches/minmax \
-    H3_ANIME_STYLE_SOURCE_PATH=NSFW_ANIME_V7_H3-step00019500.safetensors \
-    H3_ANIME_STYLE_REVISION=29bca53f5e27ed855fc00e54519443387ddf8691 \
     H3_TURBO_REQUIRED=1 \
-    H3_TURBO_8STEP_REPO_ID=Kutches/minmax \
-    H3_TURBO_8STEP_SOURCE_PATH=minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors \
-    H3_TURBO_8STEP_REVISION=29bca53f5e27ed855fc00e54519443387ddf8691 \
-    H3_TURBO_4STEP_REPO_ID=lightx2v/Minimax-h3-Turbo \
+    H3_TURBO_REPO_ID=lightx2v/Minimax-h3-Turbo \
+    H3_TURBO_8STEP_SOURCE_PATH=minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors \
     H3_TURBO_4STEP_SOURCE_PATH=minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors \
-    H3_TURBO_4STEP_REVISION=2f015e66b37c585cea9dc4ae6f1850ea8788e742 \
+    H3_TURBO_REVISION=2f015e66b37c585cea9dc4ae6f1850ea8788e742 \
     AUTO_MOSAIC_REQUIRED=1 \
     AUTO_MOSAIC_MANIFEST=/opt/minimax-h3/manifests/auto_mosaic.json \
     MINIMAX_H3_RUNTIME_VARIANT=${MINIMAX_H3_RUNTIME_VARIANT} \
@@ -253,8 +245,7 @@ RUN pip install --no-cache-dir \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
       --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo --expect-memory-safe-decode \
       --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
-      --expect-lora H3_Motion_Booster_anime.safetensors --expect-lora-strength 0.7 \
-      --expect-lora-2 NSFW_ANIME_V7_H3-step00019500.safetensors --expect-lora-2-strength 1.0 \
+      --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 \
       --comfyui-root "${COMFYUI_ROOT}" \
       --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
     && cd "${COMFYUI_ROOT}" \

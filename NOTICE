@@ -19,31 +19,12 @@ Access requires the operator's Civitai account token. Use is subject to the asse
 creator's current Civitai permissions and terms as well as the MiniMax H3 license.
 Source: https://civitai.com/models/2834417?modelVersionId=3206518
 
-minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors is downloaded at
-runtime from Kutches/minmax revision
-29bca53f5e27ed855fc00e54519443387ddf8691. The verified file is an unmodified
-copy of the public LightX2V 8-step FL2VA LoRA (SHA256
-2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e).
-minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors remains pinned
-to lightx2v/Minimax-h3-Turbo revision
-2f015e66b37c585cea9dc4ae6f1850ea8788e742. Neither file is included in this
-image or repository.
-Sources: https://huggingface.co/Kutches/minmax and
-https://huggingface.co/lightx2v/Minimax-h3-Turbo
-
-H3_Motion_Booster_anime.safetensors (Shake Harder ANIME Edition) is downloaded
-at runtime from Civitai model version 3299686. The downloader resolves the
-exact file ID and SHA256 from Civitai's authenticated version metadata before
-accepting the file. It is not included in this image or repository.
-Source: https://civitai.com/models/2840146?modelVersionId=3299686
-
-NSFW_ANIME_V7_H3-step00019500.safetensors (2D Anime Style NSFW v0.4, 19.5k)
-is downloaded at runtime from Kutches/minmax revision
-29bca53f5e27ed855fc00e54519443387ddf8691 and verified against SHA256
-c69a8e719b6784a8e475004cd47d34d1ddefbb5daa2d7670632cd3b459490b8d.
-It is not included in this image or repository. Upstream usage terms remain the
-operator's responsibility.
-Source: https://huggingface.co/Kutches/minmax
+minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors and
+minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors are downloaded
+at runtime from lightx2v/Minimax-h3-Turbo revision
+2f015e66b37c585cea9dc4ae6f1850ea8788e742. They are not included in this image
+or repository and are published under Apache License 2.0.
+Source: https://huggingface.co/lightx2v/Minimax-h3-Turbo
 
 Anime NSFW Detection v5.0 YOLO11 Segmentation
 (ntd11_anime_nsfw_segm_v5.pt) is downloaded at runtime from Civitai model

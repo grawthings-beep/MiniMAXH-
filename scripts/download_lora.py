@@ -15,14 +15,7 @@ DEFAULT_REPO_ID = "uwgm/nikke-civitai-backup"
 DEFAULT_SOURCE_PATH = "hmmotion_minimax-h3_epoch12.safetensors"
 DESTINATION_NAME = "hmmotion_minimax-h3_epoch12.safetensors"
 LORA_ID = "hmmotion_v1"
-VALID_LORA_IDS = frozenset(
-    {
-        LORA_ID,
-        "hmnsfw_aio_v2",
-        "motion_booster_anime",
-        "nsfw_anime_v04",
-    }
-)
+VALID_LORA_IDS = frozenset({LORA_ID, "hmnsfw_aio_v2"})
 DEFAULT_SIZE = 309_964_680
 DEFAULT_SHA256 = "aa31d84116b689e840cd4e218c305a2995de448d84d48d35217efa70f6bb29bf"
 

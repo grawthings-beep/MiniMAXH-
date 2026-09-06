@@ -71,14 +71,10 @@ def open_civitai_download(url: str, token: str, offset: int, timeout: int):
 
 
 def download_once(
-    url: str,
-    token: str,
-    partial: Path,
-    timeout: int,
-    expected_size: int | None,
+    url: str, token: str, partial: Path, timeout: int, expected_size: int
 ) -> None:
     offset = partial.stat().st_size if partial.exists() else 0
-    if expected_size is not None and offset > expected_size:
+    if offset > expected_size:
         partial.unlink()
         offset = 0
     try:
@@ -88,9 +84,7 @@ def download_once(
             raise PermanentDownloadError(
                 f"Civitai returned HTTP {error.code}; check CIVITAI_TOKEN and file access"
             ) from None
-        if error.code == 416 and (
-            expected_size is None or offset == expected_size
-        ):
+        if error.code == 416 and offset == expected_size:
             return
         raise RuntimeError(f"Civitai returned HTTP {error.code}") from None
 
@@ -106,11 +100,9 @@ def download_once(
                 handle.write(chunk)
 
 
-def verify_download(
-    path: Path, expected_size: int | None, expected_sha: str
-) -> tuple[int, int]:
+def verify_download(path: Path, expected_size: int, expected_sha: str) -> tuple[int, int]:
     size, tensor_count = inspect_safetensors(path)
-    if expected_size is not None and size != expected_size:
+    if size != expected_size:
         raise RuntimeError(
             f"Civitai LoRA size mismatch: expected {expected_size}, got {size}"
         )
