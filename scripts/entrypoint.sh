@@ -25,10 +25,6 @@ if [[ "${COMFYUI_ARGS:-}" == "--disable-dynamic-vram --reserve-vram 4" ]]; then
   echo "[runtime] replacing the unsafe fixed-reservation profile with DynamicVRAM headroom"
   export COMFYUI_ARGS="--lowvram --vram-headroom 2"
 fi
-if [[ "${COMFYUI_ARGS:-}" == "--lowvram --vram-headroom 2" ]]; then
-  echo "[runtime] upgrading the previous default to release node caches and GPU models between generations"
-  export COMFYUI_ARGS="--lowvram --vram-headroom 2 --cache-none --disable-smart-memory"
-fi
 
 # One RunPod Civitai secret is enough for both creator-LoRA and mosaic-model
 # downloads.  Keep the established API-specific override when supplied.
