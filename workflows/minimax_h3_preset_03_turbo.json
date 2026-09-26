@@ -38,7 +38,7 @@
         "auto",
         "auto"
       ],
-      "title": "Output · 03 · Turbo · 4/8-step 768p · Selectable LoRA · 2x · Mosaic toggle"
+      "title": "Output · 03 · Turbo · 4/8-step 768p · Selectable LoRA · Optional 2x OFF · Mosaic toggle"
     },
     {
       "id": 114,
@@ -213,7 +213,7 @@
         "minimax_h3_video_vae_fp16.safetensors",
         "minimax_h3_audio_vae_fp32.safetensors"
       ],
-      "title": "03 · Turbo · 4/8-step 768p · Selectable LoRA · 2x · Mosaic toggle"
+      "title": "03 · Turbo · 4/8-step 768p · Selectable LoRA · Optional 2x OFF · Mosaic toggle"
     },
     {
       "id": 116,
@@ -234,7 +234,7 @@
       "title": "Note: MiniMax H3",
       "properties": {},
       "widgets_values": [
-        "## MiniMax H3\n\n[MiniMax H3](https://www.minimax.io/blog/minimax-h3) is MiniMax's general-purpose, omni-modal generation model. It jointly understands text, image, video, and audio, and generates video with **native stereo audio**: voice, sound effects, and music are modeled jointly in a single forward pass, not layered on afterward. Output is up to 2K resolution, 24fps, and up to about 15 seconds.\n\n## About this workflow\n\nThis template runs the **Image to Video** task (`MiniMaxH3ImageToVideo` node), which covers both:\n\n- **t2va** (text-to-video), when no images are connected\n- **fl2va** (first/last-frame image-to-video), when `first_frame` and/or `last_frame` are connected\n\n**Key inputs**\n\n- **first_frame / last_frame**: optional keyframes; the model generates the motion between them\n- **prompt**: describe the shots, motion, and the accompanying audio (dialogue, SFX, music) in one block\n- **width / height**: set via Resolution Selector. H3's native canvas is a 768px short edge, capped at 768x1344 pixels, rounded to a multiple of 32\n- **duration (seconds)**: converted to a valid frame `length` by the Math Expression node, snapping up to the model's 17-frame-per-block (17k+5) grid at 24fps\n\n## Selectable MiniMax H3 LoRA (V2 default)\n`HMNSFW_AIO_V2.safetensors` remains selectable, but this Turbo preset disables the creator LoRA at strength `0.00` by default. The base INT8 ConvRot model feeds the LoRA loader, and the patched MODEL feeds both `BasicScheduler` and `BasicGuider`. Change the strength on the LoRA node for A/B tests; `0.0` disables its effect without rewiring the graph. Both installed creator LoRAs appear in this node's dropdown when `H3_LORA_SELECTION=all`. The Civitai V2 asset is downloaded at Pod startup using `CIVITAI_TOKEN`; its author recommends strength 0.5 or lower and trained it against BF16, so compare INT8 output carefully.\n\n## Real-ESRGAN 2x output\nEvery decoded frame is tiled through the official RealESRGAN x2 model before `CreateVideo`; generated stereo audio and 24fps timing remain unchanged. The short edge doubles from H3's native 768px to 1536px. This is a conservative frame upscaler, so it improves sharpness and detail but does not repair motion or anatomy errors already present in the generated frames.\n\n## CPU auto mosaic variant\n`WanAutoMosaicVideo` runs exactly once on generated frames immediately before `CreateVideo` (after Real-ESRGAN when present). It uses YOLO11 instance contours on CPU with JUST / 0.30 confidence / 0.50 IoU / automatic short-edge÷50 blocks and up to 3-frame circular gap repair. Default classes are pussy, penis, and testicles; anus is deliberately excluded. Set `enabled=false` to pass the original completed frames through without loading the detector.\n\n## 03 Turbo · LightX2V 4/8-step 768p\n`Turbo Mode`だけで8-step v1.0（推奨）または4-step v1.2（最速）を選択できます。選択に連動して正しいLoRAとstepsが切り替わり、両方ともSigmaShift 6/3、Euler/simpleを使用します。32GBで208 patchesを避けるためcreator LoRAは初期値0.0です。必要な場合だけ手動で有効化し、二回目以降に不安定になる場合は0.0へ戻してください。音声や速い動きが崩れる場合は8-step、02 Fast、または01 Qualityへ戻してください。\n\n## Memory-safe VAE transition\nSampling後に`MiniMaxH3ReleaseVRAMLatent`で生成モデルをGPUから明示解放し、Video VAEはH3ネイティブの256px spatial tile / 17-frame temporal chunkでnested latentのvideo側だけをdecodeします。32GB GPUでsampling完了直後にプロセスごと再起動するOOMを防ぐための安全経路です。"
+        "## MiniMax H3\n\n[MiniMax H3](https://www.minimax.io/blog/minimax-h3) is MiniMax's general-purpose, omni-modal generation model. It jointly understands text, image, video, and audio, and generates video with **native stereo audio**: voice, sound effects, and music are modeled jointly in a single forward pass, not layered on afterward. Output is up to 2K resolution, 24fps, and up to about 15 seconds.\n\n## About this workflow\n\nThis template runs the **Image to Video** task (`MiniMaxH3ImageToVideo` node), which covers both:\n\n- **t2va** (text-to-video), when no images are connected\n- **fl2va** (first/last-frame image-to-video), when `first_frame` and/or `last_frame` are connected\n\n**Key inputs**\n\n- **first_frame / last_frame**: optional keyframes; the model generates the motion between them\n- **prompt**: describe the shots, motion, and the accompanying audio (dialogue, SFX, music) in one block\n- **width / height**: set via Resolution Selector. H3's native canvas is a 768px short edge, capped at 768x1344 pixels, rounded to a multiple of 32\n- **duration (seconds)**: converted to a valid frame `length` by the Math Expression node, snapping up to the model's 17-frame-per-block (17k+5) grid at 24fps\n\n## Selectable MiniMax H3 LoRA (V2 default)\n`HMNSFW_AIO_V2.safetensors` remains selectable, but this Turbo preset disables the creator LoRA at strength `0.00` by default. The base INT8 ConvRot model feeds the LoRA loader, and the patched MODEL feeds both `BasicScheduler` and `BasicGuider`. Change the strength on the LoRA node for A/B tests; `0.0` disables its effect without rewiring the graph. Both installed creator LoRAs appear in this node's dropdown when `H3_LORA_SELECTION=all`. The Civitai V2 asset is downloaded at Pod startup using `CIVITAI_TOKEN`; its author recommends strength 0.5 or lower and trained it against BF16, so compare INT8 output carefully.\n\n## Real-ESRGAN 2x output\nEvery decoded frame is tiled through the official RealESRGAN x2 model before `CreateVideo`; generated stereo audio and 24fps timing remain unchanged. The short edge doubles from H3's native 768px to 1536px. This is a conservative frame upscaler, so it improves sharpness and detail but does not repair motion or anatomy errors already present in the generated frames.\n\n## CPU auto mosaic variant\n`WanAutoMosaicVideo` runs exactly once on generated frames immediately before `CreateVideo` (after Real-ESRGAN when present). It uses YOLO11 instance contours on CPU with JUST / 0.30 confidence / 0.50 IoU / automatic short-edge÷50 blocks and up to 3-frame circular gap repair. Default classes are pussy, penis, and testicles; anus is deliberately excluded. Set `enabled=false` to pass the original completed frames through without loading the detector.\n\n## 03 Turbo · LightX2V 4/8-step 768p\n`Turbo Mode`だけで8-step v1.0（推奨）または4-step v1.2（最速）を選択できます。選択に連動して正しいLoRAとstepsが切り替わり、両方ともSigmaShift 6/3、Euler/simpleを使用します。32GBで208 patchesを避けるためcreator LoRAは初期値0.0です。必要な場合だけ手動で有効化し、二回目以降に不安定になる場合は0.0へ戻してください。音声や速い動きが崩れる場合は8-step、02 Fast、または01 Qualityへ戻してください。\n\n## A40: 連続生成の開始設定\nまず03 Turboの8-step、0.4MP・5秒、creator LoRA 0.0でseedを変えて2回生成。2xは初期OFF（サブグラフ内Optional 2xを選択しCtrl+BでON）。モザイクは有効のままです。H3はINT8 Attention・head 2分割・MLP 2分割。VAEはComfyUIの時間chunk処理と必要時の自動tileを使います。安定したら10秒へ増やし、長尺と2xの負荷を別々に確認してください。"
       ],
       "color": "#222",
       "bgcolor": "#000"
@@ -573,12 +573,12 @@
         "state": {
           "lastGroupId": 5,
           "lastNodeId": 120,
-          "lastLinkId": 237,
+          "lastLinkId": 239,
           "lastRerouteId": 0
         },
         "revision": 0,
         "config": {},
-        "name": "Image to Video (MiniMax H3) - Selectable MiniMax H3 LoRA (V2 default) - Real-ESRGAN 2x - CPU Auto Mosaic - LightX2V Turbo 4/8-step 768p - Memory-safe tiled VAE decode",
+        "name": "Image to Video (MiniMax H3) - Selectable MiniMax H3 LoRA (V2 default) - Real-ESRGAN 2x - CPU Auto Mosaic - LightX2V Turbo 4/8-step 768p",
         "inputNode": {
           "id": -10,
           "bounding": [
@@ -737,7 +737,7 @@
             "name": "creator_lora_control",
             "type": "H3_CREATOR_LORA",
             "linkIds": [
-              236
+              238
             ],
             "pos": [
               -2456,
@@ -749,7 +749,7 @@
             "name": "turbo_lora_control",
             "type": "H3_TURBO_PROFILE",
             "linkIds": [
-              237
+              239
             ],
             "pos": [
               -2456,
@@ -786,7 +786,7 @@
               70
             ],
             "flags": {},
-            "order": 7,
+            "order": 10,
             "mode": 0,
             "inputs": [
               {
@@ -836,7 +836,7 @@
               70
             ],
             "flags": {},
-            "order": 13,
+            "order": 16,
             "mode": 0,
             "inputs": [
               {
@@ -878,7 +878,7 @@
             "type": "VAEDecodeAudio",
             "pos": [
               -30,
-              5120
+              4970
             ],
             "size": [
               230,
@@ -887,7 +887,7 @@
             "flags": {
               "collapsed": false
             },
-            "order": 12,
+            "order": 15,
             "mode": 0,
             "inputs": [
               {
@@ -920,19 +920,19 @@
           },
           {
             "id": 10,
-            "type": "MiniMaxH3VAEDecodeTiled",
+            "type": "VAEDecode",
             "pos": [
               -30,
               4850
             ],
             "size": [
-              360,
-              100
+              230,
+              60
             ],
             "flags": {
               "collapsed": false
             },
-            "order": 6,
+            "order": 9,
             "mode": 0,
             "inputs": [
               {
@@ -959,10 +959,9 @@
               }
             ],
             "properties": {
-              "Node name for S&R": "MiniMaxH3VAEDecodeTiled"
+              "Node name for S&R": "VAEDecode"
             },
-            "widgets_values": [],
-            "title": "H3 VAE Decode — nested-safe native tiling"
+            "widgets_values": []
           },
           {
             "id": 17,
@@ -1008,7 +1007,7 @@
               130
             ],
             "flags": {},
-            "order": 5,
+            "order": 8,
             "mode": 0,
             "inputs": [
               {
@@ -1057,7 +1056,7 @@
               140
             ],
             "flags": {},
-            "order": 9,
+            "order": 12,
             "mode": 0,
             "inputs": [
               {
@@ -1097,7 +1096,8 @@
                 "name": "output",
                 "type": "LATENT",
                 "links": [
-                  235
+                  225,
+                  226
                 ]
               },
               {
@@ -1124,7 +1124,7 @@
               60
             ],
             "flags": {},
-            "order": 11,
+            "order": 14,
             "mode": 0,
             "inputs": [
               {
@@ -1217,7 +1217,7 @@
               120
             ],
             "flags": {},
-            "order": 8,
+            "order": 11,
             "mode": 0,
             "inputs": [
               {
@@ -1268,7 +1268,7 @@
               90
             ],
             "flags": {},
-            "order": 10,
+            "order": 13,
             "mode": 0,
             "inputs": [
               {
@@ -1311,7 +1311,7 @@
               110
             ],
             "flags": {},
-            "order": 17,
+            "order": 20,
             "mode": 0,
             "inputs": [
               {
@@ -1358,7 +1358,7 @@
               550
             ],
             "flags": {},
-            "order": 18,
+            "order": 21,
             "mode": 0,
             "inputs": [
               {
@@ -1466,7 +1466,7 @@
             "flags": {
               "collapsed": false
             },
-            "order": 19,
+            "order": 22,
             "mode": 0,
             "inputs": [
               {
@@ -1526,7 +1526,7 @@
               70
             ],
             "flags": {},
-            "order": 20,
+            "order": 23,
             "mode": 0,
             "inputs": [
               {
@@ -1581,7 +1581,7 @@
               {
                 "name": "creator_lora",
                 "type": "H3_CREATOR_LORA",
-                "link": 236
+                "link": 238
               }
             ],
             "outputs": [
@@ -1619,7 +1619,7 @@
               80
             ],
             "flags": {},
-            "order": 14,
+            "order": 17,
             "mode": 0,
             "inputs": [],
             "outputs": [
@@ -1660,8 +1660,8 @@
               80
             ],
             "flags": {},
-            "order": 15,
-            "mode": 0,
+            "order": 18,
+            "mode": 4,
             "inputs": [
               {
                 "name": "upscale_model",
@@ -1683,7 +1683,7 @@
                 ]
               }
             ],
-            "title": "Upscale decoded video frames 2x",
+            "title": "Optional 2x (OFF) - Ctrl+B to enable",
             "properties": {
               "cnr_id": "comfy-core",
               "ver": "0.10.0",
@@ -1703,7 +1703,7 @@
               360
             ],
             "flags": {},
-            "order": 16,
+            "order": 19,
             "mode": 0,
             "inputs": [
               {
@@ -1830,7 +1830,7 @@
               {
                 "name": "profile_control",
                 "type": "H3_TURBO_PROFILE",
-                "link": 237
+                "link": 239
               }
             ],
             "outputs": [
@@ -1911,8 +1911,7 @@
                 "name": "MODEL",
                 "type": "MODEL",
                 "links": [
-                  5,
-                  193
+                  235
                 ]
               }
             ],
@@ -1927,40 +1926,119 @@
           },
           {
             "id": 118,
-            "type": "MiniMaxH3ReleaseVRAMLatent",
+            "type": "ModelAttentionBackend",
             "pos": [
-              -30,
-              4720
+              -2500,
+              4000
             ],
             "size": [
-              300,
-              80
+              380,
+              125
             ],
             "flags": {},
-            "order": 21,
+            "order": 5,
             "mode": 0,
             "inputs": [
               {
-                "name": "samples",
-                "type": "LATENT",
+                "name": "model",
+                "type": "MODEL",
                 "link": 235
               }
             ],
             "outputs": [
               {
-                "name": "samples",
-                "type": "LATENT",
+                "name": "model",
+                "type": "MODEL",
                 "links": [
-                  225,
-                  226
+                  236
                 ]
               }
             ],
-            "title": "VRAM GUARD — unload H3 before VAE decode",
+            "title": "H3 INT8 Attention",
             "properties": {
-              "Node name for S&R": "MiniMaxH3ReleaseVRAMLatent"
+              "Node name for S&R": "ModelAttentionBackend"
             },
-            "widgets_values": []
+            "widgets_values": [
+              "comfy kitchen attention"
+            ]
+          },
+          {
+            "id": 119,
+            "type": "MiniMaxLowVRAMAttention",
+            "pos": [
+              -2500,
+              4170
+            ],
+            "size": [
+              380,
+              125
+            ],
+            "flags": {},
+            "order": 6,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "model",
+                "type": "MODEL",
+                "link": 236
+              }
+            ],
+            "outputs": [
+              {
+                "name": "model",
+                "type": "MODEL",
+                "links": [
+                  237
+                ]
+              }
+            ],
+            "title": "H3 Attention: 2 head groups",
+            "properties": {
+              "Node name for S&R": "MiniMaxLowVRAMAttention"
+            },
+            "widgets_values": [
+              2
+            ]
+          },
+          {
+            "id": 120,
+            "type": "MiniMaxChunkFeedForward",
+            "pos": [
+              -2500,
+              4340
+            ],
+            "size": [
+              380,
+              125
+            ],
+            "flags": {},
+            "order": 7,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "model",
+                "type": "MODEL",
+                "link": 237
+              }
+            ],
+            "outputs": [
+              {
+                "name": "model",
+                "type": "MODEL",
+                "links": [
+                  5,
+                  193
+                ]
+              }
+            ],
+            "title": "H3 MLP: 2 token chunks",
+            "properties": {
+              "Node name for S&R": "MiniMaxChunkFeedForward"
+            },
+            "widgets_values": [
+              2,
+              4096
+            ]
           }
         ],
         "groups": [
@@ -2011,6 +2089,19 @@
             ],
             "color": "#3f789e",
             "flags": {}
+          },
+          {
+            "id": 5,
+            "title": "H3 Memory / Attention",
+            "bounding": [
+              -2520,
+              3950,
+              420,
+              545
+            ],
+            "color": "#3f789e",
+            "font_size": 24,
+            "flags": {}
           }
         ],
         "links": [
@@ -2032,7 +2123,7 @@
           },
           {
             "id": 5,
-            "origin_id": 117,
+            "origin_id": 120,
             "origin_slot": 0,
             "target_id": 9,
             "target_slot": 0,
@@ -2080,7 +2171,7 @@
           },
           {
             "id": 193,
-            "origin_id": 117,
+            "origin_id": 120,
             "origin_slot": 0,
             "target_id": 16,
             "target_slot": 0,
@@ -2232,7 +2323,7 @@
           },
           {
             "id": 225,
-            "origin_id": 118,
+            "origin_id": 14,
             "origin_slot": 0,
             "target_id": 10,
             "target_slot": 0,
@@ -2240,7 +2331,7 @@
           },
           {
             "id": 226,
-            "origin_id": 118,
+            "origin_id": 14,
             "origin_slot": 0,
             "target_id": 23,
             "target_slot": 0,
@@ -2312,14 +2403,30 @@
           },
           {
             "id": 235,
-            "origin_id": 14,
+            "origin_id": 117,
             "origin_slot": 0,
             "target_id": 118,
             "target_slot": 0,
-            "type": "LATENT"
+            "type": "MODEL"
           },
           {
             "id": 236,
+            "origin_id": 118,
+            "origin_slot": 0,
+            "target_id": 119,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 237,
+            "origin_id": 119,
+            "origin_slot": 0,
+            "target_id": 120,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 238,
             "origin_id": -10,
             "origin_slot": 11,
             "target_id": 112,
@@ -2327,7 +2434,7 @@
             "type": "H3_CREATOR_LORA"
           },
           {
-            "id": 237,
+            "id": 239,
             "origin_id": -10,
             "origin_slot": 12,
             "target_id": 116,
@@ -2360,7 +2467,7 @@
       "source_commit": "01a73bc628cc19a1df92684349285f03d4a1f39a"
     },
     "preset": "03-turbo-4-8step-768p",
-    "ui_title": "03 · Turbo · 4/8-step 768p · Selectable LoRA · 2x · Mosaic toggle",
+    "ui_title": "03 · Turbo · 4/8-step 768p · Selectable LoRA · Optional 2x OFF · Mosaic toggle",
     "acceleration": {
       "type": "LightX2V Turbo profile selector",
       "profiles": {
@@ -2382,12 +2489,12 @@
       "creator_lora_default_strength": 0.0,
       "memory_note": "Only the selected Turbo state dict is retained; creator LoRA remains disabled by default to avoid dual-LoRA patch pressure"
     },
-    "memory_safety": {
-      "model_unload_before_decode": true,
-      "video_vae_tiled": true,
-      "nested_video_latent_unwrap": true,
-      "native_spatial_tile_px": 256,
-      "native_temporal_chunk_frames": 17
+    "minimax_h3_memory": {
+      "comfyui": "v0.37.0",
+      "head_chunks": 2,
+      "mlp_chunks": 2,
+      "native_streaming_vae": true,
+      "upscale_default": false
     },
     "visible_lora_controls": {
       "creator": true,

@@ -364,13 +364,16 @@ def verify_turbo_profiles(workflow: dict[str, object]) -> None:
     scheduler = next(node for node in nodes if node["type"] == "BasicScheduler")
     guider = next(node for node in nodes if node["type"] == "BasicGuider")
     sampler = next(node for node in nodes if node["type"] == "KSamplerSelect")
+    sampling_model = next(
+        (node for node in nodes if node["type"] == "MiniMaxChunkFeedForward"), sigma
+    )
     actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
     expected = {
         (int(unet["id"]), int(turbo["id"]), "MODEL"),
         (int(turbo["id"]), int(creator["id"]), "MODEL"),
         (int(creator["id"]), int(sigma["id"]), "MODEL"),
-        (int(sigma["id"]), int(scheduler["id"]), "MODEL"),
-        (int(sigma["id"]), int(guider["id"]), "MODEL"),
+        (int(sampling_model["id"]), int(scheduler["id"]), "MODEL"),
+        (int(sampling_model["id"]), int(guider["id"]), "MODEL"),
     }
     if not expected <= actual:
         raise RuntimeError(f"Turbo model chain is incomplete: {sorted(expected - actual)}")
@@ -453,6 +456,36 @@ def verify_turbo_profiles(workflow: dict[str, object]) -> None:
         for link in links
     ):
         raise RuntimeError("H3 subgraph input does not drive the Turbo profile applicator")
+
+
+def verify_h3_memory(workflow: dict[str, object]) -> None:
+    required = {"SamplerCustomAdvanced", "VAEDecode", "VAEDecodeAudio",
+                "ModelAttentionBackend", "MiniMaxLowVRAMAttention", "MiniMaxChunkFeedForward"}
+    graph = graph_with_types(workflow, required)
+    by_type = {n["type"]: n for n in graph["nodes"]}
+    if {"MiniMaxH3ReleaseVRAMLatent", "MiniMaxH3VAEDecodeTiled"} & by_type.keys():
+        raise RuntimeError("H3 presets must use native streaming VAE and preserve model reuse")
+    actual = {(link_origin(l), link_target(l), link_type(l)) for l in graph["links"]}
+    source_type = "MiniMaxH3SigmaShift" if "MiniMaxH3SigmaShift" in by_type else "MiniMaxH3CreatorLoRAApply"
+    for src, dst, kind in [
+        (source_type, "ModelAttentionBackend", "MODEL"),
+        ("ModelAttentionBackend", "MiniMaxLowVRAMAttention", "MODEL"),
+        ("MiniMaxLowVRAMAttention", "MiniMaxChunkFeedForward", "MODEL"),
+        ("MiniMaxChunkFeedForward", "BasicGuider", "MODEL"),
+        ("MiniMaxChunkFeedForward", "BasicScheduler", "MODEL"),
+        ("SamplerCustomAdvanced", "VAEDecode", "LATENT"),
+        ("SamplerCustomAdvanced", "VAEDecodeAudio", "LATENT"),
+    ]:
+        if (int(by_type[src]["id"]), int(by_type[dst]["id"]), kind) not in actual:
+            raise RuntimeError(f"Missing H3 memory connection: {src} -> {dst}")
+    for node_type, values in [
+        ("ModelAttentionBackend", ["comfy kitchen attention"]),
+        ("MiniMaxLowVRAMAttention", [2]), ("MiniMaxChunkFeedForward", [2, 4096]),
+    ]:
+        if by_type[node_type].get("widgets_values") != values or by_type[node_type].get("mode") != 0:
+            raise RuntimeError(f"H3 memory defaults changed or bypassed: {node_type}")
+    if by_type["ImageUpscaleWithModel"].get("mode") != 4:
+        raise RuntimeError("Optional 2x must default to bypass for generation checks")
 
 
 def verify_memory_safe_decode(workflow: dict[str, object]) -> None:
@@ -698,6 +731,7 @@ def main() -> int:
     parser.add_argument("--expect-upscale", action="store_true")
     parser.add_argument("--expect-auto-mosaic", action="store_true")
     parser.add_argument("--expect-memory-safe-decode", action="store_true")
+    parser.add_argument("--expect-h3-memory", action="store_true")
     parser.add_argument("--auto-mosaic-manifest", type=Path)
     parser.add_argument(
         "--expect-lora",
@@ -787,6 +821,8 @@ def main() -> int:
         raise RuntimeError("Turbo SigmaShift is enabled in a non-Turbo workflow")
     if args.require_video_reference:
         verify_video_reference_wiring(workflow)
+    if args.expect_h3_memory:
+        verify_h3_memory(workflow)
     if args.expect_memory_safe_decode:
         verify_memory_safe_decode(workflow)
     elif {"MiniMaxH3ReleaseVRAMLatent", "MiniMaxH3VAEDecodeTiled"} & node_types:

@@ -7,7 +7,13 @@ This repository does not redistribute MiniMax H3 weights.
   [MiniMax H3 Community License Agreement](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE).
   The license's required redistribution notice is also provided in `NOTICE`.
 - ComfyUI is licensed under GPL-3.0. The container clones the unmodified
-  `Comfy-Org/ComfyUI` v0.31.0 release at build time.
+  `Comfy-Org/ComfyUI` v0.37.0 release at build time.
+- The container installs the unmodified `nodes/minimax_nodes.py` from
+  [kijai/ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes/tree/d3cfe21625e5170126ce06fbfcfe1d88108688c3),
+  commit `d3cfe21625e5170126ce06fbfcfe1d88108688c3`, under GPL-3.0.
+  Its source and upstream `LICENSE` are retained in
+  `/opt/ComfyUI/custom_nodes/minimax_h3_memory`; the local initializer exposes
+  only `MiniMaxLowVRAMAttention` and `MiniMaxChunkFeedForward`.
 - `duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache` is installed at pinned commit
   `725973c3bfd9de6dce249bc93dc5fe27f820df31` under MIT. It adds no model or
   Python-package dependency.

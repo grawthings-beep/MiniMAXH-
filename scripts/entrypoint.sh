@@ -235,6 +235,11 @@ done
 
 cd "${COMFYUI_ROOT}"
 read -r -a EXTRA_ARGS <<< "${COMFYUI_ARGS:-}"
+# v0.37 enables disk offload automatically in some RAM configurations. Keep
+# model reuse in RAM by default; an explicit --fast-disk still opts in.
+if [[ " ${EXTRA_ARGS[*]} " != *" --fast-disk "* && " ${EXTRA_ARGS[*]} " != *" --disable-fast-disk "* ]]; then
+  EXTRA_ARGS+=(--disable-fast-disk)
+fi
 for arg in "${EXTRA_ARGS[@]}"; do
   if [[ "${arg}" == "--fast-disk" ]]; then
     echo "[comfyui] WARNING: --fast-disk can make H3 model offload much slower; use it only when system RAM is insufficient."

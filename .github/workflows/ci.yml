@@ -23,8 +23,8 @@ jobs:
         run: python scripts/download_extra_loras.py --list manifests/extra_loras.txt --check
       - name: Verify every workflow node against pinned ComfyUI
         run: |
-          git clone --depth 1 --branch v0.31.0 https://github.com/Comfy-Org/ComfyUI.git .ci-ComfyUI
-          test "$(git -C .ci-ComfyUI rev-parse HEAD)" = "43cb4fffc89bba20ab7bd61467a36d0339338dab"
+          git clone --depth 1 --branch v0.37.0 https://github.com/Comfy-Org/ComfyUI.git .ci-ComfyUI
+          test "$(git -C .ci-ComfyUI rev-parse HEAD)" = "73c9bad4d21e7addbe1d13bc92eee0f1431b017d"
           git init .ci-FirstBlockCache
           git -C .ci-FirstBlockCache remote add origin https://github.com/duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache.git
           git -C .ci-FirstBlockCache fetch --depth 1 origin 725973c3bfd9de6dce249bc93dc5fe27f820df31
@@ -90,7 +90,8 @@ jobs:
             --expect-lora-strength 0.5 \
             --comfyui-root .ci-ComfyUI \
             --custom-node-root .ci-MiniMaxH3-Director \
-            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
+            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard \
+            --custom-node-root custom_nodes/minimax_h3_memory
           python scripts/verify_workflow.py \
             --workflow workflows/minimax_h3_story_easycache_lora_2x.json \
             --manifest manifests/minimax_h3_i2v_upscale.json \
@@ -101,7 +102,8 @@ jobs:
             --expect-lora-strength 0.5 \
             --comfyui-root .ci-ComfyUI \
             --custom-node-root .ci-MiniMaxH3-Director \
-            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
+            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard \
+            --custom-node-root custom_nodes/minimax_h3_memory
           python scripts/verify_workflow.py \
             --workflow workflows/minimax_h3_i2v_easycache_upscale.json \
             --manifest manifests/minimax_h3_i2v_upscale.json \
@@ -144,28 +146,31 @@ jobs:
           python scripts/verify_workflow.py \
             --workflow workflows/minimax_h3_preset_01_quality.json \
             --manifest manifests/minimax_h3_i2v_upscale.json \
-            --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode \
-            --auto-mosaic-manifest manifests/auto_mosaic.json \
-            --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
-            --comfyui-root .ci-ComfyUI \
-            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
-          python scripts/verify_workflow.py \
-            --workflow workflows/minimax_h3_preset_02_fast_fbcache.json \
-            --manifest manifests/minimax_h3_i2v_upscale.json \
-            --mode i2v --expect-upscale --expect-auto-mosaic --expect-first-block-cache --expect-memory-safe-decode \
+            --mode i2v --expect-upscale --expect-auto-mosaic --expect-h3-memory \
             --auto-mosaic-manifest manifests/auto_mosaic.json \
             --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
             --comfyui-root .ci-ComfyUI \
             --custom-node-root custom_nodes/minimax_h3_ordered_storyboard \
+            --custom-node-root custom_nodes/minimax_h3_memory
+          python scripts/verify_workflow.py \
+            --workflow workflows/minimax_h3_preset_02_fast_fbcache.json \
+            --manifest manifests/minimax_h3_i2v_upscale.json \
+            --mode i2v --expect-upscale --expect-auto-mosaic --expect-first-block-cache --expect-h3-memory \
+            --auto-mosaic-manifest manifests/auto_mosaic.json \
+            --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
+            --comfyui-root .ci-ComfyUI \
+            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard \
+            --custom-node-root custom_nodes/minimax_h3_memory \
             --custom-node-root .ci-FirstBlockCache
           python scripts/verify_workflow.py \
             --workflow workflows/minimax_h3_preset_03_turbo.json \
             --manifest manifests/minimax_h3_i2v_upscale.json \
-            --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo --expect-memory-safe-decode \
+            --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo --expect-h3-memory \
             --auto-mosaic-manifest manifests/auto_mosaic.json \
             --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 \
             --comfyui-root .ci-ComfyUI \
-            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
+            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard \
+            --custom-node-root custom_nodes/minimax_h3_memory
       - name: Validate shell scripts
         run: bash -n scripts/entrypoint.sh scripts/download_models.sh
       - name: Validate custom-node JavaScript

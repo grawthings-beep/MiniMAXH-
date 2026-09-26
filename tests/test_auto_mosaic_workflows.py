@@ -62,9 +62,11 @@ class AutoMosaicWorkflowTests(unittest.TestCase):
                 for subgraph in workflow["definitions"]["subgraphs"]
                 for node in subgraph["nodes"]
             }
-            self.assertIn("MiniMaxH3ReleaseVRAMLatent", internal_types, path.name)
-            self.assertIn("MiniMaxH3VAEDecodeTiled", internal_types, path.name)
-            self.assertNotIn("VAEDecode", internal_types, path.name)
+            self.assertNotIn("MiniMaxH3ReleaseVRAMLatent", internal_types, path.name)
+            self.assertNotIn("MiniMaxH3VAEDecodeTiled", internal_types, path.name)
+            self.assertIn("VAEDecode", internal_types, path.name)
+            self.assertIn("MiniMaxLowVRAMAttention", internal_types, path.name)
+            self.assertIn("MiniMaxChunkFeedForward", internal_types, path.name)
             mosaics = [
                 node
                 for graph in graphs(workflow)

@@ -216,7 +216,7 @@ class AssetTests(unittest.TestCase):
                 "minimax_h3_i2v_upscale.json",
                 "i2v",
                 [
-                    "--expect-upscale", "--expect-auto-mosaic", "--expect-memory-safe-decode",
+                    "--expect-upscale", "--expect-auto-mosaic", "--expect-h3-memory",
                     "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
                     "--expect-lora", "HMNSFW_AIO_V2.safetensors",
                     "--expect-lora-strength", "0.5",
@@ -227,7 +227,7 @@ class AssetTests(unittest.TestCase):
                 "minimax_h3_i2v_upscale.json",
                 "i2v",
                 [
-                    "--expect-upscale", "--expect-auto-mosaic", "--expect-first-block-cache", "--expect-memory-safe-decode",
+                    "--expect-upscale", "--expect-auto-mosaic", "--expect-first-block-cache", "--expect-h3-memory",
                     "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
                     "--expect-lora", "HMNSFW_AIO_V2.safetensors",
                     "--expect-lora-strength", "0.5",
@@ -238,7 +238,7 @@ class AssetTests(unittest.TestCase):
                 "minimax_h3_i2v_upscale.json",
                 "i2v",
                 [
-                    "--expect-upscale", "--expect-auto-mosaic", "--expect-turbo", "--expect-memory-safe-decode",
+                    "--expect-upscale", "--expect-auto-mosaic", "--expect-turbo", "--expect-h3-memory",
                     "--auto-mosaic-manifest", str(MANIFESTS / "auto_mosaic.json"),
                     "--expect-lora", "HMNSFW_AIO_V2.safetensors",
                     "--expect-lora-strength", "0.0",
@@ -277,7 +277,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("ARG MINIMAX_H3_RUNTIME_VARIANT=community-cu128", dockerfile)
         self.assertIn("ARG REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT=0", dockerfile)
         self.assertIn('ARG COMFYUI_ARGS_DEFAULT="--lowvram --vram-headroom 2"', dockerfile)
-        self.assertIn("ARG COMFYUI_VERSION=v0.31.0", dockerfile)
+        self.assertIn("ARG COMFYUI_VERSION=v0.37.0", dockerfile)
         self.assertRegex(dockerfile, r"ARG COMFYUI_COMMIT=[0-9a-f]{40}")
         self.assertIn(
             "ARG MINIMAX_H3_DIRECTOR_COMMIT="

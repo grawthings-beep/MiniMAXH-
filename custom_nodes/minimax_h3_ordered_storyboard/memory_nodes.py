@@ -61,8 +61,9 @@ class MiniMaxH3ReleaseVRAMLatent:
         from comfy import model_management
 
         model_management.unload_all_models()
-        model_management.soft_empty_cache(True)
+        # Collect unreachable tensor cycles before releasing their allocator blocks.
         gc.collect()
+        model_management.soft_empty_cache(True)
         return (samples,)
 
 
