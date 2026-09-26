@@ -15,6 +15,8 @@
     "AUTO_MOSAIC_MANIFEST": "/opt/minimax-h3/manifests/auto_mosaic.json",
     "H3_LORA_REQUIRED": "1",
     "H3_LORA_SELECTION": "all",
+    "H3_EXTRA_LORA_LIST_URL": "https://raw.githubusercontent.com/grawthings-beep/MiniMAXH-/main/manifests/extra_loras.txt",
+    "H3_EXTRA_LORA_REQUIRED": "0",
     "H3_LORA_REPO_ID": "uwgm/nikke-civitai-backup",
     "H3_LORA_SOURCE_PATH": "hmmotion_minimax-h3_epoch12.safetensors",
     "H3_LORA_REVISION": "main",

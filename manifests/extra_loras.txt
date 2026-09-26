@@ -1,0 +1,17 @@
+# 追加したいLoRAのURLを1行に1つ書き、mainブランチへ保存してください。
+# Pod起動時にGitHubの最新版を読み込み、models/loras/extra/へダウンロードします。
+# 空行と # で始まる行は無視します。使うURLの行頭の # を外してください。
+# APIトークンはここに書かず、RunPod SecretのCIVITAI_TOKEN / HF_TOKENを使います。
+# MiniMax H3に対応するLoRAを選んでください。
+#
+# Civitai: ダウンロードURL（推奨。fileId付きならファイルまで固定）
+# https://civitai.com/api/download/models/VERSION_ID?fileId=FILE_ID
+#
+# Civitai: モデルページ（modelVersionIdでバージョン指定可能）
+# https://civitai.com/models/MODEL_ID/model-name?modelVersionId=VERSION_ID
+#
+# Hugging Face: resolve / blobのどちらも使用可能
+# https://huggingface.co/OWNER/REPO/resolve/main/lora.safetensors
+#
+# その他: .safetensorsファイルを返すHTTPSダウンロードURL
+# https://example.com/lora.safetensors

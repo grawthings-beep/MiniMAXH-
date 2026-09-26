@@ -141,6 +141,9 @@ if [[ "${MINIMAX_H3_ENTRYPOINT_SMOKE:-0}" == "1" ]]; then
   test -f "${STORY_NODE_ROOT}/turbo_nodes.py"
   test -f "${STORY_NODE_ROOT}/memory_nodes.py"
   test -f "${PROJECT_DIR}/manifests/auto_mosaic.json"
+  test -f "${PROJECT_DIR}/manifests/extra_loras.txt"
+  test -f "${SCRIPT_DIR}/download_extra_loras.py"
+  python "${SCRIPT_DIR}/download_extra_loras.py" --list "${PROJECT_DIR}/manifests/extra_loras.txt" --check
   test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_01_quality.json"
   test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_02_fast_fbcache.json"
   test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_03_turbo.json"
@@ -167,6 +170,8 @@ python "${SCRIPT_DIR}/download_auto_mosaic.py" &
 AUTO_MOSAIC_DOWNLOAD_PID=$!
 python "${SCRIPT_DIR}/download_turbo_lora.py" &
 TURBO_DOWNLOAD_PID=$!
+COMFYUI_MODEL_DIR="${MODEL_DIR}" python "${SCRIPT_DIR}/download_extra_loras.py" &
+EXTRA_LORA_DOWNLOAD_PID=$!
 "${SCRIPT_DIR}/download_models.sh" &
 MODEL_DOWNLOAD_PID=$!
 
@@ -185,6 +190,10 @@ if ! wait "${AUTO_MOSAIC_DOWNLOAD_PID}"; then
 fi
 if ! wait "${TURBO_DOWNLOAD_PID}"; then
   echo "[download] selectable LightX2V Turbo 4/8-step LoRAs failed"
+  DOWNLOAD_FAILED=1
+fi
+if ! wait "${EXTRA_LORA_DOWNLOAD_PID}"; then
+  echo "[download] required extra LoRA URL list failed"
   DOWNLOAD_FAILED=1
 fi
 if [[ "${DOWNLOAD_FAILED}" == "1" ]]; then
