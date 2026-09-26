@@ -8,6 +8,7 @@ on:
       - "Dockerfile"
       - "custom_nodes/**"
       - "manifests/**"
+      - "!manifests/extra_loras.txt"
       - "patches/**"
       - "scripts/**"
       - "workflows/**"

@@ -179,6 +179,67 @@ MiniMax H3のライセンスを確認し、利用者本人または組織がAppl
 
 ## LoRA
 
+### URLを貼ってLoRAを追加する
+
+**[manifests/extra_loras.txt](manifests/extra_loras.txt) をGitHubで編集し、URLを1行に1つ追加して
+`main`へ保存してください。次回のPod起動時にGitHub上の最新版を取得して自動ダウンロードします。**
+初回だけ、この機能を含むDockerイメージをビルド・公開してPodへ反映する必要があります。
+その後はURL一覧の変更だけならイメージの再ビルドは不要です。既に動いているPodには自動反映しません。
+
+```text
+# 行頭が # の行と空行は無視されます。以下のID・パスは実際の値に置き換えてください。
+https://civitai.com/api/download/models/VERSION_ID?fileId=FILE_ID
+https://civitai.com/models/MODEL_ID/model-name?modelVersionId=VERSION_ID
+https://huggingface.co/OWNER/REPO/resolve/main/lora.safetensors
+```
+
+- CivitaiのダウンロードURL、モデルページ、`civitai.red`にも対応します。
+  ページURLに`modelVersionId`がない場合はAPIが返す先頭のバージョンを使います。
+  バージョン内は条件に一致するSafeTensorのModelファイル（複数ならprimary）を選び、
+  一意に決まらない場合はエラーにします。再現性が必要なら`fileId`付きのダウンロードURLを使ってください。
+- Hugging Faceの`resolve`と`blob`リンク、その他のHTTPS直接ダウンロードURLにも対応します。
+  一般サイトの紹介ページやZIP・ckptファイルは対象外です。
+- 認証には既存のRunPod Secret `CIVITAI_TOKEN`（未設定なら`CIVITAI_API_TOKEN`）と`HF_TOKEN`を使います。
+  **公開URL一覧にトークンを入れないでください。** トークン付きURLは拒否し、認証ヘッダーは対応するホストだけへ送信します。
+- 保存先は`models/loras/extra/`です。同名ファイルの衝突を避けるためURL由来の短いIDをファイル名へ付けます。
+  ComfyUI起動後、紫色の`OPTIONAL CREATOR LoRA`選択欄から`extra/…`を選び、強度を設定してください。
+  **MiniMax H3対応LoRAを選んでください。ダウンロード成功はモデル互換性を保証しません。**
+- safetensorsヘッダーとデータ範囲を検査し、CivitaiはAPIのSHA256とも照合します。
+  その他のURLは初回取得時のSHA256を記録し、再実行時に既存ファイルを検査して再利用します。
+  一般URLのリモート更新は自動検出しないため、更新時は別URL・revisionを使ってください。
+  失敗時は最大`DOWNLOAD_RETRIES`回、先頭から再試行し、検証完了後にだけファイルを公開します。
+- 一覧からURLを削除しても既存ファイルは削除しません。永続ディスクなしの新しいPodでは新しい一覧だけを取得します。
+
+追加分の取得に失敗しても、既定ではエラーをログへ記録してComfyUIの起動を続けます。
+追加分をすべて必須にする場合は`H3_EXTRA_LORA_REQUIRED=1`を設定してください。
+既存のcreator/Turbo LoRAの取得設定とは独立しています。
+
+| 環境変数 | 既定値・用途 |
+| --- | --- |
+| `H3_EXTRA_LORA_LIST_URL` | `https://raw.githubusercontent.com/grawthings-beep/MiniMAXH-/main/manifests/extra_loras.txt`。forkでは自分のリポジトリURLに変更 |
+| `H3_EXTRA_LORA_LIST` | `/opt/minimax-h3/manifests/extra_loras.txt`。`H3_EXTRA_LORA_LIST_URL`を空にした場合のローカル一覧 |
+| `H3_EXTRA_LORA_REQUIRED` | `0`。`1`なら一覧取得・追加LoRA取得の失敗で起動を停止 |
+| `EXTRA_LORA_DOWNLOAD_TIMEOUT` | `120`秒（ネットワーク待ちのタイムアウト） |
+
+起動済みPodへすぐ追加する場合は、GitHubで一覧を保存後、Podのターミナルで実行します。
+終了後にComfyUIのノード定義を更新（Refresh）または画面を再読み込みすると選択欄へ反映されます。
+
+```bash
+python /opt/minimax-h3/scripts/download_extra_loras.py --required
+```
+
+ローカル一覧の構文だけを確認する、または別の一覧を手動取得する場合:
+
+```bash
+python scripts/download_extra_loras.py --list manifests/extra_loras.txt --check
+python scripts/download_extra_loras.py --list /workspace/my_loras.txt --required
+```
+
+`--list`は環境変数のリモート一覧より優先します。`--check`はLoRA本体を取得せず、URLの形式だけを確認します。
+実在・アクセス権・H3互換性は検査しません。
+
+### 既存ワークフローのLoRA適用順
+
 Quality/Fastではcreator LoRAだけが適用されます。Turboではモデルチェーンを次の順序に固定します。
 
 ```text
