@@ -15,3 +15,14 @@
 #
 # その他: .safetensorsファイルを返すHTTPSダウンロードURL
 # https://example.com/lora.safetensors
+https://civitai.red/api/download/models/3323149?fileId=3208809
+https://civitai.com/api/download/models/3268303
+https://civitai.com/api/download/models/3356770
+https://civitai.com/api/download/models/3329529
+https://civitai.com/api/download/models/3290361
+https://civitai.com/api/download/models/3290850
+https://civitai.com/api/download/models/3264280
+https://civitai.com/api/download/models/3310312
+https://civitai.com/api/download/models/3278283
+https://civitai.com/api/download/models/3247473
+https://civitai.com/api/download/models/3252213
