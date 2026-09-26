@@ -15,7 +15,8 @@ def main():
     import comfy.options
     comfy.options.enable_args_parsing()
     import torch
-    from comfy.ldm.minimax.model import Attention, MLP
+    from comfy.ldm.minimax.model import Attention, MLP, DiTBlock, rope_rotation_table
+    from comfy.model_patcher import ModelPatcher
     from minimax_h3_memory import NODE_CLASS_MAPPINGS
     from minimax_h3_memory.minimax_nodes import (
         MiniMaxFFNChunkPatch, minimax_attn_lowmem_forward,
@@ -40,7 +41,36 @@ def main():
                 actual = MiniMaxFFNChunkPatch(2, 8).__get__(mlp)(x)
                 torch.testing.assert_close(actual, expected, rtol=0.02, atol=0.005)
                 assert actual.dtype == dtype
-    print("H3 runtime: registered nodes; repeated FP32/BF16 attention and MLP chunk checks passed on CPU")
+
+            # Exercise the actual node -> ModelPatcher -> block path, including
+            # fused RMSNorm/RoPE and unpatch/repatch between two generations.
+            block = DiTBlock(40, 5, 8, 64, 16, 1e-6, 1e-6,
+                             dtype=dtype, operations=torch.nn)
+            model = torch.nn.Module()
+            model.diffusion_model = torch.nn.Module()
+            model.diffusion_model.blocks = torch.nn.ModuleList([block])
+            base = ModelPatcher(model, torch.device("cpu"), torch.device("cpu"))
+            original_forward = block.forward
+            patched = NODE_CLASS_MAPPINGS["MiniMaxLowVRAMAttention"].execute(base, 2).result[0]
+            patched = NODE_CLASS_MAPPINGS["MiniMaxChunkFeedForward"].execute(patched, 2, 8).result[0]
+            assert not base.object_patches and block.forward == original_forward
+            for length in (17, 9):
+                x = torch.randn(length, 40, dtype=dtype)
+                t = torch.randn(1, 16, dtype=dtype)
+                angles = torch.randn(length, 2).repeat(1, 2)
+                rope = rope_rotation_table(angles, dtype)
+                segments = [(0, 3, 0), (3, 6, 1), (6, length, 2)]
+                expected = block(x.clone(), t, segments, rope)
+                patched.patch_model(load_weights=False)
+                try:
+                    actual = block(x.clone(), t, segments, rope,
+                                   transformer_options=patched.model_options["transformer_options"])
+                    torch.testing.assert_close(actual, expected, rtol=0.02, atol=0.02)
+                finally:
+                    patched.unpatch_model(unpatch_weights=False)
+                assert block.forward == original_forward
+                torch.testing.assert_close(block(x.clone(), t, segments, rope), expected)
+    print("H3 runtime: repeated FP32/BF16 attention, MLP, RoPE and ModelPatcher lifecycle passed on CPU")
 
 
 if __name__ == "__main__":
