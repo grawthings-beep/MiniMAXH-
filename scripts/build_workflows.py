@@ -777,113 +777,63 @@ def add_lora(
     return lora_workflow
 
 
-def add_memory_safe_decode(workflow: dict[str, Any], label: str) -> dict[str, Any]:
-    """Unload H3 before bounded spatiotemporal video-VAE decoding."""
-    safe = copy.deepcopy(workflow)
-    graph = next(
-        candidate
-        for candidate in graph_candidates(safe)
-        if any(node["type"] == "SamplerCustomAdvanced" for node in candidate.get("nodes", []))
-        and any(node["type"] == "VAEDecode" for node in candidate.get("nodes", []))
-        and any(node["type"] == "VAEDecodeAudio" for node in candidate.get("nodes", []))
-    )
-    nodes = graph["nodes"]
-    links = graph["links"]
-    sampler = next(node for node in nodes if node["type"] == "SamplerCustomAdvanced")
-    video_decode = next(node for node in nodes if node["type"] == "VAEDecode")
-    audio_decode = next(node for node in nodes if node["type"] == "VAEDecodeAudio")
-    decode_ids = {int(video_decode["id"]), int(audio_decode["id"])}
-    latent_links = [
-        link
-        for link in links
-        if link_origin(link) == int(sampler["id"])
-        and link_target(link) in decode_ids
-        and str(link["type"] if isinstance(link, dict) else link[5]) == "LATENT"
+def add_h3_memory_optimizations(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Patch sampling and use the pinned runtime's streaming VAE with model reuse."""
+    result = copy.deepcopy(workflow)
+    graph = next(g for g in graph_candidates(result)
+                 if any(n["type"] == "BasicGuider" for n in g.get("nodes", [])))
+    nodes, links = graph["nodes"], graph["links"]
+    consumers = {int(n["id"]) for n in nodes
+                 if n["type"] in {"BasicGuider", "BasicScheduler"}}
+    model_links = [l for l in links if link_target(l) in consumers
+                   and (l["type"] if isinstance(l, dict) else l[5]) == "MODEL"]
+    source_ids = {link_origin(l) for l in model_links}
+    if len(source_ids) != 1 or len(model_links) != 2:
+        raise RuntimeError("Expected one MODEL source for scheduler and guider")
+    source = next(n for n in nodes if int(n["id"]) in source_ids)
+    patches = [
+        ("ModelAttentionBackend", ["comfy kitchen attention"], "H3 INT8 Attention"),
+        ("MiniMaxLowVRAMAttention", [2], "H3 Attention: 2 head groups"),
+        ("MiniMaxChunkFeedForward", [2, 4096], "H3 MLP: 2 token chunks"),
     ]
-    if {link_target(link) for link in latent_links} != decode_ids:
-        raise RuntimeError("Sampler must feed both H3 video and audio VAE decoders")
-
-    guard_id = next_numeric_id(nodes)
-    guard_link_id = max(link_id(link) for link in links) + 1
-    old_link_ids = sorted(link_id(link) for link in latent_links)
-    for link in latent_links:
-        set_link_origin(link, guard_id)
-
-    sampler_output = sampler["outputs"][0]
-    sampler_output["links"] = [
-        current
-        for current in (sampler_output.get("links") or [])
-        if int(current) not in old_link_ids
-    ] + [guard_link_id]
-    guard = {
-        "id": guard_id,
-        "type": "MiniMaxH3ReleaseVRAMLatent",
-        "pos": [-30, 4720],
-        "size": [300, 80],
-        "flags": {},
-        "order": max(int(node.get("order", 0)) for node in nodes) + 1,
-        "mode": 0,
-        "inputs": [{"name": "samples", "type": "LATENT", "link": guard_link_id}],
-        "outputs": [{"name": "samples", "type": "LATENT", "links": old_link_ids}],
-        "title": "VRAM GUARD — unload H3 before VAE decode",
-        "properties": {"Node name for S&R": "MiniMaxH3ReleaseVRAMLatent"},
-        "widgets_values": [],
+    for index, (node_type, values, title) in enumerate(patches):
+        order = int(source["order"]) + 1
+        shift_orders(nodes, order, 1)
+        node = {
+            "id": next_numeric_id(nodes), "type": node_type,
+            "pos": [-2500, 4000 + index * 170], "size": [380, 125],
+            "flags": {}, "order": order, "mode": 0,
+            "inputs": [{"name": "model", "type": "MODEL", "link": None}],
+            "outputs": [{"name": "model", "type": "MODEL", "links": []}],
+            "title": title, "properties": {"Node name for S&R": node_type},
+            "widgets_values": values,
+        }
+        _append_model_node(graph, source=source, consumers=model_links, node=node)
+        source = node
+    graph.setdefault("groups", []).append({
+        "id": next_numeric_id(graph.get("groups", [])),
+        "title": "H3 Memory / Attention", "bounding": [-2520, 3950, 420, 545],
+        "color": "#3f789e", "font_size": 24, "flags": {},
+    })
+    # LiteGraph bypass maps IMAGE -> IMAGE and prunes the unused model loader.
+    upscale = next(n for n in nodes if n["type"] == "ImageUpscaleWithModel")
+    upscale["mode"] = 4
+    upscale["title"] = "Optional 2x (OFF) - Ctrl+B to enable"
+    result.setdefault("extra", {})["minimax_h3_memory"] = {
+        "comfyui": "v0.37.0", "head_chunks": 2, "mlp_chunks": 2,
+        "native_streaming_vae": True, "upscale_default": False,
     }
-    nodes.append(guard)
-    if isinstance(links[0], dict):
-        links.append(
-            {
-                "id": guard_link_id,
-                "origin_id": int(sampler["id"]),
-                "origin_slot": 0,
-                "target_id": guard_id,
-                "target_slot": 0,
-                "type": "LATENT",
-            }
-        )
-        state = graph.setdefault("state", {})
-        state["lastNodeId"] = max(int(state.get("lastNodeId", 0)), guard_id)
-        state["lastLinkId"] = max(int(state.get("lastLinkId", 0)), guard_link_id)
-    else:
-        links.append([guard_link_id, int(sampler["id"]), 0, guard_id, 0, "LATENT"])
-        safe["last_node_id"] = max(int(safe.get("last_node_id", 0)), guard_id)
-        safe["last_link_id"] = max(int(safe.get("last_link_id", 0)), guard_link_id)
-
-    video_decode["type"] = "MiniMaxH3VAEDecodeTiled"
-    video_decode["title"] = "H3 VAE Decode — nested-safe native tiling"
-    video_decode["size"] = [360, 100]
-    video_decode["widgets_values"] = []
-    video_decode.setdefault("properties", {})["Node name for S&R"] = (
-        "MiniMaxH3VAEDecodeTiled"
-    )
-    audio_decode["pos"] = [-30, 5120]
-    graph["name"] = f'{graph.get("name", label)} - Memory-safe tiled VAE decode'
-
-    safe.setdefault("extra", {})["memory_safety"] = {
-        "model_unload_before_decode": True,
-        "video_vae_tiled": True,
-        "nested_video_latent_unwrap": True,
-        "native_spatial_tile_px": 256,
-        "native_temporal_chunk_frames": 17,
-    }
-    note = next(
-        (
-            node
-            for node in safe.get("nodes", [])
-            if node["type"] == "MarkdownNote"
-            and "About this workflow" in node.get("widgets_values", [""])[0]
-        ),
-        None,
-    )
-    if note:
-        note["widgets_values"][0] += (
-            "\n\n## Memory-safe VAE transition\n"
-            "Sampling後に`MiniMaxH3ReleaseVRAMLatent`で生成モデルをGPUから明示解放し、"
-            "Video VAEはH3ネイティブの256px spatial tile / 17-frame temporal chunkで"
-            "nested latentのvideo側だけをdecodeします。"
-            "32GB GPUでsampling完了直後にプロセスごと再起動するOOMを防ぐための安全経路です。"
-        )
-    return safe
+    for node in result.get("nodes", []):
+        if node["type"] == "MarkdownNote" and "About this workflow" in node.get("widgets_values", [""])[0]:
+            node["widgets_values"][0] += (
+                "\n\n## A40: 連続生成の開始設定\n"
+                "まず03 Turboの8-step、0.4MP・5秒、creator LoRA 0.0でseedを変えて2回生成。"
+                "2xは初期OFF（サブグラフ内Optional 2xを選択しCtrl+BでON）。"
+                "モザイクは有効のままです。H3はINT8 Attention・head 2分割・MLP 2分割。"
+                "VAEはComfyUIの時間chunk処理と必要時の自動tileを使います。"
+                "安定したら10秒へ増やし、長尺と2xの負荷を別々に確認してください。"
+            )
+    return result
 
 
 def _connect_visible_control(
@@ -1441,29 +1391,29 @@ def main() -> int:
     quality_internal = configure_ui_preset(
         add_auto_mosaic(selectable_i2v, "quality-preset"),
         preset="01-quality",
-        title="01 · Quality · 20 steps · Selectable LoRA · 2x · Mosaic toggle",
+        title="01 · Quality · 20 steps · Selectable LoRA · Optional 2x OFF · Mosaic toggle",
         output_prefix="video/MiniMax_H3_01_Quality_2x",
     )
     fast_internal = configure_ui_preset(
         add_first_block_cache(quality_internal, "I2V Fast"),
         preset="02-fast-firstblockcache",
-        title="02 · Fast · FBCache Safe · Selectable LoRA · 2x · Mosaic toggle",
+        title="02 · Fast · FBCache Safe · Selectable LoRA · Optional 2x OFF · Mosaic toggle",
         output_prefix="video/MiniMax_H3_02_Fast_FBCache_2x",
     )
     turbo_internal = configure_ui_preset(
         add_turbo_profiles(quality_internal, "I2V Turbo"),
         preset="03-turbo-4-8step-768p",
-        title="03 · Turbo · 4/8-step 768p · Selectable LoRA · 2x · Mosaic toggle",
+        title="03 · Turbo · 4/8-step 768p · Selectable LoRA · Optional 2x OFF · Mosaic toggle",
         output_prefix="video/MiniMax_H3_03_Turbo_4_8step_768p_2x",
     )
     quality = expose_lora_controls(
-        add_memory_safe_decode(quality_internal, "Quality"), turbo=False
+        add_h3_memory_optimizations(quality_internal), turbo=False
     )
     fast = expose_lora_controls(
-        add_memory_safe_decode(fast_internal, "Fast FBCache"), turbo=False
+        add_h3_memory_optimizations(fast_internal), turbo=False
     )
     turbo = expose_lora_controls(
-        add_memory_safe_decode(turbo_internal, "Turbo 4/8-step 768p"), turbo=True
+        add_h3_memory_optimizations(turbo_internal), turbo=True
     )
     presets = {
         "minimax_h3_preset_01_quality.json": quality,

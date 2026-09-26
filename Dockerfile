@@ -1,8 +1,9 @@
 ARG PYTORCH_IMAGE=pytorch/pytorch:2.9.1-cuda12.8-cudnn9-runtime@sha256:7b324d212a4450795b49edba9949b7cdc72429148a64e974334bfe5774d51385
 FROM ${PYTORCH_IMAGE}
 
-ARG COMFYUI_VERSION=v0.31.0
-ARG COMFYUI_COMMIT=43cb4fffc89bba20ab7bd61467a36d0339338dab
+ARG COMFYUI_VERSION=v0.37.0
+ARG COMFYUI_COMMIT=73c9bad4d21e7addbe1d13bc92eee0f1431b017d
+ARG MINIMAX_H3_KJNODES_COMMIT=d3cfe21625e5170126ce06fbfcfe1d88108688c3
 ARG MINIMAX_H3_DIRECTOR_COMMIT=a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7
 ARG MINIMAX_H3_FBC_COMMIT=725973c3bfd9de6dce249bc93dc5fe27f820df31
 ARG MINIMAX_H3_RUNTIME_VARIANT=community-cu128
@@ -108,6 +109,18 @@ RUN git -C "${MINIMAX_H3_DIRECTOR_ROOT}" apply --recount --check \
 
 COPY . /opt/minimax-h3
 
+# Install just the upstream H3 module; keep its source and GPL license in the image.
+RUN git init /tmp/kjnodes \
+    && git -C /tmp/kjnodes remote add origin https://github.com/kijai/ComfyUI-KJNodes.git \
+    && git -C /tmp/kjnodes fetch --depth 1 origin "${MINIMAX_H3_KJNODES_COMMIT}" \
+    && git -C /tmp/kjnodes checkout --detach FETCH_HEAD \
+    && test "$(git -C /tmp/kjnodes rev-parse HEAD)" = "${MINIMAX_H3_KJNODES_COMMIT}" \
+    && cp -R /opt/minimax-h3/custom_nodes/minimax_h3_memory "${COMFYUI_ROOT}/custom_nodes/" \
+    && cp /tmp/kjnodes/nodes/minimax_nodes.py /tmp/kjnodes/LICENSE \
+      "${COMFYUI_ROOT}/custom_nodes/minimax_h3_memory/" \
+    && rm -rf /tmp/kjnodes \
+    && python /opt/minimax-h3/scripts/check_h3_memory_runtime.py --comfyui-root "${COMFYUI_ROOT}"
+
 RUN pip install --no-cache-dir \
       -r /opt/minimax-h3/custom_nodes/minimax_h3_ordered_storyboard/requirements.txt \
     && python -c "import ultralytics; assert ultralytics.__version__ == '8.4.104'" \
@@ -176,6 +189,7 @@ RUN pip install --no-cache-dir \
       --comfyui-root "${COMFYUI_ROOT}" \
       --custom-node-root "${MINIMAX_H3_DIRECTOR_ROOT}" \
       --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_memory" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_story_easycache_lora_2x.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
@@ -187,6 +201,7 @@ RUN pip install --no-cache-dir \
       --comfyui-root "${COMFYUI_ROOT}" \
       --custom-node-root "${MINIMAX_H3_DIRECTOR_ROOT}" \
       --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_memory" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_i2v_easycache_upscale.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
@@ -229,28 +244,31 @@ RUN pip install --no-cache-dir \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_preset_01_quality.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
-      --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode \
+      --mode i2v --expect-upscale --expect-auto-mosaic --expect-h3-memory \
       --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
       --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
       --comfyui-root "${COMFYUI_ROOT}" \
       --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_memory" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_preset_02_fast_fbcache.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
-      --mode i2v --expect-upscale --expect-auto-mosaic --expect-first-block-cache --expect-memory-safe-decode \
+      --mode i2v --expect-upscale --expect-auto-mosaic --expect-first-block-cache --expect-h3-memory \
       --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
       --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 \
       --comfyui-root "${COMFYUI_ROOT}" \
       --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_memory" \
       --custom-node-root "${MINIMAX_H3_FBC_ROOT}" \
     && python /opt/minimax-h3/scripts/verify_workflow.py \
       --workflow /opt/minimax-h3/workflows/minimax_h3_preset_03_turbo.json \
       --manifest /opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json \
-      --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo --expect-memory-safe-decode \
+      --mode i2v --expect-upscale --expect-auto-mosaic --expect-turbo --expect-h3-memory \
       --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
       --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 \
       --comfyui-root "${COMFYUI_ROOT}" \
       --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_memory" \
     && cd "${COMFYUI_ROOT}" \
     && python -c "import sys; sys.path.insert(0, '${COMFYUI_ROOT}/custom_nodes'); import minimax_h3_ordered_storyboard as p; assert {'WanAutoMosaicVideo', 'MiniMaxH3TurboProfile', 'MiniMaxH3TurboLoRAControl', 'MiniMaxH3CreatorLoRAControl', 'MiniMaxH3CreatorLoRAApply', 'MiniMaxH3ReleaseVRAMLatent', 'MiniMaxH3VAEDecodeTiled'} <= p.NODE_CLASS_MAPPINGS.keys()"
 

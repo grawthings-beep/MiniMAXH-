@@ -19,12 +19,13 @@ ComfyUIへ表示するMiniMax H3ワークフローは、次の3本だけです�
 - 1枚の開始画像によるI2V
 - 任意の終了画像によるfirst/last-frame補間
 - 起動時に取得したcreator LoRAの選択と強度変更
-- `RealESRGAN_x2plus`による完成フレーム2倍化
+- `RealESRGAN_x2plus`による完成フレーム2倍化（初期OFF）
 - 完成動画だけを対象にするCPU自動モザイク
-- sampling直後のモデル解放とH3ネイティブタイルVideo VAE Decode
+- H3 Attention・MLPの2分割と、ComfyUIの時間chunk Video VAE Decode
 - H3ネイティブの24fpsステレオ音声
 
-2xが不要なら`ImageUpscaleWithModel`をbypassします。モザイクは
+2xは初期状態でbypassです。サブグラフを開き、`Optional 2x (OFF)`を選択して
+`Ctrl+B`で有効化できます。配布ファイル名の`_2x`は互換性のため残しています。モザイクは
 `WanAutoMosaicVideo`ノードの`enabled`でON/OFFできます。LoRA操作はサブグラフ外の
 紫色`LoRA CONTROLS`グループへ常時表示され、強度`0.0`ならLoRAファイルをロードしません。
 
@@ -41,7 +42,7 @@ Community Cloudのhost driver差を吸収するため、同じworkflowを2種類
 | `community-cu128` | `2.9.1+cu128` | r525以上 | r550 L40S、r570 RTX 5090、r580以降で起動する互換優先版 |
 | `fast-cu130` | `2.10.0+cu130` | r580以上 | ComfyKitchen CUDA INT8を使う高速版 |
 
-- ComfyUI `v0.31.0`を固定
+- ComfyUI `v0.37.0`を固定
 - MiniMax H3 FL2VA pruned INT8 ConvRot
 - `community-cu128`はComfyKitchen eager fallbackを許可
 - `fast-cu130`だけComfyKitchen CUDAを必須化
@@ -52,9 +53,12 @@ Community Cloudのhost driver差を吸収するため、同じworkflowを2種類
 - Turboは両モードとも`Euler`、`simple`、video shift `6`、audio shift `3`
 - EasyCacheとFirstBlockCacheは併用しない
 - TurboとFirstBlockCacheも既定では併用しない
-- `--fast-disk`はモデル退避I/Oを増やす場合があるため既定で使わない
-- 全3プリセットでsampling後にH3/text encoderをGPUから解放し、nested AV latentから
-  video側だけを分離して、H3 VAE内蔵の256px空間タイル・17-frame時間chunkでdecode
+- H3だけ`ModelAttentionBackend`でComfyKitchen INT8 Attentionを選択（未対応環境はComfyUIがPyTorchへfallback）
+- KJNodesのH3専用Attentionをhead 2分割、MLPをtoken 2分割（4096 tokens超）で適用
+- KJNodes commit `d3cfe21625e5170126ce06fbfcfe1d88108688c3`のH3モジュールとライセンスのみを組み込む
+- `--fast-disk`が明示されていない場合、起動時に`--disable-fast-disk`を追加して自動disk offloadを抑制
+- 全3プリセットを標準`VAEDecode`に戻し、v0.37.0の時間chunk入出力と必要時の自動tile fallbackを利用
+- 毎回の全モデル解放は行わず、モデル配置と再利用はComfyUIに任せる。旧解放・tileノードは旧JSON互換用に残す
 
 FirstBlockCache custom nodeはcommit
 `725973c3bfd9de6dce249bc93dc5fe27f820df31`を固定します。Turbo LoRAはHugging Face
@@ -151,6 +155,15 @@ MiniMax H3のライセンスを確認し、利用者本人または組織がAppl
 ## Pod起動処理
 
 ### 2回目以降の生成でOOMになる場合
+
+新イメージではまず`03 Turbo`、`8-step`、`0.4MP`、`5秒`、creator LoRA `0.0`、
+2x OFFでseedを変えて2回生成してください。同一seedの再実行ではキャッシュが再利用され、
+2回目のsamplingを検証できません。成功したら同じ条件の10秒、最後に2x ONを試します。
+GPUと使用モデルの種類は維持します。Podは新規作成時に新イメージを指定し、従来どおり起動時にモデルを取得します。
+
+ビルドでは実際のComfyUI/KJNodesを使ってFP32/BF16のAttentionとMLPをCPUで比較します。
+A40上のINT8 CUDA実行、実VRAMピーク、5秒の連続生成、10秒以上の安定性・速度は別途実測が必要です。
+分割の呼び出し回数が増えるため、全条件で高速化するとは限りません。
 
 既定のキャッシュとモデル再利用は維持します。キャッシュ保持の影響を切り分ける診断として、
 一時的に`--cache-none --disable-smart-memory`を指定できます。中間ノードの出力・オブジェクトを
@@ -284,9 +297,9 @@ RTX 5090かつr580以上のhostでは`community-cu128`ではなく`fast-cu130`�
 
 ```bash
 python -m unittest discover -s tests -v
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_01_quality.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_02_fast_fbcache.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --expect-first-block-cache
-python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_03_turbo.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 --expect-turbo
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_01_quality.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-h3-memory --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_02_fast_fbcache.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-h3-memory --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.5 --expect-first-block-cache
+python scripts/verify_workflow.py --workflow workflows/minimax_h3_preset_03_turbo.json --manifest manifests/minimax_h3_i2v_upscale.json --mode i2v --expect-upscale --expect-auto-mosaic --expect-h3-memory --auto-mosaic-manifest manifests/auto_mosaic.json --expect-lora HMNSFW_AIO_V2.safetensors --expect-lora-strength 0.0 --expect-turbo
 bash -n scripts/entrypoint.sh scripts/download_models.sh
 ```
 
@@ -295,7 +308,7 @@ bash -n scripts/entrypoint.sh scripts/download_models.sh
 ## Sources
 
 - [ComfyUI MiniMax H3 guide](https://docs.comfy.org/tutorials/video/minimax/minimax-h3)
-- [ComfyUI v0.31.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.31.0)
+- [ComfyUI v0.37.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.37.0)
 - [MiniMax H3 weights](https://huggingface.co/Comfy-Org/MiniMax-H3)
 - [LightX2V MiniMax H3 Turbo](https://github.com/ModelTC/Minimax-H3-Turbo)
 - [MiniMax H3 FirstBlockCache](https://github.com/duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache)
