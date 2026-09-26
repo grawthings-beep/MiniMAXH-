@@ -29,6 +29,10 @@ def main():
         for dtype in (torch.float32, torch.bfloat16):
             attn = Attention(40, 5, 8, 1e-6, dtype=dtype, operations=torch.nn)
             mlp = MLP(40, 64, dtype=dtype, operations=torch.nn)
+            # Match ComfyUI's loaded inference parameters; the in-place RoPE
+            # contract checks readonly norm weights as well as grad mode.
+            attn.requires_grad_(False)
+            mlp.requires_grad_(False)
             for length in (17, 9, 17):
                 x = torch.randn(length, 40, dtype=dtype)
                 expected = attn(x)
@@ -46,6 +50,7 @@ def main():
             # fused RMSNorm/RoPE and unpatch/repatch between two generations.
             block = DiTBlock(40, 5, 8, 64, 16, 1e-6, 1e-6,
                              dtype=dtype, operations=torch.nn)
+            block.requires_grad_(False)
             model = torch.nn.Module()
             model.diffusion_model = torch.nn.Module()
             model.diffusion_model.blocks = torch.nn.ModuleList([block])
