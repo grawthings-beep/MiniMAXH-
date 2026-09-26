@@ -276,7 +276,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("ARG PYTORCH_IMAGE=", dockerfile)
         self.assertIn("ARG MINIMAX_H3_RUNTIME_VARIANT=community-cu128", dockerfile)
         self.assertIn("ARG REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT=0", dockerfile)
-        self.assertIn('ARG COMFYUI_ARGS_DEFAULT="--lowvram --vram-headroom 2"', dockerfile)
+        self.assertIn('ARG COMFYUI_ARGS_DEFAULT="--lowvram --vram-headroom 2 --cache-none --disable-smart-memory"', dockerfile)
         self.assertIn("ARG COMFYUI_VERSION=v0.31.0", dockerfile)
         self.assertRegex(dockerfile, r"ARG COMFYUI_COMMIT=[0-9a-f]{40}")
         self.assertIn(
@@ -390,7 +390,7 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(template["env"]["REQUIRE_COMFY_KITCHEN_CUDA"], "0")
         self.assertEqual(
             template["env"]["COMFYUI_ARGS"],
-            "--lowvram --vram-headroom 2",
+            "--lowvram --vram-headroom 2 --cache-none --disable-smart-memory",
         )
         self.assertNotIn("--fast-disk", template["env"]["COMFYUI_ARGS"])
         self.assertEqual(template["env"]["HF_TOKEN"], "")

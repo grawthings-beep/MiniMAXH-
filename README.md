@@ -133,13 +133,15 @@ DOWNLOAD_RETRIES=3
 MODEL_VERIFY=size
 MODEL_MANIFEST=/opt/minimax-h3/manifests/minimax_h3_i2v_upscale.json
 REQUIRE_COMFY_KITCHEN_CUDA=0
-COMFYUI_ARGS=--lowvram --vram-headroom 2
+COMFYUI_ARGS=--lowvram --vram-headroom 2 --cache-none --disable-smart-memory
 TINI_SUBREAPER=1
 ```
 
 `fast-cu130`を使う場合だけ`REQUIRE_COMFY_KITCHEN_CUDA=1`へ変更します。旧Templateの
 誤って設定された旧v1.1 profile `--disable-dynamic-vram --reserve-vram 4` は、起動時に
-`--lowvram --vram-headroom 2`へ自動修正されます。DynamicVRAMを無効化すると、CUDA 12.8の
+`--lowvram --vram-headroom 2 --cache-none --disable-smart-memory`へ自動修正されます。
+以前の既定値`--lowvram --vram-headroom 2`だけが残っているTemplateも同じ設定へ更新します。
+それ以外のカスタム引数はそのまま使います。DynamicVRAMを無効化すると、CUDA 12.8の
 INT8 eager fallbackが一時バッファを確保できず、24GB/32GB GPUでOOMしやすくなります。
 `REQUIRE_COMFY_KITCHEN_CUDA=0`
 だけを旧cu130 imageへ設定してもdriver非互換は解消しません。
@@ -149,6 +151,29 @@ MiniMax H3のライセンスを確認し、利用者本人または組織がAppl
 代わりに`MINIMAX_H3_SEPARATE_LICENSE=1`を使用します。
 
 ## Pod起動処理
+
+### 2回目以降の生成でOOMになる場合
+
+既定では`--cache-none --disable-smart-memory`を指定し、中間ノードの出力・オブジェクトを
+生成間でキャッシュせず、処理終了時にはComfyUIのモデル管理経由でGPUモデルを退避します。
+sampling直後の解放ノードだけでは、後続のVideo/Audio VAE・upscalerや完成フレームのキャッシュは
+生成間に残り得るためです。毎回モデルやテキスト条件を読み直す分、次の生成の準備時間は増えます。
+DynamicVRAMは有効のままです。
+
+すでに公開済みの`sha-90aeee2-fast-cu130`などでも、次回Pod作成時の環境変数を次のようにすれば
+同じComfyUI標準オプションを適用できます（イメージ更新は不要）。
+
+```text
+COMFYUI_ARGS=--lowvram --vram-headroom 2 --cache-none --disable-smart-memory
+```
+
+起動ログの`[comfyui] extra args:`で設定を確認し、同じ解像度・秒数でseedを変更して2回連続生成します。
+この設定はキャッシュ保持への対策で、すべてのOOMの解消を保証するものではありません。
+失敗する場合は、エラーになったノード名、CUDA OOMの全文（allocated/reserved/freeを含む）、
+解像度・秒数・選択LoRAを記録してください。プロセス自体が消える場合はGPU VRAMに加えて
+ホストRAM不足も確認します。
+
+### 起動時のダウンロード
 
 起動時には以下を並列で実行します。
 
