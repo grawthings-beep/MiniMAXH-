@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Build the opt-in, single-character R2V workflow from the pinned native template."""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import importlib.util
+import json
+import uuid
+from pathlib import Path
+
+from build_workflows import add_auto_mosaic, add_memory_safe_decode, add_upscale, write_json
+
+ROOT = Path(__file__).resolve().parents[1]
+FILENAME = "character_reveal_r2v_2x.json"
+
+
+def build() -> dict:
+    upstream = json.loads((ROOT / "workflows/upstream_minimax_h3_r2v.json").read_text(encoding="utf-8"))
+    workflow = copy.deepcopy(upstream)
+    workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, "MiniMAXH-/character-reveal-r2v-v1"))
+    workflow.pop("definitions", None)
+    remove_ids = {116, 117, 131, 132, 138, 139, 140}
+    workflow["nodes"] = [n for n in workflow["nodes"] if n["id"] not in remove_ids]
+    workflow["links"] = []
+    # Existing tail builders need an output group; final layout replaces it below.
+    workflow["groups"] = [{"title": "Output", "bounding": [-5000, 0, 15000, 10000]}]
+    for node in workflow["nodes"]:
+        for socket in node.get("inputs", []):
+            socket["link"] = None
+        for socket in node.get("outputs", []):
+            socket["links"] = []
+    by_id = {n["id"]: n for n in workflow["nodes"]}
+
+    spec = importlib.util.spec_from_file_location(
+        "character_prompt_defaults", ROOT / "custom_nodes/minimax_h3_ordered_storyboard/character_nodes.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def node(node_id, kind, inputs, outputs, values, title):
+        item = {
+            "id": node_id, "type": kind, "pos": [0, 0], "size": [400, 200],
+            "flags": {}, "order": 0, "mode": 0, "title": title,
+            "inputs": [{"name": name, "type": type_, "link": None} for name, type_ in inputs],
+            "outputs": [{"name": name, "type": type_, "links": []} for name, type_ in outputs],
+            "properties": {"Node name for S&R": kind}, "widgets_values": values,
+        }
+        workflow["nodes"].append(item)
+        by_id[node_id] = item
+        return item
+
+    node(141, "MiniMaxH3CharacterPrompt", [], [("prompt", "STRING"), ("length", "INT")],
+         [5.0, "direction", module.IDENTITY_NOTES, module.DEFAULT_DIRECTION,
+          "Quiet room ambience, soft footsteps and a door opening. No dialogue.", "N/A"],
+         "02 · 演出を入力 / Direction + duration (no API)")
+    node(142, "MiniMaxH3CharacterReference", [("image", "IMAGE")], [("IMAGE", "IMAGE")],
+         [1024], "Reference budget · 1024px long edge / OOM時は768")
+    node(143, "MarkdownNote", [], [], [
+        "## 04 Character Reveal · R2V Quality 2x\n\n"
+        "キャラ画像は外見の参照。冒頭フレームには固定しません。\n\n"
+        "1. 左上へ1人のキャラ画像をアップロード。\n"
+        "2. 演出ノードの direction に、冒頭→途中→見せ場を具体的に入力。"
+        "英語推奨。自動翻訳・LLM・有料APIはありません。\n"
+        "3. まず5秒 / 0.4MP / 25 stepsで動作と顔を確認。"
+        "構成確認後に7秒、0.6MP、最終0.98MPへ一つずつ変更。OOMしない保証はありません。\n\n"
+        "`direction` は公式形式へ整形。`full_prompt` は direction の全文をそのまま送信。"
+        "後者では identity_notes/soundscape/music は無視されます。\n\n"
+        "キャラ保持と時刻指定は強制ではありません。1枚の参照で大きな後ろ向き回転を"
+        "求めない。小さな顔しかない全身絵より、顔と衣装が読める画像から試す。\n\n"
+        "専用ref2vaモデル / res_multistep + normal / LoRA・近似キャッシュなし。"
+        "既存のFL2VA Turbo LoRAはこのグラフへ流用しない。\n\n"
+        "参照は最大1024pxに制限して native `max` へ渡すため、無制限な2K参照ではありません。"
+        "元画像の拡大・切り抜きはしません（32px格子への丸めあり）。"
+    ], "使い方 / Read before generation")
+    by_id[137]["widgets_values"] = ["", "image"]
+    by_id[137]["title"] = "01 · キャラ画像 / Appearance reference, NOT first frame"
+    by_id[115]["widgets_values"] = ["9:16 (Portrait Widescreen)", 0.4, 32]
+    by_id[115]["title"] = "Output resolution · 初回0.4 / 最終候補0.6–0.98MP"
+    by_id[124]["widgets_values"] = ["normal", 25, 1.0]
+    by_id[124]["title"] = "Quality sampling · 25 steps (20 for comparison)"
+    by_id[129]["widgets_values"] = [42, "fixed"]
+    by_id[129]["title"] = "Seed · fixed for comparisons / 次の候補は変更"
+    by_id[136]["widgets_values"] = ["", 480, 864, 124, "max"]
+    by_id[136]["title"] = "03 · Native R2V · キャラ参照（開始フレームではない）"
+    by_id[92]["widgets_values"] = ["video/MiniMax_H3_04_Character_R2V_2x", "mp4", "h264"]
+
+    def connect(origin, output, target, input_):
+        a, b = by_id[origin], by_id[target]
+        ai = next(i for i, s in enumerate(a["outputs"]) if s["name"] == output)
+        bi = next(i for i, s in enumerate(b["inputs"]) if s["name"] == input_)
+        lid = len(workflow["links"]) + 1
+        workflow["links"].append([lid, origin, ai, target, bi, a["outputs"][ai]["type"]])
+        a["outputs"][ai]["links"].append(lid)
+        b["inputs"][bi]["link"] = lid
+
+    for edge in [
+        (137, "IMAGE", 142, "image"), (142, "IMAGE", 136, "ref_images.ref_image_0"),
+        (141, "prompt", 136, "prompt"), (141, "length", 136, "length"),
+        (115, "width", 136, "width"), (115, "height", 136, "height"),
+        (128, "CLIP", 136, "clip"), (119, "VAE", 136, "vae"), (120, "VAE", 136, "audio_vae"),
+        (127, "MODEL", 124, "model"), (127, "MODEL", 126, "model"),
+        (136, "positive", 126, "conditioning"), (136, "LATENT", 125, "latent_image"),
+        (129, "NOISE", 125, "noise"), (126, "GUIDER", 125, "guider"),
+        (123, "SAMPLER", 125, "sampler"), (124, "SIGMAS", 125, "sigmas"),
+        (125, "output", 122, "samples"), (125, "output", 121, "samples"),
+        (119, "VAE", 122, "vae"), (120, "VAE", 121, "vae"),
+        (122, "IMAGE", 130, "images"), (121, "AUDIO", 130, "audio"),
+        (130, "VIDEO", 92, "video"),
+    ]:
+        connect(*edge)
+    workflow = add_memory_safe_decode(add_auto_mosaic(add_upscale(workflow, "Character R2V"), "Character R2V"), "Character R2V")
+    # Every editable node is top-level; deterministic, disjoint left-to-right columns.
+    layouts = {
+        137: (40, 80, 420, 370), 142: (40, 510, 420, 100), 143: (40, 680, 420, 880),
+        141: (560, 80, 620, 1100), 115: (560, 1250, 620, 180),
+        127: (1280, 80, 540, 120), 128: (1280, 270, 540, 150),
+        119: (1280, 490, 540, 100), 120: (1280, 660, 540, 100),
+        136: (1920, 80, 480, 680),
+        124: (2500, 80, 420, 150), 129: (2500, 300, 420, 110),
+        123: (2500, 480, 420, 80), 126: (2500, 630, 420, 100), 125: (2500, 800, 420, 240),
+        122: (3020, 250, 500, 100), 121: (3020, 420, 500, 100),
+        130: (3020, 1270, 500, 110), 92: (3620, 80, 540, 650),
+    }
+    additional = {
+        "UpscaleModelLoader": (1280, 830, 540, 100),
+        "MiniMaxH3ReleaseVRAMLatent": (3020, 80, 500, 100),
+        "ImageUpscaleWithModel": (3020, 590, 500, 100),
+        "WanAutoMosaicVideo": (3020, 760, 500, 440),
+    }
+    for n in workflow["nodes"]:
+        x, y, w, h = layouts[n["id"]] if n["id"] in layouts else additional[n["type"]]
+        n["pos"], n["size"] = [x, y], [w, h]
+    workflow["groups"] = [
+        {"id": i+1, "title": title, "bounding": [x, 0, w, 1630], "color": "#34515e", "font_size": 24, "flags": {}}
+        for i, (title, x, w) in enumerate([
+            ("01 · Character", 10, 480), ("02 · Direction", 530, 680),
+            ("Models · Ref2VA", 1250, 600), ("03 · Reference conditioning", 1890, 540),
+            ("04 · Quality sampling", 2470, 480), ("05 · Tiled decode / 2x / mosaic", 2990, 560),
+            ("06 · MP4", 3590, 600),
+        ])
+    ]
+    # Topological order (rather than canvas coordinates) for stable UI serialization.
+    pending = list(workflow["nodes"])
+    done = set()
+    ordered = []
+    while pending:
+        ready = [n for n in pending if all(l[1] in done for l in workflow["links"] if l[3] == n["id"])]
+        if not ready:
+            raise ValueError("Workflow contains a cycle")
+        for n in ready:
+            n["order"] = len(ordered)
+            ordered.append(n)
+            done.add(n["id"])
+            pending.remove(n)
+    workflow["nodes"] = ordered
+    workflow["last_node_id"] = max(n["id"] for n in ordered)
+    workflow["last_link_id"] = max(l[0] for l in workflow["links"])
+    workflow["extra"] = {"ds": {"scale": 0.65, "offset": [30, 30]}, "character_r2v": {
+        "appearance_reference_not_first_frame": True, "quality_tested_on_gpu": False,
+        "no_external_prompt_api": True, "ref_long_edge_cap": 1024,
+    }}
+    return workflow
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, default=ROOT / "workflows")
+    args = parser.parse_args()
+    write_json(args.output_dir / FILENAME, build())

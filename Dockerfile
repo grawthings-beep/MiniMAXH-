@@ -28,6 +28,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HUB_DISABLE_UPDATE_CHECK=1 \
     HF_DOWNLOAD_WORKERS=4 \
     MODEL_VERIFY=size \
+    H3_CHARACTER_R2V=0 \
     H3_LORA_REQUIRED=1 \
     H3_LORA_SELECTION=all \
     H3_EXTRA_LORA_LIST=/opt/minimax-h3/manifests/extra_loras.txt \
@@ -279,6 +280,30 @@ RUN ACCEPT_MINIMAX_H3_LICENSE=1 \
     CIVITAI_API_TOKEN=entrypoint-smoke \
     MINIMAX_H3_ENTRYPOINT_SMOKE=1 \
     /opt/minimax-h3/scripts/entrypoint.sh
+
+RUN python /opt/minimax-h3/scripts/build_character_workflow.py --output-dir /tmp/h3-character-check \
+    && cmp /tmp/h3-character-check/character_reveal_r2v_2x.json \
+      /opt/minimax-h3/workflows/character_reveal_r2v_2x.json \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/character_reveal_r2v_2x.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_r2v_upscale.json \
+      --mode r2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode \
+      --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
+      --comfyui-root "${COMFYUI_ROOT}" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+    && cd "${COMFYUI_ROOT}" \
+    && python -c "import sys; sys.path.insert(0, '${COMFYUI_ROOT}/custom_nodes'); import minimax_h3_ordered_storyboard as p; assert {'MiniMaxH3CharacterPrompt', 'MiniMaxH3CharacterReference'} <= p.NODE_CLASS_MAPPINGS.keys(); n=p.NODE_CLASS_MAPPINGS['MiniMaxH3CharacterPrompt'](); assert n.build(5, 'direction', 'Preserve identity.', 'A character waves.', 'N/A', 'N/A')[1] == 124"
+
+RUN ACCEPT_MINIMAX_H3_LICENSE=1 \
+    MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
+    HF_TOKEN=entrypoint-smoke \
+    CIVITAI_TOKEN=entrypoint-smoke \
+    CIVITAI_API_TOKEN=entrypoint-smoke \
+    H3_CHARACTER_R2V=1 \
+    MINIMAX_H3_ENTRYPOINT_SMOKE=1 \
+    /opt/minimax-h3/scripts/entrypoint.sh \
+    && rm "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json" \
+      "${COMFYUI_ROOT}/user/default/minimax_h3_character_models.json"
 
 WORKDIR /opt/ComfyUI
 EXPOSE 8188

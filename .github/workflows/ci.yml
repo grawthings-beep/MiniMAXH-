@@ -173,6 +173,17 @@ jobs:
             --custom-node-root custom_nodes/minimax_h3_memory
       - name: Validate shell scripts
         run: bash -n scripts/entrypoint.sh scripts/download_models.sh
+      - name: Verify opt-in character R2V against pinned native nodes
+        run: |
+          python scripts/build_character_workflow.py --output-dir .ci-character
+          cmp .ci-character/character_reveal_r2v_2x.json workflows/character_reveal_r2v_2x.json
+          python scripts/verify_workflow.py \
+            --workflow workflows/character_reveal_r2v_2x.json \
+            --manifest manifests/minimax_h3_r2v_upscale.json \
+            --mode r2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode \
+            --auto-mosaic-manifest manifests/auto_mosaic.json \
+            --comfyui-root .ci-ComfyUI \
+            --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
       - name: Validate custom-node JavaScript
         run: node --check custom_nodes/minimax_h3_ordered_storyboard/web/ordered_storyboard.js
       - name: Validate JSON

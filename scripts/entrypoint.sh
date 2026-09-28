@@ -13,6 +13,11 @@ AUTO_MOSAIC_MODEL="${MODEL_DIR}/auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"
 AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED:-1}"
 AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED,,}"
 RUNTIME_VARIANT="${MINIMAX_H3_RUNTIME_VARIANT:-community-cu128}"
+CHARACTER_R2V="${H3_CHARACTER_R2V:-0}"
+if [[ "${CHARACTER_R2V}" != "0" && "${CHARACTER_R2V}" != "1" ]]; then
+  echo "[character-r2v] H3_CHARACTER_R2V must be 0 or 1"
+  exit 76
+fi
 
 echo "[runtime] variant=${RUNTIME_VARIANT}"
 if [[ "${RUNTIME_VARIANT}" == "community-cu128" ]] \
@@ -135,6 +140,24 @@ cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_03_turbo.json" \
   "${COMFYUI_ROOT}/user/default/workflows/03_MiniMax_H3_Turbo_4_8step_768p_2x.json"
 echo "[workflow] installed exactly 3 MiniMax H3 presets: Quality, Fast FBCache, Turbo selectable 4/8-step 768p"
 
+if [[ "${CHARACTER_R2V}" == "1" ]]; then
+  if [[ ! -f "${STORY_NODE_ROOT}/character_nodes.py" ]]; then
+    echo "[character-r2v] required character nodes are missing from the image"
+    exit 77
+  fi
+  # Preflight and the existing parallel downloader see the same merged model set.
+  # Shared Qwen/VAE/upscaler files are downloaded once, not by competing workers.
+  python "${SCRIPT_DIR}/prepare_character_manifest.py" \
+    --base "${MANIFEST}" \
+    --character "${PROJECT_DIR}/manifests/minimax_h3_all.json" \
+    --output "${COMFYUI_ROOT}/user/default/minimax_h3_character_models.json"
+  MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_character_models.json"
+  export MODEL_MANIFEST="${MANIFEST}"
+  cp -f "${PROJECT_DIR}/workflows/character_reveal_r2v_2x.json" \
+    "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json"
+  echo "[workflow] added opt-in 04 Character R2V Quality 2x; existing 3 presets unchanged"
+fi
+
 if [[ "${MINIMAX_H3_ENTRYPOINT_SMOKE:-0}" == "1" ]]; then
   test -d "${MODEL_DIR}/auto_mosaic"
   test -f "${STORY_NODE_ROOT}/mosaic_nodes.py"
@@ -148,6 +171,10 @@ if [[ "${MINIMAX_H3_ENTRYPOINT_SMOKE:-0}" == "1" ]]; then
   test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_02_fast_fbcache.json"
   test -f "${PROJECT_DIR}/workflows/minimax_h3_preset_03_turbo.json"
   test -f "${FBC_ROOT}/nodes.py"
+  if [[ "${CHARACTER_R2V}" == "1" ]]; then
+    test -f "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json"
+    test -f "${MANIFEST}"
+  fi
   echo "[smoke] entrypoint contract passed before network/model startup"
   exit 0
 fi
@@ -203,6 +230,14 @@ if [[ "${DOWNLOAD_FAILED}" == "1" ]]; then
   exit 1
 fi
 wait "${MODEL_DOWNLOAD_PID}"
+
+if [[ "${CHARACTER_R2V}" == "1" ]]; then
+  # Keep fail-closed behavior even if the downloader implementation changes.
+  python "${SCRIPT_DIR}/verify_models.py" \
+    --manifest "${PROJECT_DIR}/manifests/minimax_h3_r2v_upscale.json" \
+    --root "${MODEL_DIR}" --mode "${MODEL_VERIFY:-size}" \
+    --workers "${HF_DOWNLOAD_WORKERS:-4}"
+fi
 
 if [[ "${AUTO_MOSAIC_REQUIRED}" =~ ^(1|true|yes|on)$ ]]; then
   if [[ ! -s "${AUTO_MOSAIC_MODEL}" ]]; then
