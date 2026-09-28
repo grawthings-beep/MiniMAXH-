@@ -10,10 +10,45 @@ import json
 import uuid
 from pathlib import Path
 
-from build_workflows import add_auto_mosaic, add_memory_safe_decode, add_upscale, write_json
+from build_workflows import add_auto_mosaic, add_upscale, write_json
 
 ROOT = Path(__file__).resolve().parents[1]
 FILENAME = "character_reveal_r2v_2x.json"
+
+
+def add_character_decode_guard(workflow: dict) -> dict:
+    """Keep the opt-in R2V's bounded decode path independent of I2V presets.
+
+    The current main presets deliberately use native streaming/model reuse.
+    Do not change their builder or reinstate its removed shared decode helper.
+    """
+    nodes, links = workflow["nodes"], workflow["links"]
+    sampler = next(n for n in nodes if n["type"] == "SamplerCustomAdvanced")
+    video = next(n for n in nodes if n["type"] == "VAEDecode")
+    audio = next(n for n in nodes if n["type"] == "VAEDecodeAudio")
+    decode_ids = {video["id"], audio["id"]}
+    outgoing = [l for l in links if l[1] == sampler["id"] and l[3] in decode_ids and l[5] == "LATENT"]
+    if len(outgoing) != 2 or {l[3] for l in outgoing} != decode_ids:
+        raise ValueError("Expected sampler output to both audio and video decoders")
+    guard_id = max(n["id"] for n in nodes) + 1
+    guard_link = max(l[0] for l in links) + 1
+    old_links = [l[0] for l in outgoing]
+    for link in outgoing:
+        link[1], link[2] = guard_id, 0
+    output = sampler["outputs"][0]
+    output["links"] = [lid for lid in output["links"] if lid not in old_links] + [guard_link]
+    nodes.append({
+        "id": guard_id, "type": "MiniMaxH3ReleaseVRAMLatent",
+        "pos": [0, 0], "size": [500, 100], "flags": {}, "order": 0, "mode": 0,
+        "inputs": [{"name": "samples", "type": "LATENT", "link": guard_link}],
+        "outputs": [{"name": "samples", "type": "LATENT", "links": old_links}],
+        "title": "VRAM GUARD — unload H3 before VAE decode",
+        "properties": {"Node name for S&R": "MiniMaxH3ReleaseVRAMLatent"}, "widgets_values": [],
+    })
+    links.append([guard_link, sampler["id"], 0, guard_id, 0, "LATENT"])
+    video.update(type="MiniMaxH3VAEDecodeTiled", title="H3 VAE Decode — nested-safe native tiling", widgets_values=[])
+    video.setdefault("properties", {})["Node name for S&R"] = video["type"]
+    return workflow
 
 
 def build() -> dict:
@@ -110,7 +145,7 @@ def build() -> dict:
         (130, "VIDEO", 92, "video"),
     ]:
         connect(*edge)
-    workflow = add_memory_safe_decode(add_auto_mosaic(add_upscale(workflow, "Character R2V"), "Character R2V"), "Character R2V")
+    workflow = add_character_decode_guard(add_auto_mosaic(add_upscale(workflow, "Character R2V"), "Character R2V"))
     # Every editable node is top-level; deterministic, disjoint left-to-right columns.
     layouts = {
         137: (40, 80, 420, 370), 142: (40, 510, 420, 100), 143: (40, 680, 420, 880),

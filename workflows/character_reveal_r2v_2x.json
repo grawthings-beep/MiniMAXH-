@@ -1416,6 +1416,5 @@
       "ref_long_edge_cap": 1024
     }
   },
-  "version": 0.4,
-  "name": "Character R2V - Memory-safe tiled VAE decode"
+  "version": 0.4
 }

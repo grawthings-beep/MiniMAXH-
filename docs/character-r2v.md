@@ -110,7 +110,7 @@ I2VとR2Vを交互に実行すると、ComfyUIのキャッシュに両モデル�
   FL2VAとは別のRef2VA重みを使用し、参照の役割を明示する。
 - [MiniMax公式参照プロンプト仕様](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_ref_en.md)：
   外見の参照をSubjectとして定義し、画面の開始アンカーと区別する。
-- [固定ComfyUI実装](https://github.com/Comfy-Org/ComfyUI/blob/43cb4fffc89bba20ab7bd61467a36d0339338dab/comfy_extras/nodes_minimax_h3.py)：
+- [固定ComfyUI実装](https://github.com/Comfy-Org/ComfyUI/blob/73c9bad4d21e7addbe1d13bc92eee0f1431b017d/comfy_extras/nodes_minimax_h3.py)：
   native R2Vの参照入力・max/match・17k+5・AV latentを利用。独自の生成コアへ差し替えない。
 - [単一5090の実験記録](https://github.com/yuichi-suzuki-highdrama/minimax-h3-local-pipeline-notes)：
   参照サイズの画質/速度トレードオフを示す参考報告。別環境の速度や画質を保証するベンチマークではない。
