@@ -30,7 +30,7 @@ class CharacterEntrypointTests(unittest.TestCase):
             path.write_text(content)
         package = root / "custom_nodes/minimax_h3_ordered_storyboard"
         package.mkdir(parents=True)
-        for name in ("storyboard", "exporter", "mosaic_nodes", "turbo_nodes", "memory_nodes", "character_nodes"):
+        for name in ("__init__", "storyboard", "exporter", "mosaic_nodes", "turbo_nodes", "memory_nodes", "character_nodes"):
             (package / f"{name}.py").write_text("# stub")
         fbc = root / "custom_nodes/ComfyUI-MiniMaxH3-FirstBlockCache"
         fbc.mkdir(parents=True)
@@ -48,6 +48,7 @@ class CharacterEntrypointTests(unittest.TestCase):
             "H3_LORA_SELECTION": "all", "AUTO_MOSAIC_REQUIRED": "1",
             "MINIMAX_H3_ENTRYPOINT_SMOKE": "1", "MINIMAX_H3_RUNTIME_VARIANT": "community-cu128",
             "REQUIRE_COMFY_KITCHEN_CUDA": "0", "H3_CHARACTER_R2V": "1",
+            "H3_PROFILE": "legacy", "H3_FAST_VAE": "1",
         })
         return root, env
 
@@ -88,6 +89,57 @@ class CharacterEntrypointTests(unittest.TestCase):
             result = self.run_entrypoint(env)
             self.assertEqual(result.returncode, 77, result.stdout + result.stderr)
             self.assertNotIn("entrypoint contract passed", result.stdout)
+
+    def test_r2v_only_ignores_legacy_models_and_restores_legacy_on_request(self):
+        with tempfile.TemporaryDirectory(prefix=".entrypoint-test-", dir=ROOT) as temp:
+            root, env = self.make_install(temp)
+            self.assertEqual(self.run_entrypoint(env).returncode, 0)
+            workflows = root / "user/default/workflows"
+            personal = workflows / "My_MiniMax_H3_custom.json"
+            personal.write_text("{}")
+            env.update(H3_PROFILE="r2v", H3_TURBO_REQUIRED="1", H3_EXTRA_LORA_REQUIRED="1",
+                       H3_EXTRA_LORA_LIST_URL="https://invalid.example/do-not-fetch",
+                       COMFYUI_ARGS="--lowvram --vram-headroom 2")
+            result = self.run_entrypoint(env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("R2VA-only entrypoint contract passed", result.stdout)
+            self.assertIn("--fast fp16_accumulation", result.stdout)
+            self.assertEqual(sorted(p.name for p in workflows.glob("*.json")),
+                             ["04_MiniMax_H3_Character_R2V_2x.json", personal.name])
+            self.assertEqual((workflows / "04_MiniMax_H3_Character_R2V_2x.json").read_bytes(),
+                             (ROOT / "workflows/character_reveal_r2v_int8_2x.json").read_bytes())
+            # Switching back restores shipped presets without removing personal files.
+            env.update(H3_PROFILE="legacy", H3_CHARACTER_R2V="0")
+            result = self.run_entrypoint(env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(len(list(workflows.glob("*.json"))), 4)
+            self.assertTrue(personal.exists())
+            self.assertFalse((workflows / "04_MiniMax_H3_Character_R2V_2x.json").exists())
+            env.update(H3_PROFILE="r2v", H3_CHARACTER_R2V="ignored-in-r2v-profile")
+            # Dedicated startup never requires Director or FirstBlockCache.
+            shutil.rmtree(root / "custom_nodes/ComfyUI_MiniMaxH3_Director")
+            shutil.rmtree(root / "custom_nodes/ComfyUI-MiniMaxH3-FirstBlockCache")
+            self.assertEqual(self.run_entrypoint(env).returncode, 0)
+
+    def test_r2v_fast_args_and_missing_nodes(self):
+        with tempfile.TemporaryDirectory(prefix=".entrypoint-test-", dir=ROOT) as temp:
+            root, env = self.make_install(temp)
+            env.update(H3_PROFILE="r2v", COMFYUI_ARGS="--fast fp8_matrix_mult --vram-headroom 2")
+            result = self.run_entrypoint(env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("--fast fp16_accumulation fp8_matrix_mult --vram-headroom 2", result.stdout)
+            env.update(H3_FAST_VAE="0", COMFYUI_ARGS="--vram-headroom 2")
+            result = self.run_entrypoint(env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn("fp16_accumulation", result.stdout)
+            (root / "custom_nodes/minimax_h3_ordered_storyboard/character_nodes.py").unlink()
+            self.assertEqual(self.run_entrypoint(env).returncode, 77)
+
+    def test_unknown_profile_fails_closed(self):
+        with tempfile.TemporaryDirectory(prefix=".entrypoint-test-", dir=ROOT) as temp:
+            _, env = self.make_install(temp)
+            env["H3_PROFILE"] = "typo"
+            self.assertEqual(self.run_entrypoint(env).returncode, 78)
 
 
 if __name__ == "__main__":

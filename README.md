@@ -4,7 +4,17 @@ MiniMax H3のI2Vを、永続ストレージなしのRunPod Podで毎回起動す
 ベースモデル、アップスケーラー、creator LoRA、LightX2V Turbo LoRA、自動モザイク用モデルは
 Docker imageへ埋め込まず、Pod起動時に並列・再開可能・整合性検証付きで取得します。
 
-## UIに表示する3ワークフロー
+## キャラR2VAだけを使う場合（起動ダウンロード削減）
+
+新imageで `H3_PROFILE=r2v` を指定すると、キャラ画像1枚＋プロンプトの04だけを配置します。
+公式INT8 Video VAEを使用し、基本モデルは約63.5GBから約40.1GBへ削減。
+FL2VA本体・creator/Turbo LoRA・追加LoRA一覧は取得しません。2xとCPUモザイクは維持します。
+旧環境変数が残っていても専用profileが取得対象を固定します。
+CUDA 13用設定は [runpod-template.r2v-cu130.example.json](runpod-template.r2v-cu130.example.json)、
+使い方と制約は [R2VA専用ガイド](docs/r2v-only.md) を参照してください。
+旧構成は `H3_PROFILE=legacy`（省略時の既定）で引き続き使えます。
+
+## 通常起動（legacy）でUIに表示する3ワークフロー
 
 通常起動でComfyUIへ表示するMiniMax H3ワークフローは、次の3本です。
 

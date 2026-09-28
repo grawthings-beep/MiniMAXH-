@@ -305,6 +305,24 @@ RUN ACCEPT_MINIMAX_H3_LICENSE=1 \
     && rm "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json" \
       "${COMFYUI_ROOT}/user/default/minimax_h3_character_models.json"
 
+RUN python /opt/minimax-h3/scripts/build_character_workflow.py --int8-vae --output-dir /tmp/h3-r2v-only-check \
+    && cmp /tmp/h3-r2v-only-check/character_reveal_r2v_int8_2x.json \
+      /opt/minimax-h3/workflows/character_reveal_r2v_int8_2x.json \
+    && python /opt/minimax-h3/scripts/verify_workflow.py \
+      --workflow /opt/minimax-h3/workflows/character_reveal_r2v_int8_2x.json \
+      --manifest /opt/minimax-h3/manifests/minimax_h3_r2v_int8_upscale.json \
+      --mode r2v --expect-upscale --expect-auto-mosaic --expect-memory-safe-decode \
+      --auto-mosaic-manifest /opt/minimax-h3/manifests/auto_mosaic.json \
+      --comfyui-root "${COMFYUI_ROOT}" \
+      --custom-node-root "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard" \
+    && ACCEPT_MINIMAX_H3_LICENSE=1 MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
+      HF_TOKEN=entrypoint-smoke CIVITAI_API_TOKEN=entrypoint-smoke \
+      H3_PROFILE=r2v MINIMAX_H3_ENTRYPOINT_SMOKE=1 /opt/minimax-h3/scripts/entrypoint.sh \
+    && test "$(find "${COMFYUI_ROOT}/user/default/workflows" -maxdepth 1 -name '*MiniMax_H3*.json' | wc -l)" = 1 \
+    && ACCEPT_MINIMAX_H3_LICENSE=1 MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
+      HF_TOKEN=entrypoint-smoke CIVITAI_TOKEN=entrypoint-smoke CIVITAI_API_TOKEN=entrypoint-smoke \
+      H3_PROFILE=legacy H3_CHARACTER_R2V=0 MINIMAX_H3_ENTRYPOINT_SMOKE=1 /opt/minimax-h3/scripts/entrypoint.sh
+
 WORKDIR /opt/ComfyUI
 EXPOSE 8188
 

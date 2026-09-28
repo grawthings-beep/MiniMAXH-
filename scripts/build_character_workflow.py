@@ -14,6 +14,7 @@ from build_workflows import add_auto_mosaic, add_upscale, write_json
 
 ROOT = Path(__file__).resolve().parents[1]
 FILENAME = "character_reveal_r2v_2x.json"
+INT8_FILENAME = "character_reveal_r2v_int8_2x.json"
 
 
 def add_character_decode_guard(workflow: dict) -> dict:
@@ -51,7 +52,7 @@ def add_character_decode_guard(workflow: dict) -> dict:
     return workflow
 
 
-def build() -> dict:
+def build(*, int8_vae: bool = False) -> dict:
     upstream = json.loads((ROOT / "workflows/upstream_minimax_h3_r2v.json").read_text(encoding="utf-8"))
     workflow = copy.deepcopy(upstream)
     workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, "MiniMAXH-/character-reveal-r2v-v1"))
@@ -196,11 +197,31 @@ def build() -> dict:
         "appearance_reference_not_first_frame": True, "quality_tested_on_gpu": False,
         "no_external_prompt_api": True, "ref_long_edge_cap": 1024,
     }}
+    if int8_vae:
+        manifest = json.loads((ROOT / "manifests/minimax_h3_r2v_int8_upscale.json").read_text(encoding="utf-8"))
+        workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, "MiniMAXH-/character-r2v-int8-v1"))
+        video_vae = next(n for n in ordered if n["id"] == 119)
+        name = "minimax_h3_video_vae_int8_convrot.safetensors"
+        video_vae["widgets_values"] = [name]
+        video_vae["title"] = "Video VAE · INT8 ConvRot / native tiled decode"
+        video_vae["properties"]["models"] = [{
+            "name": name, "directory": "vae",
+            "url": f"https://huggingface.co/{manifest['repo_id']}/resolve/{manifest['revision']}/vae/{name}",
+        }]
+        workflow["extra"]["character_r2v"]["runtime_profile"] = "r2v"
+        workflow["extra"]["character_r2v"]["video_vae"] = name
+        note = next(n for n in ordered if n["id"] == 143)
+        note["widgets_values"][0] += (
+            "\n\nR2VA専用起動: H3_PROFILE=r2v。必要な5モデルとCPUモザイクだけを取得。"
+            "INT8 VAE使用。生成本体・キャラ参照・演出入力は従来と同じです。"
+            "別の構図画像、追加LoRA、Turboは不要です。"
+        )
     return workflow
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "workflows")
+    parser.add_argument("--int8-vae", action="store_true")
     args = parser.parse_args()
-    write_json(args.output_dir / FILENAME, build())
+    write_json(args.output_dir / (INT8_FILENAME if args.int8_vae else FILENAME), build(int8_vae=args.int8_vae))

@@ -13,8 +13,13 @@ AUTO_MOSAIC_MODEL="${MODEL_DIR}/auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"
 AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED:-1}"
 AUTO_MOSAIC_REQUIRED="${AUTO_MOSAIC_REQUIRED,,}"
 RUNTIME_VARIANT="${MINIMAX_H3_RUNTIME_VARIANT:-community-cu128}"
+H3_PROFILE="${H3_PROFILE:-legacy}"
+if [[ "${H3_PROFILE}" != "legacy" && "${H3_PROFILE}" != "r2v" ]]; then
+  echo "[runtime] H3_PROFILE must be legacy or r2v"
+  exit 78
+fi
 CHARACTER_R2V="${H3_CHARACTER_R2V:-0}"
-if [[ "${CHARACTER_R2V}" != "0" && "${CHARACTER_R2V}" != "1" ]]; then
+if [[ "${H3_PROFILE}" == "legacy" && "${CHARACTER_R2V}" != "0" && "${CHARACTER_R2V}" != "1" ]]; then
   echo "[character-r2v] H3_CHARACTER_R2V must be 0 or 1"
   exit 76
 fi
@@ -84,6 +89,13 @@ check_licensee_territory() {
 
 check_licensee_territory
 
+if [[ "${H3_PROFILE}" == "r2v" ]]; then
+  # The dedicated path shares the license/secret handling above, not the legacy
+  # all-model merge or LoRA download/check gates below. It execs ComfyUI itself.
+  source "${SCRIPT_DIR}/entrypoint_r2v.sh"
+  exit 1
+fi
+
 if [[ ! -f "${DIRECTOR_ROOT}/nodes/director.py" ]] \
   || [[ ! -f "${STORY_NODE_ROOT}/storyboard.py" ]] \
   || [[ ! -f "${STORY_NODE_ROOT}/exporter.py" ]] \
@@ -130,8 +142,8 @@ fi
 mkdir -p "${MODEL_DIR}" "${MODEL_DIR}/auto_mosaic" \
   "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
-find "${COMFYUI_ROOT}/user/default/workflows" -maxdepth 1 -type f \
-  -name '*MiniMax_H3*.json' -delete
+# On profile changes, remove only our optional preset; preserve user-named files.
+rm -f "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_01_quality.json" \
   "${COMFYUI_ROOT}/user/default/workflows/01_MiniMax_H3_Quality_2x.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_02_fast_fbcache.json" \
