@@ -83,13 +83,15 @@ def signed_url(url: str, token: str, timeout: int) -> str:
 
 def transfer(url: str, partial: Path, connections: int, timeout: int) -> None:
     safe_https(url)
+    if any(ord(c) < 32 for c in str(partial)):
+        raise DownloadError("Invalid checkpoint output path")
     command = [
         "aria2c", "--no-conf=true", "--input-file=-", "--quiet=true", "--console-log-level=error",
         "--summary-interval=0", "--download-result=hide", "--enable-color=false",
         "--continue=true", "--file-allocation=none", "--auto-file-renaming=false",
         "--allow-overwrite=true", "--min-split-size=16M", "--max-tries=3", "--retry-wait=3",
         f"--max-connection-per-server={connections}", f"--split={connections}",
-        f"--timeout={timeout}", f"--dir={partial.parent}", f"--out={partial.name}",
+        f"--timeout={timeout}", f"--dir={partial.parent}",
     ]
     # Popen/communicate keeps the signed URL off the command line and process list.
     child_env = {k: v for k, v in os.environ.items()
@@ -97,7 +99,8 @@ def transfer(url: str, partial: Path, connections: int, timeout: int) -> None:
     proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL, text=True, env=child_env)
     try:
-        proc.communicate(url + "\n")
+        # With --input-file, a global --out is ignored. Pin the name per entry.
+        proc.communicate(f"{url}\n  out={partial.name}\n")
         if proc.returncode:
             raise DownloadError(f"Parallel checkpoint transfer interrupted (aria2 exit {proc.returncode})")
     finally:

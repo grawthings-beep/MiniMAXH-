@@ -323,7 +323,8 @@ RUN python /opt/minimax-h3/scripts/build_character_workflow.py --int8-vae --outp
       HF_TOKEN=entrypoint-smoke CIVITAI_TOKEN=entrypoint-smoke CIVITAI_API_TOKEN=entrypoint-smoke \
       H3_PROFILE=legacy H3_CHARACTER_R2V=0 MINIMAX_H3_ENTRYPOINT_SMOKE=1 /opt/minimax-h3/scripts/entrypoint.sh
 
-RUN python /opt/minimax-h3/scripts/check_r2v_profiles.py --comfyui-root "${COMFYUI_ROOT}" --runtime \
+RUN python /opt/minimax-h3/scripts/check_r2v_download_runtime.py \
+    && python /opt/minimax-h3/scripts/check_r2v_profiles.py --comfyui-root "${COMFYUI_ROOT}" --runtime \
     && for profile in dasiwa-v2 dasiwa-turbo-v2 official; do \
       ACCEPT_MINIMAX_H3_LICENSE=1 MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
         HF_TOKEN=entrypoint-smoke CIVITAI_API_TOKEN=entrypoint-smoke \

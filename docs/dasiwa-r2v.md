@@ -87,6 +87,7 @@ step減少はVRAM不足の解決を保証しません。
 
 CI: 3選択のmodel/manifest一致、全リンク両端、ノード/グループの非重複、shiftの両経路、
 取得対象の限定、既存04の不変、SHA破損・途中再開・認証情報漏洩防止、起動停止を検査。
+実aria2もローカルHTTP fixtureに対して動かし、stdinのファイル名指定とrange再開を検査。
 Docker build: pinned ComfyUIでnative sigma-shiftとschedulerを実行(CPU)、3profileの実entrypoint
 をモデル取得前までsmoke test。CUDA12.8/13の両imageで同じ検査を実施します。
 

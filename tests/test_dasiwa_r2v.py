@@ -166,7 +166,7 @@ class DownloadTests(unittest.TestCase):
             self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
             self.assertNotIn("CIVITAI_API_TOKEN", kwargs["env"])
             self.assertNotIn("HF_TOKEN", kwargs["env"])
-            self.assertEqual(proc.communicate.call_args.args, (signed + "\n",))
+            self.assertEqual(proc.communicate.call_args.args, (signed + "\n  out=test.part\n",))
 
     def test_valid_file_is_sha_checked_and_does_not_redownload(self):
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(downloader, "transfer") as transfer:
