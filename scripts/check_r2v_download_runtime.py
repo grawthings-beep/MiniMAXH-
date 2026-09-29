@@ -16,7 +16,7 @@ import download_civitai_models as downloader
 
 
 def main():
-    body = b"MiniMax-H3-aria2-fixture-" * 32768
+    body = b"MiniMax-H3-aria2-fixture-" * 262144
     header = json.dumps({"fixture": {"dtype": "U8", "shape": [len(body)], "data_offsets": [0, len(body)]}}).encode()
     payload = len(header).to_bytes(8, "little") + header + body
     ranges = []
@@ -72,13 +72,19 @@ def main():
             with mock.patch.object(downloader, "safe_https", side_effect=loopback_fixture_only):
                 downloader.transfer(url, destination, 4, 30)
                 assert destination.read_bytes() == payload
-                assert sorted(p.name for p in Path(temp).iterdir()) == [destination.name]
-                # Simulate an interrupted sequential part. aria2 must request its missing range.
-                destination.write_bytes(payload[:4096])
+                files = sorted(p.name for p in Path(temp).iterdir())
+                # Windows aria2 may leave its temporary progress metadata file.
+                assert destination.name in files and set(files) <= {
+                    destination.name, destination.name + ".aria2__temp"
+                }, files
+                # No control file: aria2 retains complete 1 MiB pieces only, so
+                # use an aligned prefix, not a sub-piece 4 KiB fragment.
+                resume_offset = 1024 * 1024
+                destination.write_bytes(payload[:resume_offset])
                 ranges.clear()
                 downloader.transfer(url, destination, 4, 30)
                 assert destination.read_bytes() == payload
-                assert any(re.match(r"bytes=4096-", value) for value in ranges), ranges
+                assert any(value.startswith(f"bytes={resume_offset}-") for value in ranges), ranges
                 assert not destination.with_name(destination.name + ".aria2").exists()
     finally:
         server.shutdown()
