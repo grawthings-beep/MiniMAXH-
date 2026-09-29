@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-09-29",
+  "model_source": "https://civitai.com/api/v1/models/2877206",
+  "author_workflow_commit": "39b3427e6a67ff2e2c98fb5afabc7ce28117dec7",
+  "author_workflow_path": "C-MMH3/DaSiWa MiniMaxH3 MythicAlchemy C-MMH3-25.json",
+  "profiles": {
+    "official": {
+      "label": "Official Ref2VA INT8",
+      "sampler": "res_multistep",
+      "scheduler": "normal",
+      "steps": 25
+    },
+    "dasiwa-v2": {
+      "label": "DaSiWa Hybrid v2 INT8",
+      "sampler": "res_multistep",
+      "scheduler": "simple",
+      "steps": 25,
+      "shift_video": 11.0,
+      "shift_audio": 4.0,
+      "asset": {
+        "path": "diffusion_models/DasiwaMinimaxH3_dasiwaHybridV2_3203130.safetensors",
+        "source_url": "https://civitai.com/api/download/models/3314675?fileId=3203130",
+        "source_license_url": "https://civitai.com/models/2877206?modelVersionId=3314675",
+        "auth": "civitai",
+        "size": 20967669160,
+        "sha256": "4cb8e1eaa9c3e5c664822760890bcbe6078455401cfa43205baf322e856d25f8"
+      }
+    },
+    "dasiwa-turbo-v2": {
+      "label": "DaSiWa Hybrid Turbo v2 INT8",
+      "sampler": "euler",
+      "scheduler": "simple",
+      "steps": 8,
+      "shift_video": 8.0,
+      "shift_audio": 4.0,
+      "asset": {
+        "path": "diffusion_models/DasiwaMinimaxH3_dasiwaHybridTurboV2_3203135.safetensors",
+        "source_url": "https://civitai.com/api/download/models/3314686?fileId=3203135",
+        "source_license_url": "https://civitai.com/models/2877206?modelVersionId=3314686",
+        "auth": "civitai",
+        "size": 20967669168,
+        "sha256": "37c17fd91971c17e02e60798a05eec48d881e1bb970d6309f58cf134a2d03a6b"
+      }
+    }
+  }
+}

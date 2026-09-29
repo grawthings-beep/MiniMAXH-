@@ -12,6 +12,10 @@ FL2VA本体・creator/Turbo LoRA・追加LoRA一覧は取得しません。2xと
 旧環境変数が残っていても専用profileが取得対象を固定します。
 CUDA 13用設定は [runpod-template.r2v-cu130.example.json](runpod-template.r2v-cu130.example.json)、
 使い方と制約は [R2VA専用ガイド](docs/r2v-only.md) を参照してください。
+`H3_R2V_MODEL=dasiwa-v2` で **DaSiWa Hybrid v2 INT8＋作者推奨25step/simple/shift11,4** を使用可能。
+`dasiwa-turbo-v2` は内蔵蒸留8step、`official` は従来版へ戻す設定です。
+選んだ本体だけ取得し、モデルと設定が一致した04を1本生成します。環境変数省略時は公式のまま。
+[作者workflowとの比較・採用判断・切替手順](docs/dasiwa-r2v.md)を確認してください。
 旧構成は `H3_PROFILE=legacy`（省略時の既定）で引き続き使えます。
 
 ## 通常起動（legacy）でUIに表示する3ワークフロー

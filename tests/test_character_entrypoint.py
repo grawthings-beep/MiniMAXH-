@@ -49,6 +49,7 @@ class CharacterEntrypointTests(unittest.TestCase):
             "MINIMAX_H3_ENTRYPOINT_SMOKE": "1", "MINIMAX_H3_RUNTIME_VARIANT": "community-cu128",
             "REQUIRE_COMFY_KITCHEN_CUDA": "0", "H3_CHARACTER_R2V": "1",
             "H3_PROFILE": "legacy", "H3_FAST_VAE": "1",
+            "H3_R2V_MODEL": "official",
         })
         return root, env
 

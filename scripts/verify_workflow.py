@@ -32,6 +32,43 @@ AUTO_MOSAIC_DEFAULTS = [
 ]
 
 
+def verify_dasiwa_profile(workflow: dict, manifest: dict) -> None:
+    """DaSiWa's shift is a checkpoint profile, not the legacy FL2VA Turbo LoRA."""
+    profile = manifest.get("r2v_profile")
+    definitions = json.loads((Path(__file__).resolve().parents[1] / "manifests/r2v_profiles.json").read_text(encoding="utf-8"))["profiles"]
+    if profile not in {"dasiwa-v2", "dasiwa-turbo-v2"}:
+        raise RuntimeError("Unknown DaSiWa R2VA manifest profile")
+    settings = definitions[profile]
+    if workflow.get("extra", {}).get("character_r2v", {}).get("model_profile") != profile:
+        raise RuntimeError("R2VA workflow and model profile disagree")
+    nodes = all_nodes(workflow)
+    selected = {}
+    for kind in ("UNETLoader", "MiniMaxH3SigmaShift", "BasicGuider", "BasicScheduler", "KSamplerSelect"):
+        matches = [n for n in nodes if n["type"] == kind]
+        if len(matches) != 1 or matches[0].get("mode", 0) != 0:
+            raise RuntimeError(f"DaSiWa requires exactly one active {kind}")
+        selected[kind] = matches[0]
+    if any("TurboProfile" in n["type"] or "Lora" in n["type"] or "LoRA" in n["type"] for n in nodes):
+        raise RuntimeError("DaSiWa checkpoint profiles must not stack legacy LoRA profiles")
+    checkpoints = [f for f in manifest["files"] if f["path"].startswith("diffusion_models/")]
+    if checkpoints != [settings["asset"]]:
+        raise RuntimeError("DaSiWa checkpoint is not the pinned INT8 asset")
+    expected = {
+        "UNETLoader": [Path(settings["asset"]["path"]).name, "default"],
+        "MiniMaxH3SigmaShift": [settings["shift_video"], settings["shift_audio"]],
+        "BasicScheduler": [settings["scheduler"], settings["steps"], 1.0],
+        "KSamplerSelect": [settings["sampler"]],
+    }
+    for kind, values in expected.items():
+        if selected[kind].get("widgets_values") != values:
+            raise RuntimeError(f"DaSiWa sampling profile mismatch: {kind}")
+    model_id, shift_id = selected["UNETLoader"]["id"], selected["MiniMaxH3SigmaShift"]["id"]
+    routes = {(link_origin(l), link_target(l)) for l in workflow["links"] if link_type(l) == "MODEL"}
+    if routes != {(model_id, shift_id), (shift_id, selected["BasicScheduler"]["id"]),
+                  (shift_id, selected["BasicGuider"]["id"])}:
+        raise RuntimeError("DaSiWa sigma shift must feed both scheduler and guider")
+
+
 def all_nodes(workflow: dict[str, object]) -> list[dict[str, object]]:
     nodes = list(workflow.get("nodes", []))
     definitions = workflow.get("definitions", {})
@@ -815,7 +852,9 @@ def main() -> int:
         verify_first_block_cache(workflow)
     elif "ApplyMiniMaxH3FirstBlockCache" in node_types:
         raise RuntimeError("FirstBlockCache is enabled without an explicit Fast expectation")
-    if args.expect_turbo:
+    if args.mode == "r2v" and manifest.get("r2v_profile"):
+        verify_dasiwa_profile(workflow, manifest)
+    elif args.expect_turbo:
         verify_turbo_profiles(workflow)
     elif {"MiniMaxH3SigmaShift", "MiniMaxH3TurboProfile"} & node_types:
         raise RuntimeError("Turbo SigmaShift is enabled in a non-Turbo workflow")

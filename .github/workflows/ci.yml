@@ -197,7 +197,10 @@ jobs:
             --auto-mosaic-manifest manifests/auto_mosaic.json \
             --comfyui-root .ci-ComfyUI \
             --custom-node-root custom_nodes/minimax_h3_ordered_storyboard
-      - name: Validate JSON
+      - name: Verify all selected R2VA model profiles
+        # Profile workflows are generated at startup; all variants need node verification.
+        run: python scripts/check_r2v_profiles.py --comfyui-root .ci-ComfyUI
+      - name: Validate JSON files
         run: |
           for file in manifests/*.json workflows/*.json runpod-template*.json; do
             python -m json.tool "$file" >/dev/null
