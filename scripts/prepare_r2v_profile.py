@@ -84,16 +84,19 @@ def prepare(profile: str, project: Path = ROOT) -> tuple[dict, dict, dict]:
     note = by_type["MarkdownNote"]
     note["widgets_values"] = [
         f"## 04 · {settings['label']} / R2VA 2x\n\n"
-        "画像は外見参照。冒頭フレームに固定しません。画像1枚＋4欄の演出入力は従来と同じです。\n\n"
-        "1. キャラ画像をアップロード。\n2. identity_notes / direction / soundscape / musicを入力。\n"
-        "`full_prompt`ではdirection全文だけを送り、他の3欄は無視します。\n"
+        "画像は外見参照。冒頭フレームに固定しません。同一キャラを1〜8枚追加できます。\n\n"
+        "1. 左の『画像を追加』から1枚/複数枚をアップロード。削除・並べ替え可能。\n"
+        "2. FULL PROMPTの1欄へ全文を貼る。音・BGMもここへ。4欄分割やモード切替は不要。\n"
+        "<Picture 1>〜の番号は左の画像順。複数画像も同一キャラとして記述。\n"
         f"3. まず5秒・0.4MP・{settings['steps']}steps・seed固定で確認。\n\n"
         f"作者推奨範囲: {settings['sampler']} / simple、video shift {settings['shift_video']:g} / "
         f"audio shift {settings['shift_audio']:g}。旧FL2VA Turbo LoRAは重ねません。\n\n"
-        "参照最大1024px長辺・INT8 VAE・生成モデル退避・タイルdecode・2x・CPUモザイクを維持。"
+        "RefModは非圧縮Full Reference。画像ごとに縦横比を維持。長辺1024px・合計2048tokensを上限に縮小。"
+        "INT8 VAE・生成モデル退避・タイルdecode・2x・CPUモザイクを維持。"
         "追加キャッシュ/LLM/API/構図画像は不要。画質改善やOOM回避の保証はありません。\n\n"
         f"起動設定 H3_R2V_MODEL={profile}。official / dasiwa-v2 / dasiwa-turbo-v2 から1つだけ取得。"
         "変更後は再起動し、Workflowsから04を開き直してください。旧キャンバスは自動更新されません。\n\n"
+        "保存ノードのリンクからRefModをダウンロード可能。永続なしPodを削除する前に保存。\n\n"
         "非Turbo版は20–25steps、Turbo版は4/8stepsが作者の推奨。モデル名だけの交換はせず、"
         "対応する起動profileを使ってください。\n\n詳細: docs/dasiwa-r2v.md"
     ]

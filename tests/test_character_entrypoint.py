@@ -30,8 +30,14 @@ class CharacterEntrypointTests(unittest.TestCase):
             path.write_text(content)
         package = root / "custom_nodes/minimax_h3_ordered_storyboard"
         package.mkdir(parents=True)
-        for name in ("__init__", "storyboard", "exporter", "mosaic_nodes", "turbo_nodes", "memory_nodes", "character_nodes"):
+        for name in ("__init__", "storyboard", "exporter", "mosaic_nodes", "turbo_nodes", "memory_nodes", "character_nodes", "refmod_nodes"):
             (package / f"{name}.py").write_text("# stub")
+        (package / "web").mkdir()
+        (package / "web/refmod_images.js").write_text("// stub")
+        (package / "refmod_vendor").mkdir()
+        for name in ("core.py", "bundle.py", "LICENSE"):
+            (package / "refmod_vendor" / name).write_text("# stub")
+        (package / "refmod_vendor/REVISION").write_text("f9462081e28794389b5a6c5067eb327412ad8ee7\n")
         fbc = root / "custom_nodes/ComfyUI-MiniMaxH3-FirstBlockCache"
         fbc.mkdir(parents=True)
         (fbc / "nodes.py").write_text("# stub")
@@ -141,6 +147,22 @@ class CharacterEntrypointTests(unittest.TestCase):
             _, env = self.make_install(temp)
             env["H3_PROFILE"] = "typo"
             self.assertEqual(self.run_entrypoint(env).returncode, 78)
+
+    def test_r2v_missing_or_wrong_refmod_fails_before_download(self):
+        for broken in ("refmod_nodes.py", "web/refmod_images.js", "refmod_vendor/core.py",
+                       "refmod_vendor/bundle.py", "refmod_vendor/LICENSE", "wrong_revision"):
+            with self.subTest(broken=broken), tempfile.TemporaryDirectory(prefix=".entrypoint-test-", dir=ROOT) as temp:
+                root, env = self.make_install(temp)
+                env.update(H3_PROFILE="r2v", H3_R2V_MODEL="dasiwa-v2")
+                package = root / "custom_nodes/minimax_h3_ordered_storyboard"
+                if broken == "wrong_revision":
+                    (package / "refmod_vendor/REVISION").write_text("main")
+                else:
+                    (package / broken).unlink()
+                result = self.run_entrypoint(env)
+                self.assertEqual(result.returncode, 77, result.stdout + result.stderr)
+                self.assertNotIn("entrypoint contract passed", result.stdout)
+                self.assertNotIn("installed one R2VA", result.stdout)
 
 
 if __name__ == "__main__":

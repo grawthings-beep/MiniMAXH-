@@ -19,6 +19,18 @@ class R2VOnlyWorkflowTests(character_tests.CharacterTests):
     def setUp(self):
         self.workflow = json.loads((ROOT / "workflows/character_reveal_r2v_int8_2x.json").read_text(encoding="utf-8"))
 
+    def test_graph_has_one_appearance_reference_and_no_first_frame_or_lora(self):
+        types = [n["type"] for n in self.workflow["nodes"]]
+        for kind in ("MiniMaxH3FullPrompt", "MiniMaxH3RefModImages", "MiniMaxH3CreateCharacterRefMod",
+                     "MiniMaxH3CharacterRefModR2V", "MiniMaxH3SaveCharacterRefMod", "WanAutoMosaicVideo"):
+            self.assertEqual(types.count(kind), 1)
+        for kind in ("MiniMaxH3CharacterPrompt", "MiniMaxH3ReferenceToVideo", "MiniMaxH3ImageToVideo",
+                     "LoadVideo", "LoraLoaderModelOnly", "EasyCache", "ApplyMiniMaxH3FirstBlockCache"):
+            self.assertNotIn(kind, types)
+        prompt = next(n for n in self.workflow["nodes"] if n["type"] == "MiniMaxH3FullPrompt")
+        self.assertEqual(len(prompt["widgets_values"]), 2)
+        self.assertEqual(prompt["widgets_values"][0], 5.0)
+
     def test_generated_workflow_and_existing_verifier(self):
         with tempfile.TemporaryDirectory() as directory:
             subprocess.run([sys.executable, str(ROOT / "scripts/build_character_workflow.py"),

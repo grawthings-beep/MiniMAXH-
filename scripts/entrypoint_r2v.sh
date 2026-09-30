@@ -5,12 +5,16 @@ set -Eeuo pipefail
 echo "[r2v-only] selected checkpoint + pinned INT8 VAE; legacy MODEL_MANIFEST/H3_CHARACTER_R2V/LoRA settings do not add downloads"
 echo "[r2v-only] skipping FL2VA, creator LoRAs, FL2VA Turbo LoRAs and the extra-LoRA URL list"
 
-for node_file in __init__.py character_nodes.py memory_nodes.py mosaic_nodes.py storyboard.py exporter.py turbo_nodes.py; do
+for node_file in __init__.py character_nodes.py refmod_nodes.py web/refmod_images.js refmod_vendor/core.py refmod_vendor/bundle.py refmod_vendor/LICENSE refmod_vendor/REVISION memory_nodes.py mosaic_nodes.py storyboard.py exporter.py turbo_nodes.py; do
   if [[ ! -f "${STORY_NODE_ROOT}/${node_file}" ]]; then
     echo "[r2v-only] required custom node file is missing: ${node_file}"
     exit 77
   fi
 done
+if [[ "$(cat "${STORY_NODE_ROOT}/refmod_vendor/REVISION")" != "f9462081e28794389b5a6c5067eb327412ad8ee7" ]]; then
+  echo "[r2v-only] RefMod runtime revision mismatch; rebuild the image"
+  exit 77
+fi
 if [[ "${AUTO_MOSAIC_REQUIRED}" =~ ^(1|true|yes|on)$ ]] && [[ -z "${CIVITAI_API_TOKEN:-}" ]]; then
   echo "[auto-mosaic] CIVITAI_API_TOKEN is required for the segmentation model"
   exit 70
@@ -25,7 +29,7 @@ case "${R2V_MODEL}" in
     fi ;;
   *) echo "[r2v-only] H3_R2V_MODEL must be official, dasiwa-v2 or dasiwa-turbo-v2"; exit 79 ;;
 esac
-mkdir -p "${MODEL_DIR}/auto_mosaic" "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output" \
+mkdir -p "${MODEL_DIR}/auto_mosaic" "${MODEL_DIR}/refmods" "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output/refmods" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
 # Replace only known shipped presets, not arbitrary user-named workflows.
 for shipped in 01_MiniMax_H3_Quality_2x.json 02_MiniMax_H3_Fast_FBCache_2x.json \
@@ -38,7 +42,7 @@ MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_models.json"
 R2V_HF_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_hf_models.json"
 export MODEL_MANIFEST="${MANIFEST}"
 export COMFYUI_MODEL_DIR="${MODEL_DIR}"
-echo "[workflow] installed one R2VA Character 2x preset (${R2V_MODEL}); reopen 04 from Workflows"
+echo "[workflow] installed one R2VA Full Prompt + RefMod 1-8 images preset (${R2V_MODEL}); reopen 04 from Workflows"
 python "${SCRIPT_DIR}/verify_workflow.py" \
   --workflow "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json" \
   --manifest "${MANIFEST}" --mode r2v --expect-upscale --expect-memory-safe-decode \

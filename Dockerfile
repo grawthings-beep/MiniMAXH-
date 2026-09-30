@@ -6,6 +6,7 @@ ARG COMFYUI_COMMIT=73c9bad4d21e7addbe1d13bc92eee0f1431b017d
 ARG MINIMAX_H3_KJNODES_COMMIT=d3cfe21625e5170126ce06fbfcfe1d88108688c3
 ARG MINIMAX_H3_DIRECTOR_COMMIT=a267324a9f88141ff4e4b0e8c1a6ed90b4e45db7
 ARG MINIMAX_H3_FBC_COMMIT=725973c3bfd9de6dce249bc93dc5fe27f820df31
+ARG MINIMAX_H3_REFMOD_COMMIT=f9462081e28794389b5a6c5067eb327412ad8ee7
 ARG MINIMAX_H3_RUNTIME_VARIANT=community-cu128
 ARG REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT=0
 ARG COMFYUI_ARGS_DEFAULT="--lowvram --vram-headroom 2"
@@ -304,6 +305,15 @@ RUN ACCEPT_MINIMAX_H3_LICENSE=1 \
     /opt/minimax-h3/scripts/entrypoint.sh \
     && rm "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json" \
       "${COMFYUI_ROOT}/user/default/minimax_h3_character_models.json"
+
+RUN git init /tmp/h3-refmod-source \
+    && git -C /tmp/h3-refmod-source remote add origin https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod.git \
+    && git -C /tmp/h3-refmod-source fetch --depth 1 origin "${MINIMAX_H3_REFMOD_COMMIT}" \
+    && git -C /tmp/h3-refmod-source checkout --detach FETCH_HEAD \
+    && python /opt/minimax-h3/scripts/install_refmod_runtime.py --source /tmp/h3-refmod-source \
+      --destination "${COMFYUI_ROOT}/custom_nodes/minimax_h3_ordered_storyboard/refmod_vendor" \
+    && rm -rf /tmp/h3-refmod-source \
+    && python /opt/minimax-h3/scripts/check_character_refmod_runtime.py --comfyui-root "${COMFYUI_ROOT}"
 
 RUN python /opt/minimax-h3/scripts/build_character_workflow.py --int8-vae --output-dir /tmp/h3-r2v-only-check \
     && cmp /tmp/h3-r2v-only-check/character_reveal_r2v_int8_2x.json \

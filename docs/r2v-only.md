@@ -1,7 +1,7 @@
 # R2VA専用 / INT8 Video VAE
 
-キャラ画像1枚＋プロンプトの04だけを使う場合の、永続ディスク不要な起動設定です。
-構図画像・Add Guideは追加しません。参照画像上限・2x upscaler・CPUモザイクは既存04と同じ。
+同一キャラ画像1〜8枚＋全文プロンプト1欄の04だけを使う、永続ディスク不要な起動設定です。
+構図画像・Add Guideは追加しません。2x upscaler・CPUモザイクは既存04と同じ。
 Video VAEは公式INT8版です。`H3_R2V_MODEL` で公式/DaSiWa v2/DaSiWa Turbo v2から
 本体1つと対応サンプリングを選べます。比較判断と詳細は [DaSiWaガイド](dasiwa-r2v.md)。
 
@@ -43,6 +43,41 @@ DaSiWaも約40.14GBです。本体が増えるわけではありません。
 creator/Turbo/追加LoRAの削減はこの差分とは別です。GPU・ネットワーク・初回image pullなどで
 所要時間は変わり、削減率と起動時間の短縮率が一致する保証はありません。
 120GBコンテナディスク・永続volume 0GBをテンプレートの開始値として維持しています。
+
+## 全文プロンプト・RefModの使い方
+
+- 04をWorkflowsから開き直す。旧ブラウザーキャンバスや別名保存したworkflowは自動変換しません。
+- 左の「画像を追加」で同じキャラを1枚、または複数枚まとめて選択。↑↓で並べ替え、外すで削除。
+  異なる縦横比をそのまま扱い、開始フレームには固定しません。動画・アニメGIFは対象外。
+- `FULL PROMPT`へ演出・キャラ保持・音・BGMを含む全文を入力。他の3欄やmode切替はありません。
+  公式6セクションでも通常の文章でも入力可能。コピーした単一コードフェンス/BOM/改行を整え、
+  内容は勝手に要約・分割・翻訳しません。`<Picture 1>`などは左の画像順に対応します。
+  複数画像が同一人物であることを記述してください。存在しないPicture/Video/Audio参照、空欄、
+  16,000文字超または4,096 text tokens超は重いQwen実行前に説明付きエラーで止めます。
+- 過去のfullモードエラーの該当tracebackは特定できていません。旧4欄ノードを新しい04から除外し、
+  単一全文からnative tokenizer/conditioningまでをテストする変更です。未知のエラーを直ったとは断定しません。
+- 各画像を独立した**Full Reference**としてVAE encodeし、上流の`H3RefMod`オブジェクトへ格納。
+  Qwenは元の縮小画像を受け取り、DiTにはRefModを一度だけ付与。画像を時間方向に積み上げたり、
+  最初の画像へ合わせて他を切り抜いたりしません。1枚を変換するだけで画質が上がるという保証はありません。
+- 参照長辺1024px、合計2048 tokensが初期上限。枚数が増えた場合は全画像を同じ係数で縮小して収めます。
+  UI上限は長辺1536px/合計4096 tokens。枚数や上限を増やすと遅延/OOMリスクが増えます。
+  処理済み参照とlatentはCPUへ保持し、入力が同じ場合はComfyUIのノードキャッシュで再利用します。
+- 保存ノードから`output/refmods/character_<hash>.safetensors`をダウンロードできます。
+  上流v5の独立image-member bundle形式。別のRefMod対応workflowで再利用可能です。
+  **今回の04の入力UIは画像用**です。Podを削除すると入力画像も保存RefModも消えるため、事前にダウンロード。
+  新Podでは元の画像を再投入して作成するか、保存ファイルを対応するRefMod Loaderで使用してください。
+
+RefModのcore.py/bundle.pyとMITライセンスだけを固定commit
+`f9462081e28794389b5a6c5067eb327412ad8ee7`からimageへ組み込みます。
+参照元: https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod
+別パッケージのUI/音声/グローバルパッチは読み込みません。生成モデルの追加download、学習、有料APIなし。
+起動前にコード・UI・revisionの存在を確認し、不足時はモデルdownload前に停止します。
+
+テストは1→複数→1枚、入力変更時のキャッシュ無効化、native H3 tokenizer、空latent生成、
+RefModの保存/上流読込、全リンク両端、配置非重複、DaSiWa sampler/shift維持を対象にします。
+CPU smokeのQwen重み/VAE重みはfixtureです。実GPUでの顔保持率や連続生成OOMは未検証です。
+開発時にはComfyUI v0.37.0 / frontend 1.52.7の実画面でも、2枚同時追加・並べ替え・1枚への削減・
+再読込・保存後の画像順保持を確認しました。内部JSON欄は非表示にして全文入力だけを見せます。
 
 ## VAEと比較
 

@@ -17,6 +17,104 @@ FILENAME = "character_reveal_r2v_2x.json"
 INT8_FILENAME = "character_reveal_r2v_int8_2x.json"
 
 
+def with_character_refmod(workflow: dict) -> dict:
+    """Upgrade only the dedicated R2VA preset. Legacy/user workflows stay valid."""
+    spec = importlib.util.spec_from_file_location(
+        "refmod_prompt_defaults", ROOT / "custom_nodes/minimax_h3_ordered_storyboard/refmod_nodes.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    nodes = {n["id"]: n for n in workflow["nodes"]}
+    edges = [(a, nodes[a]["outputs"][ai]["name"], b, nodes[b]["inputs"][bi]["name"])
+             for _, a, ai, b, bi, _ in workflow["links"]]
+
+    def replace(node_id, kind, inputs, outputs, widgets, title):
+        n = nodes[node_id]
+        n.update(type=kind, title=title, widgets_values=widgets,
+                 properties={"Node name for S&R": kind},
+                 inputs=[{"name": name, "type": type_, "link": None} for name, type_ in inputs],
+                 outputs=[{"name": name, "type": type_, "links": []} for name, type_ in outputs])
+        for socket in n["inputs"]:
+            if socket["type"] == "INT":
+                socket["widget"] = {"name": socket["name"]}
+
+    replace(137, "MiniMaxH3RefModImages", [], [("references", "H3_CHARACTER_IMAGES")],
+            ["[]", 1024, 2048], "01 · 同一キャラ1〜8枚 / 画像を追加・削除")
+    replace(141, "MiniMaxH3FullPrompt", [], [("prompt", "STRING"), ("length", "INT")],
+            [5.0, module.DEFAULT_FULL_PROMPT], "02 · FULL PROMPT / 全文をここ1欄へ")
+    replace(142, "MiniMaxH3CreateCharacterRefMod", [("references", "H3_CHARACTER_IMAGES"), ("vae", "VAE")],
+            [("character", "H3_CHARACTER_REFMOD"), ("mods", "H3_REF_MODS")], [],
+            "Full RefMod · 縦横比を維持 / 追加学習なし")
+    replace(136, "MiniMaxH3CharacterRefModR2V",
+            [("clip", "CLIP"), ("character", "H3_CHARACTER_REFMOD"),
+             ("prompt", "STRING"), ("width", "INT"), ("height", "INT"), ("length", "INT")],
+            [("positive", "CONDITIONING"), ("LATENT", "LATENT"), ("reference_map", "STRING")],
+            [480, 864, 124], "03 · Native R2VA + RefMod / 二重適用なし")
+    save_id = max(nodes) + 1
+    nodes[save_id] = {"id": save_id, "flags": {}, "order": 0, "mode": 0,
+                      "pos": [40, 1070], "size": [420, 160]}
+    replace(save_id, "MiniMaxH3SaveCharacterRefMod", [("mods", "H3_REF_MODS")], [("saved_path", "STRING")],
+            ["character"], "RefModを書き出す / Pod削除前に保存")
+    replaced_edges = []
+    for a, out, b, inp in edges:
+        if (a, b) == (137, 142):
+            out, inp = "references", "references"
+        elif (a, b) == (142, 136):
+            out, inp = "character", "character"
+        elif (a, b) == (119, 136):
+            b, inp = 142, "vae"
+        elif (a, b) == (120, 136):
+            continue
+        replaced_edges.append((a, out, b, inp))
+    replaced_edges.append((142, "mods", save_id, "mods"))
+    workflow["links"] = []
+    for n in nodes.values():
+        for socket in n.get("inputs", []):
+            socket["link"] = None
+        for socket in n.get("outputs", []):
+            socket["links"] = []
+    for lid, (a, out, b, inp) in enumerate(replaced_edges, 1):
+        ai = next(i for i, s in enumerate(nodes[a]["outputs"]) if s["name"] == out)
+        bi = next(i for i, s in enumerate(nodes[b]["inputs"]) if s["name"] == inp)
+        typ = nodes[a]["outputs"][ai]["type"]
+        assert typ == nodes[b]["inputs"][bi]["type"]
+        nodes[a]["outputs"][ai]["links"].append(lid)
+        nodes[b]["inputs"][bi]["link"] = lid
+        workflow["links"].append([lid, a, ai, b, bi, typ])
+    for nid, pos, size in [(137, [40, 80], [420, 670]), (142, [40, 830], [420, 170]),
+                           (143, [40, 1310], [420, 440]), (136, [1920, 80], [480, 280])]:
+        nodes[nid].update(pos=pos, size=size)
+    nodes[143]["widgets_values"] = [
+        "## 04 · Full Prompt + Character RefMod\n\n"
+        "画像を1〜8枚追加。同一キャラの顔・衣装・別角度。増減・並べ替えは左のボタン。"
+        "画像は開始フレームではありません。\n\n"
+        "全文をFULL PROMPTへ貼るだけ。音・BGMも同じ欄。モード切替/4欄への分割は不要。"
+        "<Picture 1>等の番号は左の順序。複数画像も同じキャラとして記述してください。\n\n"
+        "まず5秒/0.4MP。参照の長辺1024px・合計2048tokens。枚数増加時は合計に合わせ縮小。"
+        "Full Referenceでも顔保持/OOM回避は保証されません。\n\n"
+        "RefModは下の保存ノードからダウンロード可能。Pod削除前に保存。"
+        "ファイルは上流v5 bundle形式。追加学習/有料APIなし。"
+    ]
+    for group in workflow["groups"]:
+        group["bounding"][3] = 1810
+        if group["title"] == "02 · Direction":
+            group["title"] = "02 · Full Prompt"
+    pending, ordered, done = list(nodes.values()), [], set()
+    while pending:
+        ready = [n for n in pending if all(l[1] in done for l in workflow["links"] if l[3] == n["id"])]
+        if not ready:
+            raise ValueError("RefMod workflow contains a cycle")
+        for n in ready:
+            n["order"] = len(ordered)
+            ordered.append(n)
+            done.add(n["id"])
+            pending.remove(n)
+    workflow["nodes"] = ordered
+    workflow["last_node_id"], workflow["last_link_id"] = max(nodes), len(workflow["links"])
+    workflow["extra"]["character_r2v"].update(full_prompt=True, refmod=True, ref_total_tokens=2048)
+    workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, "MiniMAXH-/character-refmod-full-v1"))
+    return workflow
+
+
 def add_character_decode_guard(workflow: dict) -> dict:
     """Keep the opt-in R2V's bounded decode path independent of I2V presets.
 
@@ -216,7 +314,7 @@ def build(*, int8_vae: bool = False) -> dict:
             "INT8 VAE使用。生成本体・キャラ参照・演出入力は従来と同じです。"
             "別の構図画像、追加LoRA、Turboは不要です。"
         )
-    return workflow
+    return with_character_refmod(workflow) if int8_vae else workflow
 
 
 if __name__ == "__main__":

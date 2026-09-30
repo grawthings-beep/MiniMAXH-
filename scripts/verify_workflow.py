@@ -69,6 +69,36 @@ def verify_dasiwa_profile(workflow: dict, manifest: dict) -> None:
         raise RuntimeError("DaSiWa sigma shift must feed both scheduler and guider")
 
 
+def verify_character_refmod(workflow: dict) -> None:
+    selected = {}
+    for kind in ("MiniMaxH3RefModImages", "MiniMaxH3FullPrompt", "MiniMaxH3CreateCharacterRefMod",
+                 "MiniMaxH3CharacterRefModR2V", "MiniMaxH3SaveCharacterRefMod", "BasicGuider", "SamplerCustomAdvanced"):
+        matches = [n for n in workflow["nodes"] if n["type"] == kind]
+        if len(matches) != 1 or matches[0].get("mode", 0) != 0:
+            raise RuntimeError(f"RefMod preset needs one active {kind}")
+        selected[kind] = matches[0]
+    if any(n["type"] in {"MiniMaxH3ReferenceToVideo", "MiniMaxH3ImageToVideo", "MiniMaxH3CharacterPrompt"}
+           or "RefModApply" in n["type"] or "ContinuumBridge" in n["type"] for n in workflow["nodes"]):
+        raise RuntimeError("RefMod must not double-apply references or retain the four-field prompt path")
+    if selected["MiniMaxH3RefModImages"]["widgets_values"] != ["[]", 1024, 2048]:
+        raise RuntimeError("RefMod reference budget changed")
+    prompt_values = selected["MiniMaxH3FullPrompt"]["widgets_values"]
+    if len(prompt_values) != 2 or prompt_values[0] != 5.0 or not prompt_values[1].strip():
+        raise RuntimeError("Full prompt preset requires one text field and a 5s starting duration")
+    routes = {(link_origin(l), link_target(l), link_type(l)) for l in workflow["links"]}
+    required = {
+        ("MiniMaxH3RefModImages", "MiniMaxH3CreateCharacterRefMod", "H3_CHARACTER_IMAGES"),
+        ("MiniMaxH3CreateCharacterRefMod", "MiniMaxH3CharacterRefModR2V", "H3_CHARACTER_REFMOD"),
+        ("MiniMaxH3CreateCharacterRefMod", "MiniMaxH3SaveCharacterRefMod", "H3_REF_MODS"),
+        ("MiniMaxH3FullPrompt", "MiniMaxH3CharacterRefModR2V", "STRING"),
+        ("MiniMaxH3FullPrompt", "MiniMaxH3CharacterRefModR2V", "INT"),
+        ("MiniMaxH3CharacterRefModR2V", "BasicGuider", "CONDITIONING"),
+        ("MiniMaxH3CharacterRefModR2V", "SamplerCustomAdvanced", "LATENT"),
+    }
+    if not {(selected[a]["id"], selected[b]["id"], t) for a, b, t in required} <= routes:
+        raise RuntimeError("RefMod/full prompt conditioning path is incomplete")
+
+
 def all_nodes(workflow: dict[str, object]) -> list[dict[str, object]]:
     nodes = list(workflow.get("nodes", []))
     definitions = workflow.get("definitions", {})
@@ -819,7 +849,7 @@ def main() -> int:
         if "MiniMaxH3ReferenceToVideo" in node_types or any("ref2va" in path for path in actual_models):
             raise RuntimeError("Reference-to-video assets are not allowed in an I2V workflow")
     elif args.mode == "r2v":
-        if "MiniMaxH3ReferenceToVideo" not in node_types:
+        if not {"MiniMaxH3ReferenceToVideo", "MiniMaxH3CharacterRefModR2V"} & node_types:
             raise RuntimeError("MiniMaxH3ReferenceToVideo is missing from the R2V workflow")
         if "MiniMaxH3ImageToVideo" in node_types or any("fl2va" in path for path in actual_models):
             raise RuntimeError("FL2VA assets are not allowed in an R2V workflow")
@@ -858,6 +888,8 @@ def main() -> int:
         verify_turbo_profiles(workflow)
     elif {"MiniMaxH3SigmaShift", "MiniMaxH3TurboProfile"} & node_types:
         raise RuntimeError("Turbo SigmaShift is enabled in a non-Turbo workflow")
+    if "MiniMaxH3CharacterRefModR2V" in node_types or workflow.get("extra", {}).get("character_r2v", {}).get("refmod"):
+        verify_character_refmod(workflow)
     if args.require_video_reference:
         verify_video_reference_wiring(workflow)
     if args.expect_h3_memory:

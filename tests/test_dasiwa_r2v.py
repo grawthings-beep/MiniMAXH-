@@ -68,7 +68,7 @@ class ProfileTests(unittest.TestCase):
             targets = {l[3] for l in workflow["links"] if l[1] == shift["id"]}
             self.assertEqual(targets, {nodes["BasicScheduler"]["id"], nodes["BasicGuider"]["id"]})
             self.assertEqual([l[3] for l in workflow["links"] if l[1] == nodes["UNETLoader"]["id"]], [shift["id"]])
-            for kind in ("LoadImage", "MiniMaxH3CharacterPrompt", "MiniMaxH3CharacterReference", "MiniMaxH3ReferenceToVideo",
+            for kind in ("MiniMaxH3RefModImages", "MiniMaxH3FullPrompt", "MiniMaxH3CreateCharacterRefMod", "MiniMaxH3CharacterRefModR2V",
                          "ResolutionSelector", "MiniMaxH3ReleaseVRAMLatent", "MiniMaxH3VAEDecodeTiled",
                          "VAEDecodeAudio", "UpscaleModelLoader", "ImageUpscaleWithModel", "WanAutoMosaicVideo", "CreateVideo"):
                 self.assertEqual(nodes[kind]["widgets_values"], original[kind]["widgets_values"])
