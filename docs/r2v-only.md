@@ -14,6 +14,7 @@ Video VAEは公式INT8版です。`H3_R2V_MODEL` で公式/DaSiWa v2/DaSiWa Turb
 ```text
 H3_PROFILE=r2v
 H3_R2V_MODEL=dasiwa-v2
+H3_R2V_LORA_SELECTION=none
 H3_FAST_VAE=1
 COMFYUI_ARGS=--lowvram --vram-headroom 2 --fast fp16_accumulation
 ```
@@ -28,7 +29,8 @@ COMFYUI_ARGS=--lowvram --vram-headroom 2 --fast fp16_accumulation
   `H3_R2V_MODEL` に応じて本体1個だけを差し替えます。省略時は従来どおり公式版。
 - `MODEL_MANIFEST` は選択から生成したmanifestへ置換し、旧I2V/全モデルmanifestをマージしません。
 - `H3_CHARACTER_R2V` は従来profile用です。r2v profileでは不要。
-- FL2VA本体、creator LoRA、FL2VA Turbo 4/8-step、追加LoRA URL一覧は取得・検証待ちをしません。
+- FL2VA本体、FL2VA Turbo 4/8-step、追加LoRA URL一覧は取得・検証待ちをしません。
+  creator LoRAも既定は未取得。新しい `H3_R2V_LORA_SELECTION` で明示した分だけ並列取得します。
 - 配置する配布workflowは `04_MiniMax_H3_Character_R2V_2x` の1本だけ。
   01/02/03の既知の配布ファイルだけを置き換え対象にし、ユーザー名のworkflowは残します。
 - 既存のモデルファイルや出力動画は削除しません。使わないモデルを新規取得しないだけです。
@@ -78,6 +80,39 @@ RefModの保存/上流読込、全リンク両端、配置非重複、DaSiWa sam
 CPU smokeのQwen重み/VAE重みはfixtureです。実GPUでの顔保持率や連続生成OOMは未検証です。
 開発時にはComfyUI v0.37.0 / frontend 1.52.7の実画面でも、2枚同時追加・並べ替え・1枚への削減・
 再読込・保存後の画像順保持を確認しました。内部JSON欄は非表示にして全文入力だけを見せます。
+
+## 任意LoRA（DaSiWa / RefModを維持）
+
+04のModels列、モデルローダーのすぐ下に `LoRA · 選択 / 強度 / ON-OFF` を常時表示します。
+サブグラフ展開は不要です。初期値は未選択・強度0.4・OFFなので、従来の結果を基準に比較できます。
+
+1. 起動時に取得するファイルを下表から指定。旧 `H3_LORA_SELECTION` だけではR2VAの取得は増えません。
+2. 新imageで起動後、Workflowsから04を開き直し、`lora_name` で取得済みファイルを選ぶ。
+3. `strength` を設定し `enabled` をON。OFFまたは強度0ならLoRAファイルを読み込まず、入力MODELをそのまま返します。
+   ON→OFFでもこのノードのLoRAキャッシュを解放します。選択名はOFFにしても残ります。
+
+| H3_R2V_LORA_SELECTION | 起動時の取得対象 |
+| --- | --- |
+| `none`（既定） | なし |
+| `hmnsfw_aio_v2` | `HMNSFW_AIO_V2.safetensors`（約310MB） |
+| `hmmotion_v1` | `hmmotion_minimax-h3_epoch12.safetensors`（約310MB） |
+| `all` または `hmmotion_v1,hmnsfw_aio_v2` | 上記2本のみ。UIで使うのは選択した1本 |
+
+V2は既存 `CIVITAI_API_TOKEN`（または `CIVITAI_TOKEN`）、V1は読み取り権限付き `HF_TOKEN` を使います。
+RunPod Secretの渡し方は変更不要。既存の取得スクリプト・再開方式・サイズ/SHA256検証を再利用し、
+明示したLoRAが取得/検証できなければ `H3_LORA_REQUIRED=0` が残っていても起動を止めます。
+取得しただけでは適用されません。UIはOFFから開始します。手動で `models/loras` へ置いたファイルも選択可能です。
+
+配線は `DaSiWa → 任意LoRA → SigmaShift 11/4 → SchedulerとGuider`。
+25 steps、Full Prompt、1〜8枚RefMod、INT8 VAE、モデル退避、2x、CPUモザイクは維持。
+旧FL2VA Turbo LoRAの自動追加、追加URL一覧の一括取得、複数LoRAの積み重ねはしません。
+作者によるV2の強度目安は0.5以下ですが、DaSiWa＋R2VAの画質保証ではありません。
+参照の顔や衣装が変わる場合は強度を下げるかOFFで同じseedと比較してください。LoRAでVRAM使用が増える可能性もあります。
+実GPUでの個別LoRA互換性・画質・連続生成OOMは未検証です。
+ComfyUI v0.37.0の実UIでは、選択メニュー・強度変更・ON→OFFをサブグラフ展開なしで確認済み。
+Docker buildでは小さな合成重みを使って、CoreのH3キー変換・LoRA読み込み・強度計算・OFF復帰も検証します。
+
+この変更を含むimageへの更新が必要です。古いimageへ環境変数だけ追加してもノードは増えません。
 
 ## VAEと比較
 

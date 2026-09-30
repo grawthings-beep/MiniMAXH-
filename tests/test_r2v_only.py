@@ -30,6 +30,9 @@ class R2VOnlyWorkflowTests(character_tests.CharacterTests):
         prompt = next(n for n in self.workflow["nodes"] if n["type"] == "MiniMaxH3FullPrompt")
         self.assertEqual(len(prompt["widgets_values"]), 2)
         self.assertEqual(prompt["widgets_values"][0], 5.0)
+        self.assertEqual(types.count("MiniMaxH3R2VLoRA"), 1)
+        lora = next(n for n in self.workflow["nodes"] if n["type"] == "MiniMaxH3R2VLoRA")
+        self.assertEqual(lora["widgets_values"], ["None (select an installed H3 LoRA)", 0.4, False])
 
     def test_generated_workflow_and_existing_verifier(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -67,19 +70,21 @@ class R2VOnlyWorkflowTests(character_tests.CharacterTests):
         template = json.loads((ROOT / "runpod-template.r2v-cu130.example.json").read_text())
         self.assertEqual(template["env"]["H3_PROFILE"], "r2v")
         self.assertIn("--fast fp16_accumulation", template["env"]["COMFYUI_ARGS"])
-        self.assertFalse(any("LORA" in k or "TURBO" in k for k in template["env"]))
+        self.assertEqual(template["env"]["H3_R2V_LORA_SELECTION"], "none")
+        self.assertFalse(any("LORA" in k or "TURBO" in k for k in template["env"] if k != "H3_R2V_LORA_SELECTION"))
         self.assertEqual(template["volumeInGb"], 0)
 
 
 @unittest.skipUnless(entrypoint_tests.BASH and Path(entrypoint_tests.BASH).is_file(), "bash unavailable")
 class R2VOnlyOrchestrationTests(unittest.TestCase):
-    def exercise(self, *, download_failure=False, verify_failure=False, checkpoint_failure=False, profile="official"):
+    def exercise(self, *, download_failure=False, verify_failure=False, checkpoint_failure=False, profile="official",
+                 lora_selection="none", lora_failure=False):
         with tempfile.TemporaryDirectory(prefix=".entrypoint-test-", dir=ROOT) as temp:
             root, env = entrypoint_tests.CharacterEntrypointTests().make_install(temp)
             project = Path(temp) / "project"
             scripts = project / "scripts"
             scripts.mkdir(parents=True)
-            for name in ("entrypoint.sh", "entrypoint_r2v.sh", "prepare_r2v_profile.py", "verify_workflow.py"):
+            for name in ("entrypoint.sh", "entrypoint_r2v.sh", "prepare_r2v_profile.py", "verify_workflow.py", "download_r2v_loras.py"):
                 shutil.copyfile(ROOT / "scripts" / name, scripts / name)
             shutil.copytree(ROOT / "manifests", project / "manifests")
             (project / "workflows").mkdir()
@@ -108,10 +113,22 @@ class R2VOnlyOrchestrationTests(unittest.TestCase):
                 "sys.exit(int(os.environ.get('TEST_CHECKPOINT_FAILURE','0')))\n")
             for name in ("download_lora.py", "download_civitai_lora.py", "download_turbo_lora.py", "download_extra_loras.py"):
                 (scripts / name).write_text("raise RuntimeError('UNEXPECTED_LEGACY_DOWNLOAD')\n")
+            if lora_selection != "none":
+                for name, lora_id in (("download_lora.py", "hmmotion_v1"), ("download_civitai_lora.py", "hmnsfw_aio_v2")):
+                    (scripts / name).write_text(
+                        "import os,sys\n"
+                        "assert os.environ['H3_LORA_REQUIRED']=='1'\n"
+                        "assert os.environ['CIVITAI_TOKEN']=='test-secret-not-logged'\n"
+                        f"selected={lora_id!r} in os.environ['H3_LORA_SELECTION'].split(',')\n"
+                        f"print('SELECTED_LORA_{lora_id}') if selected else None\n"
+                        "sys.exit(int(os.environ.get('TEST_LORA_FAILURE','0')) if selected else 0)\n")
             (root / "main.py").write_text("import sys\nprint('COMFY_LAUNCHED',sys.argv[1:])\n")
             env.update(H3_PROFILE="r2v", MINIMAX_H3_ENTRYPOINT_SMOKE="0",
                        H3_R2V_MODEL=profile, TEST_COMPANION_COUNT="5" if profile == "official" else "4",
                        H3_TURBO_REQUIRED="1", H3_EXTRA_LORA_REQUIRED="1",
+                       H3_R2V_LORA_SELECTION=lora_selection, H3_LORA_SELECTION="all", H3_LORA_REQUIRED="0",
+                       HF_TOKEN="test-secret-not-logged", CIVITAI_API_TOKEN="test-secret-not-logged", CIVITAI_TOKEN="",
+                       TEST_LORA_FAILURE="12" if lora_failure else "0",
                        COMFYUI_ARGS="--lowvram --vram-headroom 2",
                        TEST_DOWNLOAD_FAILURE="9" if download_failure else "0",
                        TEST_VERIFY_FAILURE="10" if verify_failure else "0",
@@ -137,6 +154,16 @@ class R2VOnlyOrchestrationTests(unittest.TestCase):
 
     def test_verification_failure_does_not_launch_comfy(self):
         result = self.exercise(verify_failure=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("COMFY_LAUNCHED", result.stdout)
+
+    def test_only_explicit_loras_download_before_launch_and_failure_blocks_startup(self):
+        for selected in ("hmnsfw_aio_v2", "all"):
+            result = self.exercise(profile="dasiwa-v2", lora_selection=selected)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertLess(result.stdout.index("SELECTED_LORA_hmnsfw_aio_v2"), result.stdout.index("COMFY_LAUNCHED"))
+            self.assertEqual("SELECTED_LORA_hmmotion_v1" in result.stdout, selected == "all")
+        result = self.exercise(lora_selection="hmnsfw_aio_v2", lora_failure=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("COMFY_LAUNCHED", result.stdout)
 

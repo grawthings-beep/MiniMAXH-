@@ -10,7 +10,9 @@ Docker imageへ埋め込まず、Pod起動時に並列・再開可能・整合�
 RefMod Full Reference対応。画像追加/削除/並べ替え、合計参照量制限、互換ファイル書き出し付き。
 4欄に分けたりfullモードへ切り替えたりする必要はありません。新imageへ交換後、04を開き直してください。
 公式INT8 Video VAEを使用し、基本モデルは約63.5GBから約40.1GBへ削減。
-FL2VA本体・creator/Turbo LoRA・追加LoRA一覧は取得しません。2xとCPUモザイクは維持します。
+FL2VA本体・Turbo LoRA・追加LoRA一覧は取得しません。2xとCPUモザイクは維持します。
+任意LoRAはModels列の「選択 / 強度 / ON-OFF」で操作可能（初期OFF）。
+起動取得は `H3_R2V_LORA_SELECTION` に必要分だけ指定（既定 `none`）。
 旧環境変数が残っていても専用profileが取得対象を固定します。
 CUDA 13用設定は [runpod-template.r2v-cu130.example.json](runpod-template.r2v-cu130.example.json)、
 使い方と制約は [R2VA専用ガイド](docs/r2v-only.md) を参照してください。

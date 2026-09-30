@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from typing import Any
 
@@ -238,17 +239,77 @@ class MiniMaxH3CreatorLoRAApply:
         return (patched_model,)
 
 
+R2V_LORA_NONE = "None (select an installed H3 LoRA)"
+
+
+class MiniMaxH3R2VLoRA(MiniMaxH3CreatorLoRAApply):
+    """One visible, opt-in model-only LoRA; no automatic speed-up adapters."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        import folder_paths
+
+        installed = folder_paths.get_filename_list("loras")
+        choices = [R2V_LORA_NONE, *sorted(set(installed) - {
+            TURBO_8STEP_MODEL, TURBO_4STEP_MODEL,
+        })]
+        return {"required": {
+            "model": ("MODEL",),
+            "lora_name": (choices,),
+            "strength": ("FLOAT", {"default": 0.4, "min": -4.0, "max": 4.0, "step": 0.05}),
+            "enabled": ("BOOLEAN", {"default": False, "label_on": "ON", "label_off": "OFF"}),
+        }}
+
+    RETURN_TYPES = ("MODEL",)
+    FUNCTION = "apply_lora"
+    CATEGORY = "MiniMax H3/Controls"
+    DESCRIPTION = (
+        "Optional R2VA LoRA. OFF or strength 0 returns the untouched input MODEL and "
+        "releases this node's LoRA cache. Select a compatible installed H3 LoRA before ON. "
+        "Loading does not guarantee DaSiWa/RefMod quality or prevent OOM."
+    )
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, lora_name, strength, enabled):
+        # An OFF saved workflow remains usable on a new ephemeral Pod without that file.
+        if not enabled or strength == 0.0:
+            return True
+        if not math.isfinite(strength) or not -4.0 <= strength <= 4.0:
+            return "LoRA strength must be finite and between -4 and 4"
+        if lora_name == R2V_LORA_NONE:
+            return "Select an installed H3 LoRA, or set enabled to OFF"
+        choices = cls.INPUT_TYPES()["required"]["lora_name"][0]
+        if lora_name not in choices:
+            return "LoRA is not installed: set H3_R2V_LORA_SELECTION at startup or install a compatible file in models/loras"
+        return True
+
+    def apply_lora(self, model, lora_name, strength, enabled):
+        strength = float(strength)
+        if not enabled or strength == 0.0:
+            self._loaded_lora = None
+            return (model,)
+        if not math.isfinite(strength) or not -4.0 <= strength <= 4.0:
+            raise ValueError("LoRA strength must be finite and between -4 and 4")
+        if lora_name == R2V_LORA_NONE:
+            raise ValueError("Select an installed H3 LoRA, or set enabled to OFF")
+        if Path(lora_name).name in {TURBO_8STEP_MODEL, TURBO_4STEP_MODEL}:
+            raise ValueError("Legacy FL2VA Turbo LoRAs are not part of this R2VA profile")
+        return super().apply(model, {"lora_name": lora_name, "strength": strength})
+
+
 NODE_CLASS_MAPPINGS = {
     "MiniMaxH3TurboProfile": MiniMaxH3TurboProfile,
     "MiniMaxH3TurboLoRAControl": MiniMaxH3TurboLoRAControl,
     "MiniMaxH3CreatorLoRAControl": MiniMaxH3CreatorLoRAControl,
     "MiniMaxH3CreatorLoRAApply": MiniMaxH3CreatorLoRAApply,
+    "MiniMaxH3R2VLoRA": MiniMaxH3R2VLoRA,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3TurboProfile": "MiniMax H3 Turbo Profile (4/8-step 768p)",
     "MiniMaxH3TurboLoRAControl": "Turbo LoRA — 4/8-step 768p",
     "MiniMaxH3CreatorLoRAControl": "Optional Creator LoRA — Select / Strength",
     "MiniMaxH3CreatorLoRAApply": "Apply Visible Creator LoRA Control",
+    "MiniMaxH3R2VLoRA": "R2VA LoRA — Select / Strength / ON-OFF",
 }
 
 

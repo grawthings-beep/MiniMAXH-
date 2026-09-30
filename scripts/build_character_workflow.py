@@ -54,9 +54,17 @@ def with_character_refmod(workflow: dict) -> dict:
                       "pos": [40, 1070], "size": [420, 160]}
     replace(save_id, "MiniMaxH3SaveCharacterRefMod", [("mods", "H3_REF_MODS")], [("saved_path", "STRING")],
             ["character"], "RefModを書き出す / Pod削除前に保存")
+    lora_id = save_id + 1
+    nodes[lora_id] = {"id": lora_id, "flags": {}, "order": 0, "mode": 0,
+                      "pos": [1280, 270], "size": [540, 210], "color": "#432", "bgcolor": "#653"}
+    replace(lora_id, "MiniMaxH3R2VLoRA", [("model", "MODEL")], [("MODEL", "MODEL")],
+            ["None (select an installed H3 LoRA)", 0.4, False],
+            "LoRA · 選択 / 強度 / ON-OFF（初期OFF）")
     replaced_edges = []
     for a, out, b, inp in edges:
-        if (a, b) == (137, 142):
+        if a == 127 and out == "MODEL":
+            a = lora_id
+        elif (a, b) == (137, 142):
             out, inp = "references", "references"
         elif (a, b) == (142, 136):
             out, inp = "character", "character"
@@ -66,6 +74,7 @@ def with_character_refmod(workflow: dict) -> dict:
             continue
         replaced_edges.append((a, out, b, inp))
     replaced_edges.append((142, "mods", save_id, "mods"))
+    replaced_edges.append((127, "MODEL", lora_id, "model"))
     workflow["links"] = []
     for n in nodes.values():
         for socket in n.get("inputs", []):
@@ -83,6 +92,9 @@ def with_character_refmod(workflow: dict) -> dict:
     for nid, pos, size in [(137, [40, 80], [420, 670]), (142, [40, 830], [420, 170]),
                            (143, [40, 1310], [420, 440]), (136, [1920, 80], [480, 280])]:
         nodes[nid].update(pos=pos, size=size)
+    for nid, y in [(128, 550), (119, 760), (120, 940)]:
+        nodes[nid]["pos"] = [1280, y]
+    next(n for n in nodes.values() if n["type"] == "UpscaleModelLoader")["pos"] = [1280, 1120]
     nodes[143]["widgets_values"] = [
         "## 04 · Full Prompt + Character RefMod\n\n"
         "画像を1〜8枚追加。同一キャラの顔・衣装・別角度。増減・並べ替えは左のボタン。"
@@ -92,7 +104,9 @@ def with_character_refmod(workflow: dict) -> dict:
         "まず5秒/0.4MP。参照の長辺1024px・合計2048tokens。枚数増加時は合計に合わせ縮小。"
         "Full Referenceでも顔保持/OOM回避は保証されません。\n\n"
         "RefModは下の保存ノードからダウンロード可能。Pod削除前に保存。"
-        "ファイルは上流v5 bundle形式。追加学習/有料APIなし。"
+        "ファイルは上流v5 bundle形式。追加学習/有料APIなし。\n\n"
+        "任意LoRAはModels列の選択・強度・ON/OFFで操作。初期OFF、強度0でも読み込みなし。"
+        "取得対象はH3_R2V_LORA_SELECTIONで指定。H3対応でも個別のR2VA画質は保証されません。"
     ]
     for group in workflow["groups"]:
         group["bounding"][3] = 1810
@@ -110,8 +124,8 @@ def with_character_refmod(workflow: dict) -> dict:
             pending.remove(n)
     workflow["nodes"] = ordered
     workflow["last_node_id"], workflow["last_link_id"] = max(nodes), len(workflow["links"])
-    workflow["extra"]["character_r2v"].update(full_prompt=True, refmod=True, ref_total_tokens=2048)
-    workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, "MiniMAXH-/character-refmod-full-v1"))
+    workflow["extra"]["character_r2v"].update(full_prompt=True, refmod=True, ref_total_tokens=2048, optional_lora=True)
+    workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, "MiniMAXH-/character-refmod-full-lora-v2"))
     return workflow
 
 

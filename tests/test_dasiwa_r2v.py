@@ -67,14 +67,17 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(shift["widgets_values"], shifts)
             targets = {l[3] for l in workflow["links"] if l[1] == shift["id"]}
             self.assertEqual(targets, {nodes["BasicScheduler"]["id"], nodes["BasicGuider"]["id"]})
-            self.assertEqual([l[3] for l in workflow["links"] if l[1] == nodes["UNETLoader"]["id"]], [shift["id"]])
+            lora = nodes["MiniMaxH3R2VLoRA"]
+            self.assertEqual([l[3] for l in workflow["links"] if l[1] == nodes["UNETLoader"]["id"]], [lora["id"]])
+            self.assertEqual([l[3] for l in workflow["links"] if l[1] == lora["id"]], [shift["id"]])
+            self.assertEqual(lora["widgets_values"], ["None (select an installed H3 LoRA)", 0.4, False])
             for kind in ("MiniMaxH3RefModImages", "MiniMaxH3FullPrompt", "MiniMaxH3CreateCharacterRefMod", "MiniMaxH3CharacterRefModR2V",
                          "ResolutionSelector", "MiniMaxH3ReleaseVRAMLatent", "MiniMaxH3VAEDecodeTiled",
                          "VAEDecodeAudio", "UpscaleModelLoader", "ImageUpscaleWithModel", "WanAutoMosaicVideo", "CreateVideo"):
                 self.assertEqual(nodes[kind]["widgets_values"], original[kind]["widgets_values"])
             self.assertNotIn("definitions", workflow)
             self.assertEqual(len([n for n in workflow["nodes"] if n["type"] == "WanAutoMosaicVideo"]), 1)
-            self.assertFalse(any("Lora" in t or "LoRA" in t or "Cache" in t for t in nodes))
+            self.assertFalse(any("Lora" in t or "LoRA" in t or "Cache" in t for t in nodes if t != "MiniMaxH3R2VLoRA"))
             # Reuse actual geometric + bidirectional link assertions, not a string check.
             checker = character_tests.CharacterTests()
             checker.workflow = workflow

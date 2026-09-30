@@ -48,21 +48,22 @@ def prepare(profile: str, project: Path = ROOT) -> tuple[dict, dict, dict]:
     # Both the scheduler and guider MUST receive the same shifted model.
     shift_id = max(n["id"] for n in workflow["nodes"]) + 1
     link_id = max(l[0] for l in workflow["links"]) + 1
-    outgoing = [l for l in workflow["links"] if l[1] == unet["id"]]
+    lora = by_type["MiniMaxH3R2VLoRA"]
+    outgoing = [l for l in workflow["links"] if l[1] == lora["id"] and l[5] == "MODEL"]
     if {l[3] for l in outgoing} != {scheduler["id"], by_type["BasicGuider"]["id"]}:
         raise ValueError("Unexpected R2VA model consumers; refusing partial shift wiring")
     for link in outgoing:
         link[1], link[2] = shift_id, 0
-    unet["outputs"][0]["links"] = [link_id]
+    lora["outputs"][0]["links"] = [link_id]
     workflow["nodes"].append({
         "id": shift_id, "type": "MiniMaxH3SigmaShift", "title": "DaSiWa · Video / Audio shift (native)",
-        "pos": [1280, 1000], "size": [540, 130], "flags": {}, "order": 0, "mode": 0,
+        "pos": [1280, 1320], "size": [540, 130], "flags": {}, "order": 0, "mode": 0,
         "inputs": [{"name": "model", "type": "MODEL", "link": link_id}],
         "outputs": [{"name": "MODEL", "type": "MODEL", "links": [l[0] for l in outgoing]}],
         "properties": {"Node name for S&R": "MiniMaxH3SigmaShift"},
         "widgets_values": [settings["shift_video"], settings["shift_audio"]],
     })
-    workflow["links"].append([link_id, unet["id"], 0, shift_id, 0, "MODEL"])
+    workflow["links"].append([link_id, lora["id"], 0, shift_id, 0, "MODEL"])
     pending, ordered, done = list(workflow["nodes"]), [], set()
     while pending:
         ready = [n for n in pending if all(l[1] in done for l in workflow["links"] if l[3] == n["id"])]
@@ -75,7 +76,7 @@ def prepare(profile: str, project: Path = ROOT) -> tuple[dict, dict, dict]:
             pending.remove(node)
     workflow["nodes"] = ordered
     workflow["last_node_id"], workflow["last_link_id"] = shift_id, link_id
-    workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"MiniMAXH-/r2v/{profile}/v1"))
+    workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"MiniMAXH-/r2v/{profile}/lora-v2"))
     workflow["extra"]["character_r2v"].update(model_profile=profile, quality_tested_on_gpu=False)
     by_type["SaveVideo"]["widgets_values"][0] = f"video/MiniMax_H3_04_{profile}_R2VA_2x"
     for group in workflow["groups"]:
@@ -97,6 +98,8 @@ def prepare(profile: str, project: Path = ROOT) -> tuple[dict, dict, dict]:
         f"起動設定 H3_R2V_MODEL={profile}。official / dasiwa-v2 / dasiwa-turbo-v2 から1つだけ取得。"
         "変更後は再起動し、Workflowsから04を開き直してください。旧キャンバスは自動更新されません。\n\n"
         "保存ノードのリンクからRefModをダウンロード可能。永続なしPodを削除する前に保存。\n\n"
+        "任意LoRA: Models列の選択・強度・ON/OFF。初期OFFで従来と同じ。強度0も未読込。"
+        "H3_R2V_LORA_SELECTIONで必要分だけ起動時取得。個別LoRAのR2VA画質/OOMは未保証。\n\n"
         "非Turbo版は20–25steps、Turbo版は4/8stepsが作者の推奨。モデル名だけの交換はせず、"
         "対応する起動profileを使ってください。\n\n詳細: docs/dasiwa-r2v.md"
     ]

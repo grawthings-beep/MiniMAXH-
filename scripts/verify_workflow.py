@@ -43,12 +43,13 @@ def verify_dasiwa_profile(workflow: dict, manifest: dict) -> None:
         raise RuntimeError("R2VA workflow and model profile disagree")
     nodes = all_nodes(workflow)
     selected = {}
-    for kind in ("UNETLoader", "MiniMaxH3SigmaShift", "BasicGuider", "BasicScheduler", "KSamplerSelect"):
+    for kind in ("UNETLoader", "MiniMaxH3R2VLoRA", "MiniMaxH3SigmaShift", "BasicGuider", "BasicScheduler", "KSamplerSelect"):
         matches = [n for n in nodes if n["type"] == kind]
         if len(matches) != 1 or matches[0].get("mode", 0) != 0:
             raise RuntimeError(f"DaSiWa requires exactly one active {kind}")
         selected[kind] = matches[0]
-    if any("TurboProfile" in n["type"] or "Lora" in n["type"] or "LoRA" in n["type"] for n in nodes):
+    if any(n["type"] != "MiniMaxH3R2VLoRA" and
+           ("TurboProfile" in n["type"] or "Lora" in n["type"] or "LoRA" in n["type"]) for n in nodes):
         raise RuntimeError("DaSiWa checkpoint profiles must not stack legacy LoRA profiles")
     checkpoints = [f for f in manifest["files"] if f["path"].startswith("diffusion_models/")]
     if checkpoints != [settings["asset"]]:
@@ -58,13 +59,15 @@ def verify_dasiwa_profile(workflow: dict, manifest: dict) -> None:
         "MiniMaxH3SigmaShift": [settings["shift_video"], settings["shift_audio"]],
         "BasicScheduler": [settings["scheduler"], settings["steps"], 1.0],
         "KSamplerSelect": [settings["sampler"]],
+        "MiniMaxH3R2VLoRA": ["None (select an installed H3 LoRA)", 0.4, False],
     }
     for kind, values in expected.items():
         if selected[kind].get("widgets_values") != values:
             raise RuntimeError(f"DaSiWa sampling profile mismatch: {kind}")
     model_id, shift_id = selected["UNETLoader"]["id"], selected["MiniMaxH3SigmaShift"]["id"]
     routes = {(link_origin(l), link_target(l)) for l in workflow["links"] if link_type(l) == "MODEL"}
-    if routes != {(model_id, shift_id), (shift_id, selected["BasicScheduler"]["id"]),
+    lora_id = selected["MiniMaxH3R2VLoRA"]["id"]
+    if routes != {(model_id, lora_id), (lora_id, shift_id), (shift_id, selected["BasicScheduler"]["id"]),
                   (shift_id, selected["BasicGuider"]["id"])}:
         raise RuntimeError("DaSiWa sigma shift must feed both scheduler and guider")
 
@@ -72,11 +75,23 @@ def verify_dasiwa_profile(workflow: dict, manifest: dict) -> None:
 def verify_character_refmod(workflow: dict) -> None:
     selected = {}
     for kind in ("MiniMaxH3RefModImages", "MiniMaxH3FullPrompt", "MiniMaxH3CreateCharacterRefMod",
-                 "MiniMaxH3CharacterRefModR2V", "MiniMaxH3SaveCharacterRefMod", "BasicGuider", "SamplerCustomAdvanced"):
+                 "MiniMaxH3CharacterRefModR2V", "MiniMaxH3SaveCharacterRefMod", "BasicGuider", "SamplerCustomAdvanced",
+                 "UNETLoader", "MiniMaxH3R2VLoRA", "BasicScheduler"):
         matches = [n for n in workflow["nodes"] if n["type"] == kind]
         if len(matches) != 1 or matches[0].get("mode", 0) != 0:
             raise RuntimeError(f"RefMod preset needs one active {kind}")
         selected[kind] = matches[0]
+    lora = selected["MiniMaxH3R2VLoRA"]
+    if lora.get("widgets_values") != ["None (select an installed H3 LoRA)", 0.4, False]:
+        raise RuntimeError("Shipped R2VA LoRA must default to OFF and unselected")
+    shifts = [n for n in workflow["nodes"] if n["type"] == "MiniMaxH3SigmaShift"]
+    tail = shifts[0]["id"] if shifts else lora["id"]
+    expected_model_routes = {(selected["UNETLoader"]["id"], lora["id"]),
+                             (tail, selected["BasicScheduler"]["id"]), (tail, selected["BasicGuider"]["id"])}
+    if shifts:
+        expected_model_routes.add((lora["id"], tail))
+    if {(link_origin(l), link_target(l)) for l in workflow["links"] if link_type(l) == "MODEL"} != expected_model_routes:
+        raise RuntimeError("R2VA LoRA must feed scheduler and guider exactly once, before any sigma shift")
     if any(n["type"] in {"MiniMaxH3ReferenceToVideo", "MiniMaxH3ImageToVideo", "MiniMaxH3CharacterPrompt"}
            or "RefModApply" in n["type"] or "ContinuumBridge" in n["type"] for n in workflow["nodes"]):
         raise RuntimeError("RefMod must not double-apply references or retain the four-field prompt path")
