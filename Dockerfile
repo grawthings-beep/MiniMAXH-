@@ -65,9 +65,12 @@ COPY requirements/huggingface.txt /opt/minimax-h3/requirements/huggingface.txt
 # Build-only constraint: later node installs must preserve this compatible set.
 ARG PIP_CONSTRAINT=/opt/minimax-h3/requirements/huggingface.txt
 
+# PyTorch's image includes the spin developer CLI (click<8.4). It is not
+# needed for inference and conflicts with Hub's click>=8.4.2 requirement.
 RUN git clone --branch "${COMFYUI_VERSION}" --depth 1 \
       https://github.com/Comfy-Org/ComfyUI.git "${COMFYUI_ROOT}" \
     && test "$(git -C "${COMFYUI_ROOT}" rev-parse HEAD)" = "${COMFYUI_COMMIT}" \
+    && pip uninstall -y spin \
     && pip install --no-cache-dir \
       -r "${COMFYUI_ROOT}/requirements.txt" \
       -r /opt/minimax-h3/requirements/huggingface.txt \
