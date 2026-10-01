@@ -570,13 +570,14 @@ def verify_h3_memory(workflow: dict[str, object]) -> None:
         raise RuntimeError("Optional 2x must default to bypass for generation checks")
 
 
-def verify_memory_safe_decode(workflow: dict[str, object]) -> None:
+def verify_memory_safe_decode(workflow: dict[str, object], *, x2: bool = False) -> None:
+    video_type = "MiniMaxH3VAEDecodeFast" if x2 else "MiniMaxH3VAEDecodeTiled"
     graph = graph_with_types(
         workflow,
         {
             "SamplerCustomAdvanced",
             "MiniMaxH3ReleaseVRAMLatent",
-            "MiniMaxH3VAEDecodeTiled",
+            video_type,
             "VAEDecodeAudio",
         },
     )
@@ -585,10 +586,10 @@ def verify_memory_safe_decode(workflow: dict[str, object]) -> None:
     sampler = next(node for node in nodes if node["type"] == "SamplerCustomAdvanced")
     guard = next(node for node in nodes if node["type"] == "MiniMaxH3ReleaseVRAMLatent")
     video = next(
-        node for node in nodes if node["type"] == "MiniMaxH3VAEDecodeTiled"
+        node for node in nodes if node["type"] == video_type
     )
     audio = next(node for node in nodes if node["type"] == "VAEDecodeAudio")
-    if video.get("widgets_values"):
+    if not x2 and video.get("widgets_values"):
         raise RuntimeError("H3 native tiled VAE decode must not expose ignored tile controls")
     actual = {(link_origin(link), link_target(link), link_type(link)) for link in links}
     expected = {
@@ -733,7 +734,42 @@ def verify_story_wiring(
         raise RuntimeError("Story Export must remove boundary and loop duplicate frames")
 
 
-def verify_auto_mosaic_wiring(workflow: dict[str, object], *, mode: str, expect_upscale: bool) -> None:
+def verify_x2_vae(workflow: dict, manifest: dict) -> None:
+    config = json.loads((Path(__file__).resolve().parents[1] / "manifests/x2_detail_vae.json").read_text(encoding="utf-8"))
+    asset = config["files"][0]
+    if manifest.get("vae_profile") != "x2-detail" or asset not in manifest["files"]:
+        raise RuntimeError("X2 Detail VAE must use the pinned, hash-verified asset")
+    if any(f["path"].startswith("upscale_models/") or "minimax_h3_video_vae" in f["path"] for f in manifest["files"]):
+        raise RuntimeError("X2 profile must not download the stock video VAE or RealESRGAN")
+    nodes = all_nodes(workflow)
+    decoders = [n for n in nodes if n["type"] == "MiniMaxH3VAEDecodeFast"]
+    if len(decoders) != 1 or decoders[0].get("mode", 0) != 0:
+        raise RuntimeError("X2 requires one active creator-compatible video decoder")
+    decoder = decoders[0]
+    if decoder.get("widgets_values") != [True, 256, 64, "cpu", False, 85, 39, 0.02]:
+        raise RuntimeError("X2 trial requires stock spatial tiles, CPU output and no temporal splitting")
+    forbidden = {"UpscaleModelLoader", "ImageUpscaleWithModel", "VAEDecode", "MiniMaxH3VAEDecodeTiled"}
+    if forbidden & {n["type"] for n in nodes}:
+        raise RuntimeError("X2 must not use a stock decoder or stack another 2x upscaler")
+    loaders = [n for n in nodes if n["type"] == "VAELoader" and n.get("widgets_values") == [Path(asset["path"]).name]]
+    if len(loaders) != 1 or loaders[0].get("mode", 0) != 0:
+        raise RuntimeError("X2 VAE loader is missing, bypassed or duplicated")
+    refs = next(n for n in nodes if n["type"] == "MiniMaxH3CreateCharacterRefMod")
+    routes = {(link_origin(l), link_target(l), link_type(l)) for l in workflow["links"]}
+    if not {(loaders[0]["id"], target["id"], "VAE") for target in (refs, decoder)} <= routes:
+        raise RuntimeError("X2 VAE must feed both the reference encoder and dedicated decoder")
+    by_id = {n["id"]: n for n in nodes}
+    seen = set()
+    for lid, a, ai, b, bi, typ in workflow["links"]:
+        if lid in seen or a not in by_id or b not in by_id:
+            raise RuntimeError("X2 workflow has a duplicate or dangling link")
+        seen.add(lid)
+        output, input_ = by_id[a]["outputs"][ai], by_id[b]["inputs"][bi]
+        if typ != output["type"] or typ != input_["type"] or input_["link"] != lid or lid not in output["links"]:
+            raise RuntimeError("X2 workflow link/socket mismatch")
+
+
+def verify_auto_mosaic_wiring(workflow: dict[str, object], *, mode: str, expect_upscale: bool, x2: bool = False) -> None:
     mosaics = [node for node in all_nodes(workflow) if node["type"] == "WanAutoMosaicVideo"]
     if len(mosaics) != 1:
         raise RuntimeError(f"Auto-mosaic workflow must contain exactly one node, got {len(mosaics)}")
@@ -760,6 +796,7 @@ def verify_auto_mosaic_wiring(workflow: dict[str, object], *, mode: str, expect_
     upstream_type = (
         "MiniMaxH3Director"
         if mode == "story"
+        else "MiniMaxH3VAEDecodeFast" if x2
         else "ImageUpscaleWithModel" if expect_upscale else "VAEDecode"
     )
     target = next(node for node in nodes if node["type"] == target_type)
@@ -813,6 +850,7 @@ def main() -> int:
     parser.add_argument("--expect-upscale", action="store_true")
     parser.add_argument("--expect-auto-mosaic", action="store_true")
     parser.add_argument("--expect-memory-safe-decode", action="store_true")
+    parser.add_argument("--expect-x2-vae", action="store_true")
     parser.add_argument("--expect-h3-memory", action="store_true")
     parser.add_argument("--auto-mosaic-manifest", type=Path)
     parser.add_argument(
@@ -829,6 +867,12 @@ def main() -> int:
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     nodes = all_nodes(workflow)
     node_types = {str(node["type"]) for node in nodes}
+    if args.expect_x2_vae:
+        if args.mode != "r2v" or args.expect_upscale or not args.expect_memory_safe_decode:
+            raise RuntimeError("X2 is an R2V decoder profile, requires the VRAM guard, and replaces RealESRGAN")
+        verify_x2_vae(workflow, manifest)
+    elif "MiniMaxH3VAEDecodeFast" in node_types or manifest.get("vae_profile") == "x2-detail":
+        raise RuntimeError("X2 VAE requires an explicit --expect-x2-vae")
     subgraph_ids = {
         str(subgraph["id"])
         for subgraph in workflow.get("definitions", {}).get("subgraphs", [])
@@ -910,7 +954,7 @@ def main() -> int:
     if args.expect_h3_memory:
         verify_h3_memory(workflow)
     if args.expect_memory_safe_decode:
-        verify_memory_safe_decode(workflow)
+        verify_memory_safe_decode(workflow, x2=args.expect_x2_vae)
     elif {"MiniMaxH3ReleaseVRAMLatent", "MiniMaxH3VAEDecodeTiled"} & node_types:
         raise RuntimeError("Memory-safe decode is enabled without an explicit expectation")
     if args.mode == "story":
@@ -933,7 +977,7 @@ def main() -> int:
 
     if args.expect_auto_mosaic:
         verify_auto_mosaic_wiring(
-            workflow, mode=args.mode, expect_upscale=args.expect_upscale
+            workflow, mode=args.mode, expect_upscale=args.expect_upscale, x2=args.expect_x2_vae
         )
     elif "WanAutoMosaicVideo" in node_types:
         raise RuntimeError("WanAutoMosaicVideo is enabled in a normal workflow")
@@ -977,6 +1021,7 @@ def main() -> int:
         else "Quality"
     )
     output = " + Real-ESRGAN 2x" if args.expect_upscale else ""
+    output += " + X2 Detail VAE" if args.expect_x2_vae else ""
     output += f" + {args.expect_lora}" if args.expect_lora else ""
     output += " + CPU Auto Mosaic" if args.expect_auto_mosaic else ""
     print(

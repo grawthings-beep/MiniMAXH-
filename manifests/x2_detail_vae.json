@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "repo_id": "speach1sdef178/MiniMax-H3-X2-Detail-VAE",
+  "revision": "af8c92d267c6849fec5032c35a65d5766737b338",
+  "license_url": "https://huggingface.co/speach1sdef178/MiniMax-H3-X2-Detail-VAE/blob/af8c92d267c6849fec5032c35a65d5766737b338/README.md",
+  "total_bytes": 5246877148,
+  "files": [
+    {
+      "path": "vae/MiniMax-H3-X2-Detail-v1.safetensors",
+      "source_url": "https://huggingface.co/speach1sdef178/MiniMax-H3-X2-Detail-VAE/resolve/af8c92d267c6849fec5032c35a65d5766737b338/MiniMax-H3-X2-Detail-v1.safetensors",
+      "size": 5246877148,
+      "sha256": "2296840f4acedcaa976688e7d7b97f7bf570b136e400385d3f46224011897aac",
+      "verify_sha256": true
+    }
+  ],
+  "decoder_repository": "https://github.com/TripleHeadedMonkey/ComfyUI-MiniMaxH3_LatentUpscaler",
+  "decoder_commit": "2e568dfe3e4f5e81da178bc845e05dcfbb64d55b"
+}

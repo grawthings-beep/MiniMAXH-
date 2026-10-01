@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = "04_MiniMax_H3_Character_R2V_2x.json"
 
 
-def prepare(profile: str, project: Path = ROOT) -> tuple[dict, dict, dict]:
+def _prepare_model(profile: str, project: Path = ROOT) -> tuple[dict, dict, dict]:
     profiles = json.loads((project / "manifests/r2v_profiles.json").read_text(encoding="utf-8"))["profiles"]
     if profile not in profiles:
         raise ValueError("H3_R2V_MODEL must be official, dasiwa-v2 or dasiwa-turbo-v2")
@@ -106,6 +106,75 @@ def prepare(profile: str, project: Path = ROOT) -> tuple[dict, dict, dict]:
     return manifest, companions, workflow
 
 
+def prepare(profile: str, project: Path = ROOT, *, vae_profile: str = "int8") -> tuple[dict, dict, dict]:
+    if vae_profile not in {"int8", "x2-detail"}:
+        raise ValueError("H3_R2V_VAE must be int8 or x2-detail")
+    manifest, companions, workflow = _prepare_model(profile, project)
+    if vae_profile == "int8":
+        return manifest, companions, workflow
+
+    config = json.loads((project / "manifests/x2_detail_vae.json").read_text(encoding="utf-8"))
+    asset = config["files"][0]
+    for selected in (manifest, companions):
+        selected["files"] = [copy.deepcopy(asset) if f["path"].startswith("vae/minimax_h3_video_vae") else f
+                             for f in selected["files"] if not f["path"].startswith("upscale_models/")]
+        selected["total_bytes"] = sum(f["size"] for f in selected["files"])
+        selected["vae_profile"] = vae_profile
+    nodes = {n["type"]: n for n in workflow["nodes"]}
+    video = nodes["MiniMaxH3VAEDecodeTiled"]
+    loader = next(n for n in workflow["nodes"] if n["type"] == "VAELoader"
+                  and "video_vae" in n["widgets_values"][0])
+    name = Path(asset["path"]).name
+    loader["widgets_values"] = [name]
+    loader["title"] = "映像VAE · X2 Detail / 2倍デコード"
+    loader["properties"]["models"] = [{"name": name, "directory": "vae", "url": asset["source_url"]}]
+    video.update(type="MiniMaxH3VAEDecodeFast", title="X2 VAE Decode · CPU出力 / 空間タイル256",
+                 widgets_values=[True, 256, 64, "cpu", False, 85, 39, 0.02], size=[500, 320])
+    video["properties"] = {"Node name for S&R": video["type"]}
+    nodes["VAEDecodeAudio"]["pos"] = [3020, 620]
+    upscale = nodes["ImageUpscaleWithModel"]
+    removed = {upscale["id"], nodes["UpscaleModelLoader"]["id"]}
+    workflow["nodes"] = [n for n in workflow["nodes"] if n["id"] not in removed]
+    links = []
+    for link in workflow["links"]:
+        if link[3] in removed:
+            continue
+        if link[1] == upscale["id"]:
+            link[1], link[2] = video["id"], 0
+        if link[1] not in removed:
+            links.append(link)
+    workflow["links"] = links
+    by_id = {n["id"]: n for n in workflow["nodes"]}
+    for n in workflow["nodes"]:
+        for socket in n.get("inputs", []):
+            socket["link"] = None
+        for socket in n.get("outputs", []):
+            socket["links"] = []
+    for lid, origin, origin_slot, target, target_slot, _ in links:
+        by_id[origin]["outputs"][origin_slot]["links"].append(lid)
+        by_id[target]["inputs"][target_slot]["link"] = lid
+    for order, n in enumerate(workflow["nodes"]):
+        n["order"] = order
+    workflow["last_node_id"] = max(by_id)
+    workflow["last_link_id"] = max(l[0] for l in links)
+    workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"MiniMAXH-/r2v/{profile}/x2-detail-v1"))
+    workflow["extra"]["character_r2v"].update(vae_profile=vae_profile, quality_tested_on_gpu=False)
+    note = nodes["MarkdownNote"]
+    note["widgets_values"][0] = (
+        "## 04 · X2 Detail VAE 試験版\n\n"
+        "画像を追加し、FULL PROMPTへ全文を入力。まず5秒・0.4MP・seed固定で比較。\n\n"
+        "480×864で生成 → X2 VAEで960×1728へデコード。RealESRGANは使用しません。\n\n"
+        "空間タイル256 / overlap64 / CPU出力。時間方向の追加分割は初期OFF。"
+        "32GBのVRAM使用量・画質・速度は未実測です。\n\n"
+        "この試験はX2デコードのみ。参照画像のDetailed Upscale処理は含みません。\n\n"
+        f"本体: {profile}。元へ戻す: H3_R2V_VAE=int8で再起動し、04を開き直す。\n\n"
+        "参照画像・プロンプト・音声・任意LoRAの操作は従来どおり。詳細: docs/x2-detail-vae.md"
+    )
+    save = nodes["SaveVideo"]
+    save["widgets_values"][0] = "video/MiniMax_H3_X2_Detail"
+    return manifest, companions, workflow
+
+
 def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -114,18 +183,19 @@ def write_json(path: Path, data: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", default=os.environ.get("H3_R2V_MODEL", "official"))
+    parser.add_argument("--vae", choices=("int8", "x2-detail"), default=os.environ.get("H3_R2V_VAE", "int8"))
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
-    manifest, companions, workflow = prepare(args.profile)
+    manifest, companions, workflow = prepare(args.profile, vae_profile=args.vae)
     write_json(args.output_dir / "minimax_h3_r2v_models.json", manifest)
     write_json(args.output_dir / "minimax_h3_r2v_hf_models.json", companions)
     destination = args.output_dir / "workflows" / WORKFLOW
-    if args.profile == "official":
+    if args.profile == "official" and args.vae == "int8":
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / "workflows/character_reveal_r2v_int8_2x.json", destination)
     else:
         write_json(destination, workflow)
-    print(f"[r2v-only] selected {args.profile}; {len(manifest['files'])} assets / {manifest['total_bytes']} bytes")
+    print(f"[r2v-only] selected {args.profile} / VAE {args.vae}; {len(manifest['files'])} assets / {manifest['total_bytes']} bytes")
 
 
 if __name__ == "__main__":

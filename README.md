@@ -16,6 +16,13 @@ FL2VA本体・Turbo LoRA・追加LoRA一覧は取得しません。2xとCPUモ�
 旧環境変数が残っていても専用profileが取得対象を固定します。
 CUDA 13用設定は [runpod-template.r2v-cu130.example.json](runpod-template.r2v-cu130.example.json)、
 使い方と制約は [R2VA専用ガイド](docs/r2v-only.md) を参照してください。
+
+### X2 Detail VAEを試す
+
+新しいイメージで `H3_R2V_VAE=x2-detail` を指定すると、X2 VAEによる2倍デコードへ切り替えます。
+RealESRGANの2倍処理は外し、従来のVAEは `H3_R2V_VAE=int8`（未指定時の既定値）で選べます。
+導入と元への戻し方は [X2 Detail VAEガイド](docs/x2-detail-vae.md) を参照してください。
+この変更を含むDockerイメージのビルドが必要です。実GPUでの品質・速度・VRAMは未検証です。
 `H3_R2V_MODEL=dasiwa-v2` で **DaSiWa Hybrid v2 INT8＋作者推奨25step/simple/shift11,4** を使用可能。
 `dasiwa-turbo-v2` は内蔵蒸留8step、`official` は従来版へ戻す設定です。
 選んだ本体だけ取得し、モデルと設定が一致した04を1本生成します。環境変数省略時は公式のまま。

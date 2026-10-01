@@ -2,7 +2,7 @@
 # Sourced only after entrypoint.sh validates the license and selects H3_PROFILE=r2v.
 set -Eeuo pipefail
 
-echo "[r2v-only] selected checkpoint + pinned INT8 VAE; legacy MODEL_MANIFEST/H3_CHARACTER_R2V/LoRA settings do not add downloads"
+echo "[r2v-only] selected checkpoint + pinned VAE; legacy MODEL_MANIFEST/H3_CHARACTER_R2V/LoRA settings do not add downloads"
 echo "[r2v-only] skipping FL2VA/Turbo/extra-LoRA lists; creator downloads require H3_R2V_LORA_SELECTION"
 
 for node_file in __init__.py character_nodes.py refmod_nodes.py web/refmod_images.js refmod_vendor/core.py refmod_vendor/bundle.py refmod_vendor/LICENSE refmod_vendor/REVISION memory_nodes.py mosaic_nodes.py storyboard.py exporter.py turbo_nodes.py; do
@@ -20,6 +20,26 @@ if [[ "${AUTO_MOSAIC_REQUIRED}" =~ ^(1|true|yes|on)$ ]] && [[ -z "${CIVITAI_API_
   exit 70
 fi
 R2V_MODEL="${H3_R2V_MODEL:-official}"
+R2V_VAE="${H3_R2V_VAE:-int8}"
+R2V_VAE_VERIFY=(--expect-upscale)
+case "${R2V_VAE}" in
+  int8) ;;
+  x2-detail)
+    X2_ROOT="${COMFYUI_ROOT}/custom_nodes/minimax_h3_x2_vae"
+    for node_file in __init__.py vae_decode.py utils.py REVISION; do
+      if [[ ! -s "${X2_ROOT}/${node_file}" ]]; then
+        echo "[r2v-only] X2 decoder is missing; rebuild this image with X2 support"
+        exit 77
+      fi
+    done
+    if [[ "$(cat "${X2_ROOT}/REVISION")" != "2e568dfe3e4f5e81da178bc845e05dcfbb64d55b" ]]; then
+      echo "[r2v-only] X2 decoder revision mismatch; rebuild this image"
+      exit 77
+    fi
+    R2V_VAE_VERIFY=(--expect-x2-vae)
+    ;;
+  *) echo "[r2v-only] H3_R2V_VAE must be int8 or x2-detail"; exit 79 ;;
+esac
 case "${R2V_MODEL}" in
   official) ;;
   dasiwa-v2|dasiwa-turbo-v2)
@@ -37,16 +57,16 @@ for shipped in 01_MiniMax_H3_Quality_2x.json 02_MiniMax_H3_Fast_FBCache_2x.json 
   03_MiniMax_H3_Turbo_4_8step_768p_2x.json; do
   rm -f "${COMFYUI_ROOT}/user/default/workflows/${shipped}"
 done
-python "${SCRIPT_DIR}/prepare_r2v_profile.py" --profile "${R2V_MODEL}" \
+python "${SCRIPT_DIR}/prepare_r2v_profile.py" --profile "${R2V_MODEL}" --vae "${R2V_VAE}" \
   --output-dir "${COMFYUI_ROOT}/user/default"
 MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_models.json"
 R2V_HF_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_hf_models.json"
 export MODEL_MANIFEST="${MANIFEST}"
 export COMFYUI_MODEL_DIR="${MODEL_DIR}"
-echo "[workflow] installed one R2VA Full Prompt + RefMod 1-8 images preset (${R2V_MODEL}); reopen 04 from Workflows"
+echo "[workflow] installed R2VA (${R2V_MODEL}, VAE=${R2V_VAE}); reopen 04 from Workflows"
 python "${SCRIPT_DIR}/verify_workflow.py" \
   --workflow "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json" \
-  --manifest "${MANIFEST}" --mode r2v --expect-upscale --expect-memory-safe-decode \
+  --manifest "${MANIFEST}" --mode r2v "${R2V_VAE_VERIFY[@]}" --expect-memory-safe-decode \
   --expect-auto-mosaic --auto-mosaic-manifest "${PROJECT_DIR}/manifests/auto_mosaic.json"
 
 read -r -a EXTRA_ARGS <<< "${COMFYUI_ARGS:---lowvram --vram-headroom 2}"
@@ -75,7 +95,7 @@ echo "[r2v-only] extra args: ${EXTRA_ARGS[*]:-(none)}"
 if [[ "${MINIMAX_H3_ENTRYPOINT_SMOKE:-0}" == "1" ]]; then
   python "${SCRIPT_DIR}/verify_workflow.py" \
     --workflow "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json" \
-    --manifest "${MANIFEST}" --mode r2v --expect-upscale --expect-memory-safe-decode \
+    --manifest "${MANIFEST}" --mode r2v "${R2V_VAE_VERIFY[@]}" --expect-memory-safe-decode \
     --expect-auto-mosaic --auto-mosaic-manifest "${PROJECT_DIR}/manifests/auto_mosaic.json"
   echo "[smoke] R2VA-only entrypoint contract passed before network/model startup"
   exit 0

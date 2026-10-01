@@ -17,18 +17,20 @@ def main():
     args = parser.parse_args()
     settings = json.loads((ROOT / "manifests/r2v_profiles.json").read_text())["profiles"]
     with tempfile.TemporaryDirectory(prefix="h3-r2v-profiles-") as temp:
-        for profile in settings:
-            manifest, _, workflow = prepare(profile)
+        for profile, vae in ((p, v) for p in settings for v in ("int8", "x2-detail")):
+            manifest, _, workflow = prepare(profile, vae_profile=vae)
             manifest_path, workflow_path = Path(temp) / "manifest.json", Path(temp) / "workflow.json"
             write_json(manifest_path, manifest)
             write_json(workflow_path, workflow)
             subprocess.run([
                 sys.executable, str(ROOT / "scripts/verify_workflow.py"),
                 "--workflow", str(workflow_path), "--manifest", str(manifest_path),
-                "--mode", "r2v", "--expect-upscale", "--expect-auto-mosaic", "--expect-memory-safe-decode",
+                "--mode", "r2v", "--expect-x2-vae" if vae == "x2-detail" else "--expect-upscale",
+                "--expect-auto-mosaic", "--expect-memory-safe-decode",
                 "--auto-mosaic-manifest", str(ROOT / "manifests/auto_mosaic.json"),
                 "--comfyui-root", str(args.comfyui_root),
                 "--custom-node-root", str(ROOT / "custom_nodes/minimax_h3_ordered_storyboard"),
+                "--custom-node-root", str(ROOT / "custom_nodes/minimax_h3_x2_vae"),
             ], check=True)
     if args.runtime:
         sys.path.insert(0, str(args.comfyui_root))

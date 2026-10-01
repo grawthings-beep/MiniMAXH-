@@ -2,6 +2,18 @@
 
 This repository does not redistribute MiniMax H3 weights.
 
+- Optional X2 Detail VAE weights are downloaded directly from
+  [speach1sdef178/MiniMax-H3-X2-Detail-VAE](https://huggingface.co/speach1sdef178/MiniMax-H3-X2-Detail-VAE),
+  revision `af8c92d267c6849fec5032c35a65d5766737b338`. The model card declares
+  `license: other` and identifies MiniMax H3 as its base. No new license is granted here.
+- The X2 decoder is installed from
+  [TripleHeadedMonkey/ComfyUI-MiniMaxH3_LatentUpscaler](https://github.com/TripleHeadedMonkey/ComfyUI-MiniMaxH3_LatentUpscaler/tree/2e568dfe3e4f5e81da178bc845e05dcfbb64d55b),
+  commit `2e568dfe3e4f5e81da178bc845e05dcfbb64d55b`. Only unmodified `vae_decode.py`
+  and `utils.py` are exposed by a local initializer. The upstream README, source URL
+  and revision remain with the installed files; any supplied license file is retained.
+  That pinned source tree does not contain a root license file; this notice does not
+  relicense the upstream code. The decoder's other nodes and web routes are not installed.
+
 - MiniMax H3 weights are downloaded from `Comfy-Org/MiniMax-H3` and remain
   subject to the
   [MiniMax H3 Community License Agreement](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE).

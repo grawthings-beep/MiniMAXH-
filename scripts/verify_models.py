@@ -32,7 +32,7 @@ def verify_one(root: Path, item: dict[str, object], mode: str) -> tuple[str, str
     expected_size = int(item["size"])
     if actual_size != expected_size:
         return relative, f"size mismatch: {actual_size} != {expected_size}"
-    if mode == "sha256":
+    if mode == "sha256" or item.get("verify_sha256", False):
         actual_hash = sha256_file(path)
         expected_hash = str(item["sha256"])
         if actual_hash != expected_hash:
