@@ -61,13 +61,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tini \
     && rm -rf /var/lib/apt/lists/*
 
+COPY requirements/huggingface.txt /opt/minimax-h3/requirements/huggingface.txt
+# Build-only constraint: later node installs must preserve this compatible set.
+ARG PIP_CONSTRAINT=/opt/minimax-h3/requirements/huggingface.txt
+
 RUN git clone --branch "${COMFYUI_VERSION}" --depth 1 \
       https://github.com/Comfy-Org/ComfyUI.git "${COMFYUI_ROOT}" \
     && test "$(git -C "${COMFYUI_ROOT}" rev-parse HEAD)" = "${COMFYUI_COMMIT}" \
-    && pip install --no-cache-dir -r "${COMFYUI_ROOT}/requirements.txt" \
     && pip install --no-cache-dir \
-      "huggingface_hub==1.26.0" \
-      "hf-xet==1.5.2"
+      -r "${COMFYUI_ROOT}/requirements.txt" \
+      -r /opt/minimax-h3/requirements/huggingface.txt \
+    && python -m pip check \
+    && python -c "from transformers import CLIPTokenizer; from huggingface_hub import HfApi, hf_hub_download; import hf_xet"
 
 RUN mkdir -p "${MINIMAX_H3_DIRECTOR_ROOT}" \
     && git -C "${MINIMAX_H3_DIRECTOR_ROOT}" init \
@@ -126,6 +131,7 @@ RUN git init /tmp/kjnodes \
 
 RUN pip install --no-cache-dir \
       -r /opt/minimax-h3/custom_nodes/minimax_h3_ordered_storyboard/requirements.txt \
+    && python -m pip check \
     && python -c "import ultralytics; assert ultralytics.__version__ == '8.4.104'" \
     && chmod +x /opt/minimax-h3/scripts/*.sh /opt/minimax-h3/scripts/*.py \
     && cp -R /opt/minimax-h3/custom_nodes/minimax_h3_ordered_storyboard \

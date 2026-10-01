@@ -1,0 +1,5 @@
+# Resolve together with ComfyUI and constrain later custom-node installs.
+# Transformers 5.18 needs Hub >=1.31; Hub 1.33 needs hf-xet >=1.6.
+transformers==5.18.0
+huggingface_hub==1.33.0
+hf-xet==1.6.0

@@ -17,6 +17,11 @@ jobs:
           python-version: "3.12"
       - name: Install lightweight unit-test dependency
         run: python -m pip install "numpy==2.2.6"
+      - name: Verify Hugging Face dependency compatibility and tokenizer import
+        run: |
+          python -m pip install -r requirements/huggingface.txt
+          python -m pip check
+          python -c "from transformers import CLIPTokenizer; from huggingface_hub import HfApi, hf_hub_download; import hf_xet"
       - name: Validate Python and pinned assets
         run: python -m unittest discover -s tests -v
       - name: Verify real aria2 checkpoint filename and resume without external services
@@ -216,7 +221,8 @@ jobs:
       - name: Real CPU RefMod tensors and upstream file compatibility
         run: |
           python -m pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install safetensors==0.7.0 Pillow==11.3.0 packaging==25.0
+          python -m pip install safetensors==0.8.0 Pillow==11.3.0 packaging==25.0
+          python -m pip check
           git clone https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod.git .ci-refmod-source
           git -C .ci-refmod-source checkout --detach f9462081e28794389b5a6c5067eb327412ad8ee7
           python scripts/install_refmod_runtime.py --source .ci-refmod-source --destination .ci-refmod-vendor
