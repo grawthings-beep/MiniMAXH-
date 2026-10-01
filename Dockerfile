@@ -334,6 +334,10 @@ RUN git init /tmp/h3-x2-vae-source \
     && rm -rf /tmp/h3-x2-vae-source \
     && python /opt/minimax-h3/scripts/check_x2_vae_runtime.py --comfyui-root "${COMFYUI_ROOT}"
 
+# The two small upscalers are hash-verified, exercised on CPU, then removed by
+# TemporaryDirectory in the same layer. No model weights are shipped in the image.
+RUN python /opt/minimax-h3/scripts/check_upscale_compare_runtime.py --comfyui-root "${COMFYUI_ROOT}"
+
 RUN python /opt/minimax-h3/scripts/build_character_workflow.py --int8-vae --output-dir /tmp/h3-r2v-only-check \
     && cmp /tmp/h3-r2v-only-check/character_reveal_r2v_int8_2x.json \
       /opt/minimax-h3/workflows/character_reveal_r2v_int8_2x.json \
@@ -357,10 +361,12 @@ RUN python /opt/minimax-h3/scripts/check_r2v_download_runtime.py \
     && python /opt/minimax-h3/scripts/check_r2v_profiles.py --comfyui-root "${COMFYUI_ROOT}" --runtime \
     && for profile in dasiwa-v2 dasiwa-turbo-v2 official; do \
       for vae in int8 x2-detail; do \
+      for compare in 0 1; do \
       ACCEPT_MINIMAX_H3_LICENSE=1 MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
         HF_TOKEN=entrypoint-smoke CIVITAI_API_TOKEN=entrypoint-smoke \
-        H3_PROFILE=r2v H3_R2V_MODEL="${profile}" H3_R2V_VAE="${vae}" H3_R2V_LORA_SELECTION=all MINIMAX_H3_ENTRYPOINT_SMOKE=1 \
+        H3_PROFILE=r2v H3_R2V_MODEL="${profile}" H3_R2V_VAE="${vae}" H3_R2V_COMPARE="${compare}" H3_R2V_LORA_SELECTION=all MINIMAX_H3_ENTRYPOINT_SMOKE=1 \
         /opt/minimax-h3/scripts/entrypoint.sh || exit 1; \
+      done; \
       done; \
     done \
     && ACCEPT_MINIMAX_H3_LICENSE=1 MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \

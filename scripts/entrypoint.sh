@@ -144,6 +144,7 @@ mkdir -p "${MODEL_DIR}" "${MODEL_DIR}/auto_mosaic" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
 # On profile changes, remove only our optional preset; preserve user-named files.
 rm -f "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json"
+rm -f "${COMFYUI_ROOT}/user/default/workflows/05_MiniMax_H3_Upscale_Compare.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_01_quality.json" \
   "${COMFYUI_ROOT}/user/default/workflows/01_MiniMax_H3_Quality_2x.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_02_fast_fbcache.json" \

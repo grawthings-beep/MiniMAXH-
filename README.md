@@ -29,6 +29,12 @@ RealESRGANの2倍処理は外し、従来のVAEは `H3_R2V_VAE=int8`（未指定
 [作者workflowとの比較・採用判断・切替手順](docs/dasiwa-r2v.md)を確認してください。
 旧構成は `H3_PROFILE=legacy`（省略時の既定）で引き続き使えます。
 
+### 同じ生成結果で仕上げを比較する
+
+R2VA専用では `H3_R2V_COMPARE=1` を追加すると、通常04を残したまま比較05を1本追加できます。
+同一latentから **X2 VAE / INT8＋SPAN / INT8＋AnimeSharp** の3本を順番に保存します。
+新しいイメージが必要です。追加取得量・ライセンス・操作は [仕上げ比較ガイド](docs/upscale-compare.md) を参照してください。
+
 ## 通常起動（legacy）でUIに表示する3ワークフロー
 
 通常起動でComfyUIへ表示するMiniMax H3ワークフローは、次の3本です。

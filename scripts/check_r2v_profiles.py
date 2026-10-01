@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 
 from prepare_r2v_profile import ROOT, prepare, write_json
+from prepare_upscale_compare import build as build_comparison
+from verify_upscale_compare import verify as verify_comparison
 
 
 def main():
@@ -16,6 +18,9 @@ def main():
     parser.add_argument("--runtime", action="store_true", help="Execute real native nodes using PyTorch on CPU")
     args = parser.parse_args()
     settings = json.loads((ROOT / "manifests/r2v_profiles.json").read_text())["profiles"]
+    for profile in settings:
+        comparison_manifest, comparison_workflow = build_comparison(profile)
+        verify_comparison(comparison_workflow, comparison_manifest, args.comfyui_root)
     with tempfile.TemporaryDirectory(prefix="h3-r2v-profiles-") as temp:
         for profile, vae in ((p, v) for p in settings for v in ("int8", "x2-detail")):
             manifest, _, workflow = prepare(profile, vae_profile=vae)

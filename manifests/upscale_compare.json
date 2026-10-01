@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "path": "upscale_models/2xNomosUni_span_multijpg.safetensors",
+      "source_url": "https://huggingface.co/Phips/2xNomosUni_span_multijpg/resolve/ed6111c4cabdaf42b75e6535600d5370cce9e4e2/2xNomosUni_span_multijpg.safetensors",
+      "source_license_url": "https://openmodeldb.info/models/2x-NomosUni-span-multijpg",
+      "license": "CC-BY-4.0",
+      "author": "Helaman",
+      "size": 4461056,
+      "sha256": "bee2a9c082f2b8f6e7f5db504b36593c24a1a959511f587114c399ca58b9c92c",
+      "verify_sha256": true
+    },
+    {
+      "path": "upscale_models/2x-AnimeSharpV4_RCAN.safetensors",
+      "source_url": "https://github.com/Kim2091/Kim2091-Models/releases/download/2x-AnimeSharpV4/2x-AnimeSharpV4_RCAN.safetensors",
+      "source_license_url": "https://openmodeldb.info/models/2x-AnimeSharpV4",
+      "license": "CC-BY-NC-SA-4.0",
+      "author": "Kim2091",
+      "size": 31053198,
+      "sha256": "6470bb91d6622d6acdff81132c1a8615b961b919ce2b9a01ce993378500cfbe1",
+      "verify_sha256": true
+    }
+  ]
+}

@@ -57,3 +57,18 @@ This repository does not redistribute MiniMax H3 weights.
 
 Review all applicable licenses before building, using, or distributing a
 container made from this repository.
+
+Optional H3 finishing comparison downloads these unmodified models at startup
+(weights are not distributed in the image):
+
+- 2xNomosUni_span_multijpg by Helaman, CC-BY-4.0.
+  https://openmodeldb.info/models/2x-NomosUni-span-multijpg
+  License: https://creativecommons.org/licenses/by/4.0/
+- 2x-AnimeSharpV4_RCAN by Kim2091, CC-BY-NC-SA-4.0 (non-commercial).
+  https://github.com/Kim2091/Kim2091-Models/releases/tag/2x-AnimeSharpV4
+  https://openmodeldb.info/models/2x-AnimeSharpV4
+  License: https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+Asset hashes and exact downloads are recorded in manifests/upscale_compare.json.
+The comparison does not grant commercial rights to AnimeSharp or override any
+base-model, VAE or input-media license.

@@ -21,10 +21,26 @@ if [[ "${AUTO_MOSAIC_REQUIRED}" =~ ^(1|true|yes|on)$ ]] && [[ -z "${CIVITAI_API_
 fi
 R2V_MODEL="${H3_R2V_MODEL:-official}"
 R2V_VAE="${H3_R2V_VAE:-int8}"
+R2V_COMPARE="${H3_R2V_COMPARE:-0}"
+if [[ "${R2V_COMPARE}" != "0" && "${R2V_COMPARE}" != "1" ]]; then
+  echo "[h3-compare] H3_R2V_COMPARE must be 0 or 1"; exit 79
+fi
+if [[ "${R2V_COMPARE}" == "1" ]]; then
+  for node_file in compare_nodes.py web/upscale_compare.js; do
+    if [[ ! -s "${STORY_NODE_ROOT}/${node_file}" ]]; then
+      echo "[h3-compare] comparison node/UI missing; update the image"; exit 77
+    fi
+  done
+fi
 R2V_VAE_VERIFY=(--expect-upscale)
 case "${R2V_VAE}" in
   int8) ;;
   x2-detail)
+    R2V_VAE_VERIFY=(--expect-x2-vae)
+    ;;
+  *) echo "[r2v-only] H3_R2V_VAE must be int8 or x2-detail"; exit 79 ;;
+esac
+if [[ "${R2V_VAE}" == "x2-detail" || "${R2V_COMPARE}" == "1" ]]; then
     X2_ROOT="${COMFYUI_ROOT}/custom_nodes/minimax_h3_x2_vae"
     for node_file in __init__.py vae_decode.py utils.py REVISION; do
       if [[ ! -s "${X2_ROOT}/${node_file}" ]]; then
@@ -36,10 +52,7 @@ case "${R2V_VAE}" in
       echo "[r2v-only] X2 decoder revision mismatch; rebuild this image"
       exit 77
     fi
-    R2V_VAE_VERIFY=(--expect-x2-vae)
-    ;;
-  *) echo "[r2v-only] H3_R2V_VAE must be int8 or x2-detail"; exit 79 ;;
-esac
+fi
 case "${R2V_MODEL}" in
   official) ;;
   dasiwa-v2|dasiwa-turbo-v2)
@@ -51,6 +64,7 @@ case "${R2V_MODEL}" in
 esac
 python "${SCRIPT_DIR}/download_r2v_loras.py" --check
 mkdir -p "${MODEL_DIR}/auto_mosaic" "${MODEL_DIR}/refmods" "${MODEL_DIR}/loras" "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output/refmods" \
+  "${MODEL_DIR}/vae" "${MODEL_DIR}/upscale_models" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
 # Replace only known shipped presets, not arbitrary user-named workflows.
 for shipped in 01_MiniMax_H3_Quality_2x.json 02_MiniMax_H3_Fast_FBCache_2x.json \
@@ -60,13 +74,21 @@ done
 python "${SCRIPT_DIR}/prepare_r2v_profile.py" --profile "${R2V_MODEL}" --vae "${R2V_VAE}" \
   --output-dir "${COMFYUI_ROOT}/user/default"
 MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_models.json"
+R2V_04_MANIFEST="${MANIFEST}"
+if [[ "${R2V_COMPARE}" == "1" ]]; then
+  python "${SCRIPT_DIR}/prepare_upscale_compare.py" --profile "${R2V_MODEL}" --output-dir "${COMFYUI_ROOT}/user/default"
+  R2V_04_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_04_models.json"
+else
+  # Only the shipped 05 is removed; personal canvases are never touched.
+  rm -f "${COMFYUI_ROOT}/user/default/workflows/05_MiniMax_H3_Upscale_Compare.json"
+fi
 R2V_HF_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_hf_models.json"
 export MODEL_MANIFEST="${MANIFEST}"
 export COMFYUI_MODEL_DIR="${MODEL_DIR}"
 echo "[workflow] installed R2VA (${R2V_MODEL}, VAE=${R2V_VAE}); reopen 04 from Workflows"
 python "${SCRIPT_DIR}/verify_workflow.py" \
   --workflow "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json" \
-  --manifest "${MANIFEST}" --mode r2v "${R2V_VAE_VERIFY[@]}" --expect-memory-safe-decode \
+  --manifest "${R2V_04_MANIFEST}" --mode r2v "${R2V_VAE_VERIFY[@]}" --expect-memory-safe-decode \
   --expect-auto-mosaic --auto-mosaic-manifest "${PROJECT_DIR}/manifests/auto_mosaic.json"
 
 read -r -a EXTRA_ARGS <<< "${COMFYUI_ARGS:---lowvram --vram-headroom 2}"
@@ -95,7 +117,7 @@ echo "[r2v-only] extra args: ${EXTRA_ARGS[*]:-(none)}"
 if [[ "${MINIMAX_H3_ENTRYPOINT_SMOKE:-0}" == "1" ]]; then
   python "${SCRIPT_DIR}/verify_workflow.py" \
     --workflow "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json" \
-    --manifest "${MANIFEST}" --mode r2v "${R2V_VAE_VERIFY[@]}" --expect-memory-safe-decode \
+    --manifest "${R2V_04_MANIFEST}" --mode r2v "${R2V_VAE_VERIFY[@]}" --expect-memory-safe-decode \
     --expect-auto-mosaic --auto-mosaic-manifest "${PROJECT_DIR}/manifests/auto_mosaic.json"
   echo "[smoke] R2VA-only entrypoint contract passed before network/model startup"
   exit 0

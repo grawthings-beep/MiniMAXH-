@@ -199,6 +199,8 @@ jobs:
           node --check custom_nodes/minimax_h3_ordered_storyboard/web/ordered_storyboard.js
           node --check custom_nodes/minimax_h3_ordered_storyboard/web/refmod_images.js
           node scripts/check_refmod_ui.mjs
+          node --check custom_nodes/minimax_h3_ordered_storyboard/web/upscale_compare.js
+          node scripts/check_compare_ui.mjs
       - name: Verify R2VA-only INT8 VAE workflow
         run: |
           python scripts/build_character_workflow.py --int8-vae --output-dir .ci-r2v-only
