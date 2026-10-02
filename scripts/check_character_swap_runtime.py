@@ -7,6 +7,7 @@ import argparse
 from fractions import Fraction
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -90,6 +91,10 @@ def main():
     parser.add_argument("--real-lora", action="store_true", help="Download/hash/test the 155MB adapter then delete it")
     parser.add_argument("--lora-file", type=Path, help="Already-downloaded real adapter")
     args = parser.parse_args()
+    # Docker installs the pinned RefMod vendor into ComfyUI, not the source
+    # checkout imported below. Local CPU fixtures can keep their explicit root.
+    os.environ.setdefault("MINIMAX_H3_REFMOD_ROOT", str(
+        args.comfyui_root.resolve() / "custom_nodes/minimax_h3_ordered_storyboard/refmod_vendor"))
     sys.path.insert(0, str(args.comfyui_root.resolve()))
     sys.path.insert(0, str(ROOT / "custom_nodes"))
     sys.path.insert(0, str(ROOT / "scripts"))
