@@ -22,6 +22,18 @@ fi
 R2V_MODEL="${H3_R2V_MODEL:-official}"
 R2V_VAE="${H3_R2V_VAE:-int8}"
 R2V_COMPARE="${H3_R2V_COMPARE:-0}"
+R2V_SWAP="${H3_CHARACTER_SWAP:-0}"
+if [[ "${R2V_SWAP}" != "0" && "${R2V_SWAP}" != "1" ]]; then
+  echo "[h3-swap] H3_CHARACTER_SWAP must be 0 or 1"; exit 79
+fi
+if [[ "${R2V_SWAP}" == "1" ]]; then
+  if [[ "${R2V_MODEL}" == "dasiwa-turbo-v2" ]]; then
+    echo "[h3-swap] use dasiwa-v2 or official; speed-up profiles are not enabled for replacement"; exit 79
+  fi
+  if [[ ! -s "${STORY_NODE_ROOT}/swap_nodes.py" ]]; then
+    echo "[h3-swap] replacement nodes missing; update the image"; exit 77
+  fi
+fi
 if [[ "${R2V_COMPARE}" != "0" && "${R2V_COMPARE}" != "1" ]]; then
   echo "[h3-compare] H3_R2V_COMPARE must be 0 or 1"; exit 79
 fi
@@ -83,6 +95,13 @@ else
   rm -f "${COMFYUI_ROOT}/user/default/workflows/05_MiniMax_H3_Upscale_Compare.json"
 fi
 R2V_HF_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_hf_models.json"
+if [[ "${R2V_SWAP}" == "1" ]]; then
+  python "${SCRIPT_DIR}/prepare_character_swap.py" --profile "${R2V_MODEL}" --vae "${R2V_VAE}" \
+    --output-dir "${COMFYUI_ROOT}/user/default"
+  R2V_04_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_04_models.json"
+else
+  rm -f "${COMFYUI_ROOT}/user/default/workflows/06_MiniMax_H3_Character_Swap.json"
+fi
 export MODEL_MANIFEST="${MANIFEST}"
 export COMFYUI_MODEL_DIR="${MODEL_DIR}"
 echo "[workflow] installed R2VA (${R2V_MODEL}, VAE=${R2V_VAE}); reopen 04 from Workflows"

@@ -72,3 +72,14 @@ Optional H3 finishing comparison downloads these unmodified models at startup
 Asset hashes and exact downloads are recorded in manifests/upscale_compare.json.
 The comparison does not grant commercial rights to AnimeSharp or override any
 base-model, VAE or input-media license.
+
+Optional character replacement downloads `h3_character_swap_pro4500_1000.safetensors`
+by akatz-ai at revision `62407e0cc8089c363abd9ce4b0b27662abb237af`:
+https://huggingface.co/akatz-ai/MiniMax-H3-Character-Swap-LoRA
+It is published under the MiniMax H3 Community License, not Apache-2.0.
+Existing base-model license and territory checks remain in force. Weights are
+not included in the Docker image. The local 06 graph uses the existing native
+H3/RefMod pipeline with a new bounded source-video reader; no upstream custom
+node pack or example workflow is redistributed. The model author's example
+informed the 20-step res_multistep/simple and single 1.0 LoRA defaults.
+Input-video rights and depicted people's consent remain the operator's responsibility.

@@ -57,6 +57,7 @@ class CharacterEntrypointTests(unittest.TestCase):
             "H3_PROFILE": "legacy", "H3_FAST_VAE": "1",
             "H3_R2V_MODEL": "official",
             "H3_R2V_COMPARE": "0",
+            "H3_CHARACTER_SWAP": "0",
             "H3_R2V_LORA_SELECTION": "none",
         })
         return root, env

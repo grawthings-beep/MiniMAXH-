@@ -59,6 +59,7 @@ jobs:
             type=raw,value=${{ matrix.variant }}
             type=raw,value=x2-detail-${{ matrix.variant }}
             type=raw,value=upscale-compare-${{ matrix.variant }}
+            type=raw,value=character-swap-${{ matrix.variant }}
             type=semver,pattern={{version}},suffix=-${{ matrix.variant }}
             type=semver,pattern={{version}},enable=${{ matrix.publish_default }}
             type=sha,suffix=-${{ matrix.variant }}
