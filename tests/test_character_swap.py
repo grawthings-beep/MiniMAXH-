@@ -27,6 +27,7 @@ class CharacterSwapTests(unittest.TestCase):
                 self.assertEqual(m["total_bytes"], sum(f["size"] for f in m["files"]))
                 self.assertEqual(len([n for n in w["nodes"] if n["type"] == "WanAutoMosaicVideo"]), 1)
                 self.assertEqual(len([n for n in w["nodes"] if n["type"] == "MiniMaxH3CreateCharacterRefMod"]), 0)
+                self.assertEqual(len([n for n in w["nodes"] if n["type"] == "MiniMaxH3SaveCharacterRefMod"]), 0)
                 self.assertEqual(next(n for n in w["nodes"] if n["type"] == "MiniMaxH3CharacterSwap")["inputs"][1]["type"], "H3_CHARACTER_IMAGES")
                 self.assertFalse(w["extra"]["character_r2v"]["quality_tested_on_gpu"])
         with self.assertRaises(ValueError):
@@ -42,6 +43,8 @@ class CharacterSwapTests(unittest.TestCase):
             lambda w: next(n for n in w["nodes"] if n["type"] == "MiniMaxH3R2VLoRA")["widgets_values"].__setitem__(2, False),
             lambda w: next(n for n in w["nodes"] if n["type"] == "MiniMaxH3SwapAudio")["widgets_values"].__setitem__(0, "generated"),
             lambda w: next(n for n in w["nodes"] if n["type"] == "MiniMaxH3R2VLoRA")["properties"]["models"].clear(),
+            lambda w: w["nodes"].append(copy.deepcopy(next(n for n in prepare("dasiwa-v2")[2]["nodes"]
+                                                         if n["type"] == "MiniMaxH3SaveCharacterRefMod"))),
         ]
         for mutate in mutations:
             w = copy.deepcopy(original)

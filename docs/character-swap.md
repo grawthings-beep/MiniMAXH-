@@ -5,7 +5,7 @@
 
 今回の06は[LoRA作者の公開ワークフロー](https://huggingface.co/akatz-ai/MiniMax-H3-Character-Swap-LoRA/blob/62407e0cc8089c363abd9ce4b0b27662abb237af/examples/H3%20Character%20Swap%20v1%20Ref2VA.json)に主要設定を合わせています。
 公式Ref2VA INT8本体、`h3_character_swap_pro4500_1000.safetensors` 強度1.0、`res_multistep` / `simple` / 20 steps、Turboなし、ComfyUI標準 `MiniMaxH3ReferenceToVideo` で画像と動画の両方をエンコードします。
-RefMod画像の独自注入、人物検出マスク、承認コード、元映像コピー判定は06から外しました。完成フレームへの既存の自動モザイクは独立して残します。
+RefMod画像の独自注入・保存ノード、人物検出マスク、承認コード、元映像コピー判定は06から外しました。完成フレームへの既存の自動モザイクは独立して残します。
 
 作者はこのLoRAを**試験的**と説明し、動作タイミング・表情・カットでの不安定さも明記しています。[モデルカード](https://huggingface.co/akatz-ai/MiniMax-H3-Character-Swap-LoRA)の成功例と同じ設定でも、置換を保証しません。生成完了と置換成功は別です。
 

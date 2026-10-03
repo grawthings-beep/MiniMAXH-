@@ -26,7 +26,7 @@ def build(profile, project=ROOT, vae_profile="int8"):
     manifest["character_swap"] = True
     nodes = {n["type"]: n for n in workflow["nodes"]}
     removed = {nodes[t]["id"] for t in ("ResolutionSelector", "MiniMaxH3FullPrompt", "MiniMaxH3CharacterRefModR2V",
-                                         "MiniMaxH3CreateCharacterRefMod")}
+                                         "MiniMaxH3CreateCharacterRefMod", "MiniMaxH3SaveCharacterRefMod")}
     workflow["nodes"] = [n for n in workflow["nodes"] if n["id"] not in removed]
     workflow["links"] = [l for l in workflow["links"] if l[1] not in removed and l[3] not in removed]
     for node in workflow["nodes"]:
@@ -137,11 +137,11 @@ def build(profile, project=ROOT, vae_profile="int8"):
             done.add(n["id"])
             pending.remove(n)
     workflow["nodes"] = ordered
-    workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"MiniMAXH-/swap/{profile}/{vae_profile}/v4-author-ref2va"))
+    workflow["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"MiniMAXH-/swap/{profile}/{vae_profile}/v5-no-stale-save"))
     workflow["last_node_id"] = max(by_id)
     workflow["last_link_id"] = max(l[0] for l in workflow["links"])
     workflow["extra"]["character_r2v"].update(character_swap=True, reference_vae="int8", quality_tested_on_gpu=False,
-                                             swap_revision=4, requires_mask=False, requires_approval=False,
+                                             swap_revision=5, requires_mask=False, requires_approval=False,
                                              native_ref2va=True)
     return manifest, workflow
 

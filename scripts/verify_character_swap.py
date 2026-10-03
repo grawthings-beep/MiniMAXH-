@@ -73,7 +73,8 @@ def verify(workflow, manifest, comfyui_root=None):
     if lora["widgets_values"] != [LORA, 1.0, True]:
         raise RuntimeError("Character swap LoRA must default ON / 1.0")
     if any("Turbo" in n["type"] or n["type"] in {"MiniMaxH3FullPrompt", "MiniMaxH3CharacterRefModR2V",
-                                                     "MiniMaxH3CreateCharacterRefMod", "MiniMaxH3CompareUpscale"} for n in nodes):
+                                                     "MiniMaxH3CreateCharacterRefMod", "MiniMaxH3SaveCharacterRefMod",
+                                                     "MiniMaxH3CompareUpscale"} for n in nodes):
         raise RuntimeError("Wrong conditioning/extra sampler path")
     profile = manifest.get("r2v_profile", "official")
     baseline = prepare(profile, vae_profile=manifest.get("vae_profile", "int8"))[2]
