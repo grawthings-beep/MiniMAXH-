@@ -26,6 +26,8 @@ class CharacterSwapTests(unittest.TestCase):
                 self.assertEqual(len([f for f in m["files"] if f["path"].startswith("diffusion_models/")]), 1)
                 self.assertEqual(m["total_bytes"], sum(f["size"] for f in m["files"]))
                 self.assertEqual(len([n for n in w["nodes"] if n["type"] == "WanAutoMosaicVideo"]), 1)
+                self.assertEqual(len([n for n in w["nodes"] if n["type"] == "MiniMaxH3CreateCharacterRefMod"]), 0)
+                self.assertEqual(next(n for n in w["nodes"] if n["type"] == "MiniMaxH3CharacterSwap")["inputs"][1]["type"], "H3_CHARACTER_IMAGES")
                 self.assertFalse(w["extra"]["character_r2v"]["quality_tested_on_gpu"])
         with self.assertRaises(ValueError):
             build("dasiwa-turbo-v2")
@@ -81,7 +83,7 @@ class CharacterSwapEntrypointTests(unittest.TestCase):
             env.update(H3_PROFILE="r2v", H3_CHARACTER_SWAP="1", H3_R2V_VAE="int8")
             self.assertEqual(helper.run_entrypoint(env).returncode, 77)
             package = root / "custom_nodes/minimax_h3_ordered_storyboard"
-            for name in ("swap_nodes.py", "swap_guard_nodes.py", "compare_nodes.py", "web/upscale_compare.js"):
+            for name in ("swap_nodes.py", "compare_nodes.py", "web/upscale_compare.js"):
                 (package / name).write_text("# stub")
             decoder = root / "custom_nodes/minimax_h3_x2_vae"
             decoder.mkdir()
@@ -103,10 +105,11 @@ class CharacterSwapEntrypointTests(unittest.TestCase):
                         self.assertEqual(sum(f["path"] == "loras/"+LORA for f in merged["files"]), 1)
                         hf = json.loads((root / "user/default/minimax_h3_r2v_hf_models.json").read_text())
                         self.assertFalse(any(f.get("auth") == "civitai" for f in hf["files"]))
-            # The comparison model is opt-in for 06 ONLY. Keep 04 and text-only
-            # 07 on DaSiWa and download each shared asset only once.
+            # Official Ref2VA is now the default for 06 only. Keep 04 and
+            # text-only 07 on DaSiWa and download shared assets only once.
             (package / "t2va_nodes.py").write_text("# stub")
-            env.update(H3_R2V_MODEL="dasiwa-v2", H3_SWAP_MODEL="official", H3_T2VA="1")
+            env.pop("H3_SWAP_MODEL")
+            env.update(H3_R2V_MODEL="dasiwa-v2", H3_T2VA="1")
             result = helper.run_entrypoint(env)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(json.loads((deployed / WORKFLOW).read_text(encoding="utf-8")), build("official", vae_profile="x2-detail")[1])
@@ -116,13 +119,13 @@ class CharacterSwapEntrypointTests(unittest.TestCase):
             merged = json.loads((root / "user/default/minimax_h3_r2v_models.json").read_text())
             self.assertEqual(sum(f["path"].startswith("diffusion_models/") for f in merged["files"]), 2)
             self.assertEqual(len({f["path"] for f in merged["files"]}), len(merged["files"]))
-            self.assertTrue((root / "models/swap_detection").is_dir())
+            self.assertFalse((root / "models/swap_detection").exists())
             env["H3_SWAP_MODEL"] = "typo"
             self.assertEqual(helper.run_entrypoint(env).returncode, 79)
             env.update(H3_SWAP_MODEL="shared", H3_T2VA="0")
-            (package / "swap_guard_nodes.py").unlink()
+            (package / "swap_nodes.py").unlink()
             self.assertEqual(helper.run_entrypoint(env).returncode, 77)
-            (package / "swap_guard_nodes.py").write_text("# stub")
+            (package / "swap_nodes.py").write_text("# stub")
             personal = deployed / "Personal swap.json"
             personal.write_text("{}")
             env["H3_CHARACTER_SWAP"] = "0"

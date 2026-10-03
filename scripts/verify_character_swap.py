@@ -42,28 +42,21 @@ def verify(workflow, manifest, comfyui_root=None):
         if inp.get("link") not in links or links[inp["link"]][1:3] != [source["id"], slot]:
             raise RuntimeError(f"Incorrect {target['type']}.{input_name} route")
 
-    source, cond, refs = one("MiniMaxH3SwapClip"), one("MiniMaxH3CharacterSwap"), one("MiniMaxH3CreateCharacterRefMod")
+    source, cond, refs = one("MiniMaxH3SwapClip"), one("MiniMaxH3CharacterSwap"), one("MiniMaxH3RefModImages")
     prompt, lora = one("MiniMaxH3SwapPrompt"), one("MiniMaxH3R2VLoRA")
     route(source, "video", one("LoadVideo"))
-    route(refs, "references", one("MiniMaxH3RefModImages"))
     route(cond, "character", refs)
     route(cond, "source", source)
     route(cond, "clip", one("CLIPLoader"))
     route(cond, "prompt", prompt)
-    target, finish = one("MiniMaxH3SwapTarget"), one("MiniMaxH3SwapFinish")
-    route(target, "source", source)
-    route(cond, "edit", target)
-    route(finish, "source", source)
-    route(finish, "edit", target)
-    if target["widgets_values"] != ["masked_replace", .25, 32, .1, 48] or cond["widgets_values"] != [""]:
-        raise RuntimeError("Masked workflow requires fresh mask approval and bounded CPU defaults")
-    if finish["widgets_values"] != [True, .985]:
-        raise RuntimeError("Source-copy rejection must default ON")
+    if any(n["type"] in {"MiniMaxH3SwapTarget", "MiniMaxH3SwapFinish"} for n in nodes):
+        raise RuntimeError("The direct swap workflow must not include masking or a review gate")
+    if any(i["name"] in {"edit", "mask_approval", "target_mask"} for n in nodes for i in n.get("inputs", [])):
+        raise RuntimeError("Mask inputs and approval codes are not part of direct swap")
     stock = [n for n in nodes if n["type"] == "VAELoader" and n["widgets_values"] == ["minimax_h3_video_vae_int8_convrot.safetensors"]]
     if len(stock) != 1:
         raise RuntimeError("Exactly one INT8 reference VAE required")
     route(cond, "vae", stock[0])
-    route(refs, "vae", stock[0])
     sampler, barrier = one("SamplerCustomAdvanced"), one("MiniMaxH3ReleaseVRAMLatent")
     route(sampler, "latent_image", cond, 1)
     route(one("BasicGuider"), "conditioning", cond)
@@ -79,7 +72,8 @@ def verify(workflow, manifest, comfyui_root=None):
         raise RuntimeError("Unexpected clip/audio defaults")
     if lora["widgets_values"] != [LORA, 1.0, True]:
         raise RuntimeError("Character swap LoRA must default ON / 1.0")
-    if any("Turbo" in n["type"] or n["type"] in {"MiniMaxH3FullPrompt", "MiniMaxH3CharacterRefModR2V", "MiniMaxH3CompareUpscale"} for n in nodes):
+    if any("Turbo" in n["type"] or n["type"] in {"MiniMaxH3FullPrompt", "MiniMaxH3CharacterRefModR2V",
+                                                     "MiniMaxH3CreateCharacterRefMod", "MiniMaxH3CompareUpscale"} for n in nodes):
         raise RuntimeError("Wrong conditioning/extra sampler path")
     profile = manifest.get("r2v_profile", "official")
     baseline = prepare(profile, vae_profile=manifest.get("vae_profile", "int8"))[2]
@@ -102,16 +96,14 @@ def verify(workflow, manifest, comfyui_root=None):
     if manifest.get("vae_profile") != "x2-detail":
         finishing = one("ImageUpscaleWithModel")
         route(finishing, "image", decoder)
-    route(finish, "images", finishing)
-    route(one("WanAutoMosaicVideo"), "images", finish)
+    route(one("WanAutoMosaicVideo"), "images", finishing)
     if workflow_models(nodes) != {f["path"] for f in manifest["files"]} | {"auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"}:
         raise RuntimeError("Model dependencies differ from manifest")
     pinned = json.loads((ROOT / "manifests/character_swap.json").read_text())["files"][0]
     if pinned not in manifest["files"]:
         raise RuntimeError("Replacement LoRA must be pinned / SHA256 checked")
-    detector = json.loads((ROOT / "manifests/swap_guard.json").read_text())["files"][0]
-    if detector not in manifest["files"]:
-        raise RuntimeError("Person segmentation model must be pinned / SHA256 checked")
+    if any(f["path"].startswith("swap_detection/") for f in manifest["files"]):
+        raise RuntimeError("Direct swap must not download a person detector")
     groups, boxes = [g["bounding"] for g in workflow["groups"]], [n["pos"] + n["size"] for n in nodes]
     for collection in (groups, boxes):
         for i, (x, y, w, h) in enumerate(collection):

@@ -23,7 +23,7 @@ R2V_MODEL="${H3_R2V_MODEL:-official}"
 R2V_VAE="${H3_R2V_VAE:-int8}"
 R2V_COMPARE="${H3_R2V_COMPARE:-0}"
 R2V_SWAP="${H3_CHARACTER_SWAP:-0}"
-R2V_SWAP_MODEL="${H3_SWAP_MODEL:-shared}"
+R2V_SWAP_MODEL="${H3_SWAP_MODEL:-official}"
 R2V_T2VA="${H3_T2VA:-0}"
 if [[ "${R2V_T2VA}" != "0" && "${R2V_T2VA}" != "1" ]]; then
   echo "[h3-t2va] H3_T2VA must be 0 or 1"; exit 79
@@ -46,7 +46,7 @@ if [[ "${R2V_SWAP}" == "1" ]]; then
   if [[ "${R2V_MODEL}" == "dasiwa-turbo-v2" ]]; then
     echo "[h3-swap] use dasiwa-v2 or official; speed-up profiles are not enabled for replacement"; exit 79
   fi
-  if [[ ! -s "${STORY_NODE_ROOT}/swap_nodes.py" || ! -s "${STORY_NODE_ROOT}/swap_guard_nodes.py" ]]; then
+  if [[ ! -s "${STORY_NODE_ROOT}/swap_nodes.py" ]]; then
     echo "[h3-swap] replacement nodes missing; update the image"; exit 77
   fi
 fi
@@ -92,7 +92,7 @@ case "${R2V_MODEL}" in
 esac
 python "${SCRIPT_DIR}/download_r2v_loras.py" --check
 mkdir -p "${MODEL_DIR}/auto_mosaic" "${MODEL_DIR}/refmods" "${MODEL_DIR}/loras" "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output/refmods" \
-  "${MODEL_DIR}/vae" "${MODEL_DIR}/upscale_models" "${MODEL_DIR}/swap_detection" \
+  "${MODEL_DIR}/vae" "${MODEL_DIR}/upscale_models" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
 # Replace only known shipped presets, not arbitrary user-named workflows.
 for shipped in 01_MiniMax_H3_Quality_2x.json 02_MiniMax_H3_Fast_FBCache_2x.json \

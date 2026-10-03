@@ -11,13 +11,7 @@ import re
 
 FPS = 24
 MAX_FRAMES = 362
-DEFAULT_PROMPT = """Replace the main person in <Video 1> with the same character shown in all supplied reference pictures, starting with <Picture 1>. Preserve the reference character's face proportions, eye shape, hairstyle, outfit and rendering style. Follow the source person's actions, position, body orientation and expressions throughout the clip. Preserve the source camera movement, shot composition, background and other objects. Keep the replacement character consistent from beginning to end. Do not introduce additional people or cuts.
-
-Soundscape: natural sounds matching the visible actions. No added dialogue.
-Non-diegetic music: N/A.
-"""
-
-GUARDED_PROMPT = """[video editing] Replace the person in <Video 1> with the character in <Picture 1>. The supplied pictures show the same replacement character. Use that character's face, hair, outfit and art style, not the source person's appearance. Match the source person's position, scale and movement. Keep the source camera, background and objects. Keep the replacement consistent when leaving and re-entering the frame.
+SWAP_PROMPT = """Swap the main person in <Video 1> with the character in <Picture 1>. Use the replacement character's face, hair, outfit and art style. Match the source person's position, scale, pose and movement. Preserve the camera, background, lighting and objects. Keep the replacement consistent when leaving and re-entering the frame.
 
 Soundscape: natural sounds matching the visible actions. No added dialogue.
 Non-diegetic music: N/A.
@@ -188,7 +182,7 @@ class MiniMaxH3SwapClip:
 class MiniMaxH3SwapPrompt:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"full_prompt": ("STRING", {"default": DEFAULT_PROMPT, "multiline": True, "dynamicPrompts": False})}}
+        return {"required": {"full_prompt": ("STRING", {"default": SWAP_PROMPT, "multiline": True, "dynamicPrompts": False})}}
     RETURN_TYPES = ("STRING",)
     FUNCTION = "build"
     CATEGORY = "MiniMax H3/Character Swap"
@@ -201,47 +195,26 @@ class MiniMaxH3SwapPrompt:
 class MiniMaxH3CharacterSwap:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"clip": ("CLIP", {"lazy": True}), "character": ("H3_CHARACTER_REFMOD", {"lazy": True}),
+        return {"required": {"clip": ("CLIP", {"lazy": True}), "character": ("H3_CHARACTER_IMAGES", {"lazy": True}),
                              "source": ("H3_SWAP_CLIP",), "vae": ("VAE", {"lazy": True}),
-                             "prompt": ("STRING", {"forceInput": True})},
-                "optional": {"edit": ("H3_SWAP_EDIT",),
-                             "mask_approval": ("STRING", {"default": "", "tooltip": "Masked mode only: inspect ALL mask frames, then paste the code from mask_report. New clips/masks invalidate it."})}}
+                             "prompt": ("STRING", {"forceInput": True})}}
     RETURN_TYPES = ("CONDITIONING", "LATENT")
     RETURN_NAMES = ("positive", "LATENT")
     FUNCTION = "encode"
     CATEGORY = "MiniMax H3/Character Swap"
 
-    @staticmethod
-    def validate_approval(edit, mask_approval):
-        if edit is not None and edit.get("mode") not in {"masked_replace", "original"}:
-            raise ValueError("Invalid swap edit control")
-        if edit is not None and edit.get("mode") == "masked_replace":
-            if not mask_approval or mask_approval.strip() != edit["approval"]:
-                raise ValueError("MASK REVIEW REQUIRED: inspect the CPU target-mask preview, including exit/re-entry. "
-                                 "Paste its approval code into mask_approval, then run again. H3 sampling was not started. "
-                                 + edit["report"])
-
-    def check_lazy_status(self, clip=None, character=None, vae=None, edit=None, mask_approval="", **kwargs):
-        # Resolve CPU source/mask first, before requesting the expensive image
-        # RefMods and text/reference encoders. Old graphs with no edit still work.
-        self.validate_approval(edit, mask_approval)
+    def check_lazy_status(self, clip=None, character=None, vae=None, **kwargs):
         return [key for key, value in (("clip", clip), ("character", character), ("vae", vae)) if value is None]
 
-    def encode(self, clip, character, source, vae, prompt, edit=None, mask_approval=""):
-        import torch
+    def encode(self, clip, character, source, vae, prompt):
         from comfy.ldm.minimax.vae import MiniMaxH3VideoVAE
-        from comfy_extras.nodes_minimax_h3 import MiniMaxH3ReferenceToVideo, video_latent_t
+        from comfy_extras.nodes_minimax_h3 import MiniMaxH3ReferenceToVideo
         from .refmod_nodes import MAX_IMAGES, PromptBudgetClip
-        self.validate_approval(edit, mask_approval)
-        images, mods = character["images"], character["mods"]
-        if not 1 <= len(images) == len(mods) <= MAX_IMAGES:
+        images = character["images"]
+        if not 1 <= len(images) <= MAX_IMAGES:
             raise ValueError("Use 1–8 reference pictures of the same replacement character.")
         prompt = validate_prompt(prompt, len(images))
-        masked = edit is not None and edit.get("mode") == "masked_replace"
-        if masked:
-            if tuple(source["frames"].shape) != edit["shape"]:
-                raise ValueError("Edit control does not match this clip")
-        frames = edit["frames"] if masked else source["frames"]
+        frames = source["frames"]
         n, h, w, channels = frames.shape
         if frames.device.type != "cpu" or channels != 3 or n % 17 != 5 or not 22 <= n <= MAX_FRAMES or w % 32 or h % 32:
             raise ValueError("Invalid prepared clip; connect the bounded source preparation node.")
@@ -249,28 +222,14 @@ class MiniMaxH3CharacterSwap:
             raise ValueError("Clip metadata does not match its frames.")
         if not isinstance(vae.first_stage_model, MiniMaxH3VideoVAE):
             raise ValueError("Use the H3 INT8 video reference VAE.")
-        with torch.inference_mode():
-            z = vae.encode(frames).detach().cpu().clone()
-        if tuple(z.shape) != (1, 24, video_latent_t(n), h // 16, w // 16):
-            raise ValueError(f"Unexpected H3 reference video latent: {tuple(z.shape)}")
-        # Qwen gets the native image/video presentation; VAE=None avoids double
-        # encoding. Full image RefMods + the encoded video reach DiT exactly once.
+        # Match the LoRA author's reviewed example: the standard ComfyUI Ref2VA
+        # node encodes both image and video references via the official INT8 VAE.
+        # Keep only bounded video decoding and variable-count image loading here.
         result = MiniMaxH3ReferenceToVideo.execute(
-            PromptBudgetClip(clip), prompt, w, h, n, ref_image_size="max", vae=None,
+            PromptBudgetClip(clip), prompt, w, h, n, ref_image_size="match", vae=vae,
             ref_images={f"ref_image_{i}": image for i, image in enumerate(images)},
             ref_videos={"ref_video_0": frames}).result
-        blocks = [mod.ref_block(1.0) for mod, _ in mods] + [
-            {"kind": "video", "latent_t": z.shape[2], "latent_h": h // 16, "latent_w": w // 16,
-             "ref_audio_t": 0, "latent": z, "audio_latent": None}]
-        positive = []
-        for embedding, metadata in result[0]:
-            if "minimax_token_tags" not in metadata or metadata.get("minimax_refs"):
-                raise ValueError("Wrong H3 encoder or duplicate reference conditioning.")
-            positive.append([embedding, {**metadata, "minimax_refs": blocks}])
-        if masked:
-            from .swap_guard_nodes import build_edit_latent
-            return positive, build_edit_latent(z, result[1], edit)
-        return positive, result[1]
+        return result[0], result[1]
 
 
 class MiniMaxH3SwapAudio:
@@ -302,6 +261,6 @@ NODE_CLASS_MAPPINGS = {cls.__name__: cls for cls in (
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3SwapClip": "Source clip / 区間・24fps・解像度",
     "MiniMaxH3SwapPrompt": "Replacement prompt / 全文1欄",
-    "MiniMaxH3CharacterSwap": "Video + Character RefMod → R2VA",
+    "MiniMaxH3CharacterSwap": "Video + Character → native Ref2VA",
     "MiniMaxH3SwapAudio": "Audio / 元動画・生成音・無音",
 }
