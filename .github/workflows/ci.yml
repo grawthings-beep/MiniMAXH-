@@ -218,7 +218,11 @@ jobs:
       - name: Verify replacement profiles and serialized links against pinned nodes
         run: |
           PYTHONPATH=scripts python -c 'from pathlib import Path; from prepare_character_swap import build; from verify_character_swap import verify; [verify(w,m,Path(".ci-ComfyUI")) for p in ("official","dasiwa-v2") for v in ("int8","x2-detail") for m,w in [build(p,vae_profile=v)]]'
-      - name: Validate JSON files
+      - name: Verify text-only T2VA against pinned nodes
+        # T2VA is generated at startup, like replacement 06.
+        run: |
+          PYTHONPATH=scripts python -c 'from pathlib import Path; from prepare_t2va import build; from verify_t2va import verify; m,w=build("dasiwa-v2"); verify(w,m,Path(".ci-ComfyUI"))'
+      - name: Validate all JSON files
         run: |
           for file in manifests/*.json workflows/*.json runpod-template*.json; do
             python -m json.tool "$file" >/dev/null

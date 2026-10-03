@@ -23,6 +23,18 @@ R2V_MODEL="${H3_R2V_MODEL:-official}"
 R2V_VAE="${H3_R2V_VAE:-int8}"
 R2V_COMPARE="${H3_R2V_COMPARE:-0}"
 R2V_SWAP="${H3_CHARACTER_SWAP:-0}"
+R2V_T2VA="${H3_T2VA:-0}"
+if [[ "${R2V_T2VA}" != "0" && "${R2V_T2VA}" != "1" ]]; then
+  echo "[h3-t2va] H3_T2VA must be 0 or 1"; exit 79
+fi
+if [[ "${R2V_T2VA}" == "1" ]]; then
+  if [[ "${R2V_MODEL}" != "dasiwa-v2" ]]; then
+    echo "[h3-t2va] use H3_R2V_MODEL=dasiwa-v2; official in this profile is Ref2VA, not FL2VA"; exit 79
+  fi
+  if [[ ! -s "${STORY_NODE_ROOT}/t2va_nodes.py" ]]; then
+    echo "[h3-t2va] text-only nodes missing; update the image"; exit 77
+  fi
+fi
 if [[ "${R2V_SWAP}" != "0" && "${R2V_SWAP}" != "1" ]]; then
   echo "[h3-swap] H3_CHARACTER_SWAP must be 0 or 1"; exit 79
 fi
@@ -103,6 +115,16 @@ else
   rm -f "${COMFYUI_ROOT}/user/default/workflows/06_MiniMax_H3_Character_Swap.json"
 fi
 export MODEL_MANIFEST="${MANIFEST}"
+if [[ "${R2V_T2VA}" == "1" ]]; then
+  python "${SCRIPT_DIR}/prepare_t2va.py" --profile "${R2V_MODEL}" --vae "${R2V_VAE}" \
+    --output-dir "${COMFYUI_ROOT}/user/default"
+  R2V_04_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_04_models.json"
+  python "${SCRIPT_DIR}/verify_t2va.py" \
+    --workflow "${COMFYUI_ROOT}/user/default/workflows/07_MiniMax_H3_Text_to_Video.json" \
+    --manifest "${COMFYUI_ROOT}/user/default/minimax_h3_t2va_models.json"
+else
+  rm -f "${COMFYUI_ROOT}/user/default/workflows/07_MiniMax_H3_Text_to_Video.json"
+fi
 export COMFYUI_MODEL_DIR="${MODEL_DIR}"
 echo "[workflow] installed R2VA (${R2V_MODEL}, VAE=${R2V_VAE}); reopen 04 from Workflows"
 python "${SCRIPT_DIR}/verify_workflow.py" \

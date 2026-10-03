@@ -146,6 +146,7 @@ mkdir -p "${MODEL_DIR}" "${MODEL_DIR}/auto_mosaic" \
 rm -f "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json"
 rm -f "${COMFYUI_ROOT}/user/default/workflows/05_MiniMax_H3_Upscale_Compare.json"
 rm -f "${COMFYUI_ROOT}/user/default/workflows/06_MiniMax_H3_Character_Swap.json"
+rm -f "${COMFYUI_ROOT}/user/default/workflows/07_MiniMax_H3_Text_to_Video.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_01_quality.json" \
   "${COMFYUI_ROOT}/user/default/workflows/01_MiniMax_H3_Quality_2x.json"
 cp -f "${PROJECT_DIR}/workflows/minimax_h3_preset_02_fast_fbcache.json" \

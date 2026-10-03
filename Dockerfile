@@ -342,6 +342,10 @@ RUN python /opt/minimax-h3/scripts/check_upscale_compare_runtime.py --comfyui-ro
 # The 155MB adapter is removed from the temporary directory within this layer.
 RUN python /opt/minimax-h3/scripts/check_character_swap_runtime.py --comfyui-root "${COMFYUI_ROOT}" --real-lora
 
+# Image-free native conditioning and real MP4 -> replacement handoff, on CPU.
+# No diffusion weights are shipped or downloaded by this smoke test.
+RUN python /opt/minimax-h3/scripts/check_t2va_runtime.py --comfyui-root "${COMFYUI_ROOT}"
+
 RUN python /opt/minimax-h3/scripts/build_character_workflow.py --int8-vae --output-dir /tmp/h3-r2v-only-check \
     && cmp /tmp/h3-r2v-only-check/character_reveal_r2v_int8_2x.json \
       /opt/minimax-h3/workflows/character_reveal_r2v_int8_2x.json \
@@ -388,6 +392,22 @@ RUN python /opt/minimax-h3/scripts/check_r2v_download_runtime.py \
       H3_PROFILE=legacy H3_CHARACTER_R2V=0 MINIMAX_H3_ENTRYPOINT_SMOKE=1 /opt/minimax-h3/scripts/entrypoint.sh
 
 WORKDIR /opt/ComfyUI
+# Exercise all optional 04/05/06 combinations with the text-only 07 enabled.
+RUN for vae in int8 x2-detail; do \
+      for compare in 0 1; do \
+      for swap in 0 1; do \
+      ACCEPT_MINIMAX_H3_LICENSE=1 MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
+        HF_TOKEN=entrypoint-smoke CIVITAI_API_TOKEN=entrypoint-smoke \
+        H3_PROFILE=r2v H3_R2V_MODEL=dasiwa-v2 H3_R2V_VAE="${vae}" H3_R2V_COMPARE="${compare}" \
+        H3_CHARACTER_SWAP="${swap}" H3_T2VA=1 MINIMAX_H3_ENTRYPOINT_SMOKE=1 \
+        /opt/minimax-h3/scripts/entrypoint.sh || exit 1; \
+      done; done; done \
+    && ACCEPT_MINIMAX_H3_LICENSE=1 MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
+      HF_TOKEN=entrypoint-smoke CIVITAI_TOKEN=entrypoint-smoke CIVITAI_API_TOKEN=entrypoint-smoke \
+      H3_PROFILE=legacy H3_CHARACTER_R2V=0 H3_T2VA=0 MINIMAX_H3_ENTRYPOINT_SMOKE=1 \
+      /opt/minimax-h3/scripts/entrypoint.sh \
+    && test ! -e "${COMFYUI_ROOT}/user/default/workflows/07_MiniMax_H3_Text_to_Video.json"
+
 EXPOSE 8188
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30m --retries=4 \
