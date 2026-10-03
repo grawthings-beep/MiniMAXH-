@@ -17,6 +17,12 @@ Soundscape: natural sounds matching the visible actions. No added dialogue.
 Non-diegetic music: N/A.
 """
 
+GUARDED_PROMPT = """[video editing] Replace the person in <Video 1> with the character in <Picture 1>. The supplied pictures show the same replacement character. Use that character's face, hair, outfit and art style, not the source person's appearance. Match the source person's position, scale and movement. Keep the source camera, background and objects. Keep the replacement consistent when leaving and re-entering the frame.
+
+Soundscape: natural sounds matching the visible actions. No added dialogue.
+Non-diegetic music: N/A.
+"""
+
 
 def validate_prompt(prompt, count):
     from .refmod_nodes import clean_full_prompt
@@ -195,24 +201,47 @@ class MiniMaxH3SwapPrompt:
 class MiniMaxH3CharacterSwap:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"clip": ("CLIP",), "character": ("H3_CHARACTER_REFMOD",),
-                             "source": ("H3_SWAP_CLIP",), "vae": ("VAE",),
-                             "prompt": ("STRING", {"forceInput": True})}}
+        return {"required": {"clip": ("CLIP", {"lazy": True}), "character": ("H3_CHARACTER_REFMOD", {"lazy": True}),
+                             "source": ("H3_SWAP_CLIP",), "vae": ("VAE", {"lazy": True}),
+                             "prompt": ("STRING", {"forceInput": True})},
+                "optional": {"edit": ("H3_SWAP_EDIT",),
+                             "mask_approval": ("STRING", {"default": "", "tooltip": "Masked mode only: inspect ALL mask frames, then paste the code from mask_report. New clips/masks invalidate it."})}}
     RETURN_TYPES = ("CONDITIONING", "LATENT")
     RETURN_NAMES = ("positive", "LATENT")
     FUNCTION = "encode"
     CATEGORY = "MiniMax H3/Character Swap"
 
-    def encode(self, clip, character, source, vae, prompt):
+    @staticmethod
+    def validate_approval(edit, mask_approval):
+        if edit is not None and edit.get("mode") not in {"masked_replace", "original"}:
+            raise ValueError("Invalid swap edit control")
+        if edit is not None and edit.get("mode") == "masked_replace":
+            if not mask_approval or mask_approval.strip() != edit["approval"]:
+                raise ValueError("MASK REVIEW REQUIRED: inspect the CPU target-mask preview, including exit/re-entry. "
+                                 "Paste its approval code into mask_approval, then run again. H3 sampling was not started. "
+                                 + edit["report"])
+
+    def check_lazy_status(self, clip=None, character=None, vae=None, edit=None, mask_approval="", **kwargs):
+        # Resolve CPU source/mask first, before requesting the expensive image
+        # RefMods and text/reference encoders. Old graphs with no edit still work.
+        self.validate_approval(edit, mask_approval)
+        return [key for key, value in (("clip", clip), ("character", character), ("vae", vae)) if value is None]
+
+    def encode(self, clip, character, source, vae, prompt, edit=None, mask_approval=""):
         import torch
         from comfy.ldm.minimax.vae import MiniMaxH3VideoVAE
         from comfy_extras.nodes_minimax_h3 import MiniMaxH3ReferenceToVideo, video_latent_t
         from .refmod_nodes import MAX_IMAGES, PromptBudgetClip
+        self.validate_approval(edit, mask_approval)
         images, mods = character["images"], character["mods"]
         if not 1 <= len(images) == len(mods) <= MAX_IMAGES:
             raise ValueError("Use 1–8 reference pictures of the same replacement character.")
         prompt = validate_prompt(prompt, len(images))
-        frames = source["frames"]
+        masked = edit is not None and edit.get("mode") == "masked_replace"
+        if masked:
+            if tuple(source["frames"].shape) != edit["shape"]:
+                raise ValueError("Edit control does not match this clip")
+        frames = edit["frames"] if masked else source["frames"]
         n, h, w, channels = frames.shape
         if frames.device.type != "cpu" or channels != 3 or n % 17 != 5 or not 22 <= n <= MAX_FRAMES or w % 32 or h % 32:
             raise ValueError("Invalid prepared clip; connect the bounded source preparation node.")
@@ -238,6 +267,9 @@ class MiniMaxH3CharacterSwap:
             if "minimax_token_tags" not in metadata or metadata.get("minimax_refs"):
                 raise ValueError("Wrong H3 encoder or duplicate reference conditioning.")
             positive.append([embedding, {**metadata, "minimax_refs": blocks}])
+        if masked:
+            from .swap_guard_nodes import build_edit_latent
+            return positive, build_edit_latent(z, result[1], edit)
         return positive, result[1]
 
 

@@ -339,8 +339,8 @@ RUN git init /tmp/h3-x2-vae-source \
 RUN python /opt/minimax-h3/scripts/check_upscale_compare_runtime.py --comfyui-root "${COMFYUI_ROOT}"
 
 # Real decode/resample/crop/audio/MP4 and pinned LoRA key/shape compatibility.
-# The 155MB adapter is removed from the temporary directory within this layer.
-RUN python /opt/minimax-h3/scripts/check_character_swap_runtime.py --comfyui-root "${COMFYUI_ROOT}" --real-lora
+# The 155MB adapter and 21MB CPU person segmenter are removed within this layer.
+RUN python /opt/minimax-h3/scripts/check_character_swap_runtime.py --comfyui-root "${COMFYUI_ROOT}" --real-lora --real-detector
 
 # Image-free native conditioning and real MP4 -> replacement handoff, on CPU.
 # No diffusion weights are shipped or downloaded by this smoke test.

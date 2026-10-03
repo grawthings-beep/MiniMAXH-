@@ -90,6 +90,8 @@ def main():
     parser.add_argument("--comfyui-root", type=Path, required=True)
     parser.add_argument("--real-lora", action="store_true", help="Download/hash/test the 155MB adapter then delete it")
     parser.add_argument("--lora-file", type=Path, help="Already-downloaded real adapter")
+    parser.add_argument("--real-detector", action="store_true", help="Download/hash/CPU-load the 21MB person segmenter, then delete it")
+    parser.add_argument("--detector-file", type=Path, help="Already-downloaded pinned person segmenter")
     args = parser.parse_args()
     # Docker installs the pinned RefMod vendor into ComfyUI, not the source
     # checkout imported below. Local CPU fixtures can keep their explicit root.
@@ -112,10 +114,12 @@ def main():
     from comfy_extras.nodes_minimax_h3 import video_latent_t
     import minimax_h3_ordered_storyboard as package
     from minimax_h3_ordered_storyboard import swap_nodes as swap, refmod_nodes as ref
+    from minimax_h3_ordered_storyboard import swap_guard_nodes as guard
     from prepare_character_swap import build
     from verify_character_swap import verify
 
     assert swap.NODE_CLASS_MAPPINGS.keys() <= package.NODE_CLASS_MAPPINGS.keys()
+    assert guard.NODE_CLASS_MAPPINGS.keys() <= package.NODE_CLASS_MAPPINGS.keys()
     for p in ("official", "dasiwa-v2"):
         for v in ("int8", "x2-detail"):
             m, w = build(p, vae_profile=v)
@@ -196,7 +200,7 @@ def main():
                     t = 1 if image.shape[0] == 1 else video_latent_t(image.shape[0])
                     return torch.zeros(1, 24, t, image.shape[1]//16, image.shape[2]//16)
 
-            for count in (1, 3, 1):
+            for count in (1, 3, 8, 1):
                 references = {"images": [torch.zeros(1, 64, 96, 3)]*count,
                               "names": [f"reference{i}.png" for i in range(count)], "budget": 2048}
                 character, _ = ref.MiniMaxH3CreateCharacterRefMod().create(references, VAE())
@@ -208,6 +212,51 @@ def main():
                 assert [i["type"] for i in seen[-1]] == ["image"]*count + ["video"]
                 assert seen[-1][-1]["timestamps"] == [0., .5]
                 assert latent["samples"].is_nested
+            # Real ComfyUI AV packing, noise-mask preparation and H3 token-grid
+            # conditions. These are CPU contract checks, not generated videos.
+            import comfy.utils
+            import comfy.sampler_helpers
+            from comfy.model_base import MiniMaxH3
+            from types import SimpleNamespace
+            import nodes
+            for length in (22, 124, 362):
+                mask = torch.zeros(length, 64, 96)
+                mask[:, 16:48, 32:64] = 1
+                _, grid, pixels = guard.prepare_masks(mask, 0)
+                assert grid.shape == (1, 1, video_latent_t(length), 4, 6)
+                assert pixels.shape == mask.shape
+            mask = torch.zeros(source["length"], 64, 96)
+            mask[:, 16:48, 32:64] = 1
+            target = guard.MiniMaxH3SwapTarget()
+            with patch.object(nodes.PreviewImage, "save_images", return_value={"ui": {"images": []}}):
+                edit, report = target.prepare(source, target_mask=mask, grow=0)["result"]
+                changed = dict(source, frames=source["frames"].clone())
+                changed["frames"][0, 0, 0, 0] += .01
+                different = target.prepare(changed, target_mask=mask, grow=0)["result"][0]
+                assert edit["approval"] != different["approval"]
+            encoder = swap.MiniMaxH3CharacterSwap()
+            for code in ("", different["approval"]):
+                try:
+                    encoder.check_lazy_status(edit=edit, mask_approval=code)
+                except ValueError as error:
+                    assert "MASK REVIEW REQUIRED" in str(error)
+                else:
+                    raise AssertionError("Unreviewed/changed mask accepted")
+            assert set(encoder.check_lazy_status(edit=edit, mask_approval=edit["approval"])) == {"clip", "character", "vae"}
+            cond, masked = encoder.encode(Clip(), character, source, VAE(), swap.GUARDED_PROMPT,
+                                          edit=edit, mask_approval=edit["approval"])
+            latents = masked["samples"].unbind()
+            _, shapes = comfy.utils.pack_latents(latents)
+            masks = [comfy.sampler_helpers.prepare_mask(m, s, torch.device("cpu"))
+                     for m, s in zip(masked["noise_mask"].unbind(), shapes)]
+            packed, _ = comfy.utils.pack_latents(masks)
+            model = object.__new__(MiniMaxH3)
+            torch.nn.Module.__init__(model)
+            model.diffusion_model = SimpleNamespace(patch_size=(1, 2, 2))
+            values = model._denoise_mask_values(packed, shapes)
+            assert torch.equal(values["denoise_mask"], edit["latent_mask"])
+            assert "audio_denoise_mask" not in values and torch.all(masks[1] == 1)
+            assert len(cond[0][1]["minimax_refs"]) == len(character["images"])+1
             for bad in ("<Video 2>", "<Audio 1>", "<Picture 2>", "x "*6000):
                 try:
                     swap.MiniMaxH3CharacterSwap().encode(Clip(), character, source, VAE(), bad)
@@ -226,7 +275,24 @@ def main():
             assert path.stat().st_size == asset["size"]
             assert hashlib.sha256(path.read_bytes()).hexdigest() == asset["sha256"]
             real_lora_test(path)
-    print("Character swap CPU smoke passed: real 24/30/60fps/VFR decode, trim/audio/MP4, native tokenizer + image/video RefMods; diffusion/VAE mocked, GPU/quality untested")
+        if args.real_detector or args.detector_file:
+            # Keep Ultralytics/Matplotlib runtime files out of user homes.
+            settings = temp / "detector-settings"
+            settings.mkdir()
+            os.environ.setdefault("YOLO_CONFIG_DIR", str(settings))
+            os.environ.setdefault("MPLCONFIGDIR", str(settings))
+            asset = json.loads((ROOT / "manifests/swap_guard.json").read_text())["files"][0]
+            path = args.detector_file or temp / guard.PERSON_MODEL
+            if not path.is_file():
+                request = urllib.request.Request(asset["source_url"], headers={"User-Agent": "MiniMAXH-CPU-test"})
+                with urllib.request.urlopen(request, timeout=120) as response, path.open("wb") as out:
+                    while chunk := response.read(1024*1024):
+                        out.write(chunk)
+            masks, counts = guard.detect_people(torch.zeros(1, 64, 96, 3), path)
+            assert masks.device.type == "cpu" and masks.shape == (1, 64, 96)
+            assert counts == [0]
+            print("Pinned YOLO11s segmentation: hash + real CPU inference on blank fixture passed; detection accuracy unproven")
+    print("Character swap CPU smoke passed: video/audio/MP4, native tokenizer, 1/3/8 image RefMods, review gate + native masked AV conditions; diffusion/VAE mocked, GPU/identity quality untested")
 
 
 if __name__ == "__main__":

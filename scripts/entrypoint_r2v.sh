@@ -23,6 +23,7 @@ R2V_MODEL="${H3_R2V_MODEL:-official}"
 R2V_VAE="${H3_R2V_VAE:-int8}"
 R2V_COMPARE="${H3_R2V_COMPARE:-0}"
 R2V_SWAP="${H3_CHARACTER_SWAP:-0}"
+R2V_SWAP_MODEL="${H3_SWAP_MODEL:-shared}"
 R2V_T2VA="${H3_T2VA:-0}"
 if [[ "${R2V_T2VA}" != "0" && "${R2V_T2VA}" != "1" ]]; then
   echo "[h3-t2va] H3_T2VA must be 0 or 1"; exit 79
@@ -39,10 +40,13 @@ if [[ "${R2V_SWAP}" != "0" && "${R2V_SWAP}" != "1" ]]; then
   echo "[h3-swap] H3_CHARACTER_SWAP must be 0 or 1"; exit 79
 fi
 if [[ "${R2V_SWAP}" == "1" ]]; then
+  if [[ "${R2V_SWAP_MODEL}" != "shared" && "${R2V_SWAP_MODEL}" != "official" ]]; then
+    echo "[h3-swap] H3_SWAP_MODEL must be shared or official"; exit 79
+  fi
   if [[ "${R2V_MODEL}" == "dasiwa-turbo-v2" ]]; then
     echo "[h3-swap] use dasiwa-v2 or official; speed-up profiles are not enabled for replacement"; exit 79
   fi
-  if [[ ! -s "${STORY_NODE_ROOT}/swap_nodes.py" ]]; then
+  if [[ ! -s "${STORY_NODE_ROOT}/swap_nodes.py" || ! -s "${STORY_NODE_ROOT}/swap_guard_nodes.py" ]]; then
     echo "[h3-swap] replacement nodes missing; update the image"; exit 77
   fi
 fi
@@ -88,7 +92,7 @@ case "${R2V_MODEL}" in
 esac
 python "${SCRIPT_DIR}/download_r2v_loras.py" --check
 mkdir -p "${MODEL_DIR}/auto_mosaic" "${MODEL_DIR}/refmods" "${MODEL_DIR}/loras" "${COMFYUI_ROOT}/input" "${COMFYUI_ROOT}/output/refmods" \
-  "${MODEL_DIR}/vae" "${MODEL_DIR}/upscale_models" \
+  "${MODEL_DIR}/vae" "${MODEL_DIR}/upscale_models" "${MODEL_DIR}/swap_detection" \
   "${COMFYUI_ROOT}/temp" "${COMFYUI_ROOT}/user/default/workflows"
 # Replace only known shipped presets, not arbitrary user-named workflows.
 for shipped in 01_MiniMax_H3_Quality_2x.json 02_MiniMax_H3_Fast_FBCache_2x.json \
@@ -108,7 +112,7 @@ else
 fi
 R2V_HF_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_hf_models.json"
 if [[ "${R2V_SWAP}" == "1" ]]; then
-  python "${SCRIPT_DIR}/prepare_character_swap.py" --profile "${R2V_MODEL}" --vae "${R2V_VAE}" \
+  python "${SCRIPT_DIR}/prepare_character_swap.py" --profile "${R2V_MODEL}" --model "${R2V_SWAP_MODEL}" --vae "${R2V_VAE}" \
     --output-dir "${COMFYUI_ROOT}/user/default"
   R2V_04_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_04_models.json"
 else

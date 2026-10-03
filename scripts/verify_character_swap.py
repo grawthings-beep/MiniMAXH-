@@ -50,6 +50,15 @@ def verify(workflow, manifest, comfyui_root=None):
     route(cond, "source", source)
     route(cond, "clip", one("CLIPLoader"))
     route(cond, "prompt", prompt)
+    target, finish = one("MiniMaxH3SwapTarget"), one("MiniMaxH3SwapFinish")
+    route(target, "source", source)
+    route(cond, "edit", target)
+    route(finish, "source", source)
+    route(finish, "edit", target)
+    if target["widgets_values"] != ["masked_replace", .25, 32, .1, 48] or cond["widgets_values"] != [""]:
+        raise RuntimeError("Masked workflow requires fresh mask approval and bounded CPU defaults")
+    if finish["widgets_values"] != [True, .985]:
+        raise RuntimeError("Source-copy rejection must default ON")
     stock = [n for n in nodes if n["type"] == "VAELoader" and n["widgets_values"] == ["minimax_h3_video_vae_int8_convrot.safetensors"]]
     if len(stock) != 1:
         raise RuntimeError("Exactly one INT8 reference VAE required")
@@ -93,12 +102,16 @@ def verify(workflow, manifest, comfyui_root=None):
     if manifest.get("vae_profile") != "x2-detail":
         finishing = one("ImageUpscaleWithModel")
         route(finishing, "image", decoder)
-    route(one("WanAutoMosaicVideo"), "images", finishing)
+    route(finish, "images", finishing)
+    route(one("WanAutoMosaicVideo"), "images", finish)
     if workflow_models(nodes) != {f["path"] for f in manifest["files"]} | {"auto_mosaic/ntd11_anime_nsfw_segm_v5.pt"}:
         raise RuntimeError("Model dependencies differ from manifest")
     pinned = json.loads((ROOT / "manifests/character_swap.json").read_text())["files"][0]
     if pinned not in manifest["files"]:
         raise RuntimeError("Replacement LoRA must be pinned / SHA256 checked")
+    detector = json.loads((ROOT / "manifests/swap_guard.json").read_text())["files"][0]
+    if detector not in manifest["files"]:
+        raise RuntimeError("Person segmentation model must be pinned / SHA256 checked")
     groups, boxes = [g["bounding"] for g in workflow["groups"]], [n["pos"] + n["size"] for n in nodes]
     for collection in (groups, boxes):
         for i, (x, y, w, h) in enumerate(collection):

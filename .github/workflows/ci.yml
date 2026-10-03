@@ -236,6 +236,7 @@ jobs:
           git -C .ci-refmod-source checkout --detach f9462081e28794389b5a6c5067eb327412ad8ee7
           python scripts/install_refmod_runtime.py --source .ci-refmod-source --destination .ci-refmod-vendor
           MINIMAX_H3_REFMOD_ROOT="$PWD/.ci-refmod-vendor" python -m unittest discover -s tests -p test_character_refmod.py -v
+          python -m unittest discover -s tests -p test_swap_guard.py -v
       - name: Real CPU X2 decoder packing and lifecycle
         run: |
           git clone https://github.com/TripleHeadedMonkey/ComfyUI-MiniMaxH3_LatentUpscaler.git .ci-x2-vae-source

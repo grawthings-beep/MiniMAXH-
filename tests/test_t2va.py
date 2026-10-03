@@ -111,7 +111,7 @@ class TextToVideoEntrypointTests(unittest.TestCase):
             env.update(H3_PROFILE="r2v", H3_T2VA="1", H3_R2V_MODEL="dasiwa-v2", H3_R2V_VAE="int8")
             self.assertEqual(helper.run_entrypoint(env).returncode, 77)
             package = root / "custom_nodes/minimax_h3_ordered_storyboard"
-            for name in ("t2va_nodes.py", "swap_nodes.py", "compare_nodes.py", "web/upscale_compare.js"):
+            for name in ("t2va_nodes.py", "swap_nodes.py", "swap_guard_nodes.py", "compare_nodes.py", "web/upscale_compare.js"):
                 (package / name).write_text("# stub")
             decoder = root / "custom_nodes/minimax_h3_x2_vae"
             decoder.mkdir()
