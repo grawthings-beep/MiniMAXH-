@@ -122,6 +122,13 @@ class R2VOnlyOrchestrationTests(unittest.TestCase):
                         f"selected={lora_id!r} in os.environ['H3_LORA_SELECTION'].split(',')\n"
                         f"print('SELECTED_LORA_{lora_id}') if selected else None\n"
                         "sys.exit(int(os.environ.get('TEST_LORA_FAILURE','0')) if selected else 0)\n")
+                if lora_selection == "all" or "mysticxxx_v4" in lora_selection.split(","):
+                    (scripts / "download_extra_loras.py").write_text(
+                        "import os,sys\n"
+                        "assert sys.argv[1:]==['--url','https://huggingface.co/uwgm/nikke-loras/resolve/main/MysticXXX_MMH3-V4.safetensors','--required']\n"
+                        "assert os.environ['HF_TOKEN']=='test-secret-not-logged'\n"
+                        "print('SELECTED_LORA_mysticxxx_v4')\n"
+                        "sys.exit(int(os.environ.get('TEST_LORA_FAILURE','0')))\n")
             (root / "main.py").write_text("import sys\nprint('COMFY_LAUNCHED',sys.argv[1:])\n")
             env.update(H3_PROFILE="r2v", MINIMAX_H3_ENTRYPOINT_SMOKE="0",
                        H3_R2V_MODEL=profile, TEST_COMPANION_COUNT="5" if profile == "official" else "4",
@@ -158,11 +165,13 @@ class R2VOnlyOrchestrationTests(unittest.TestCase):
         self.assertNotIn("COMFY_LAUNCHED", result.stdout)
 
     def test_only_explicit_loras_download_before_launch_and_failure_blocks_startup(self):
-        for selected in ("hmnsfw_aio_v2", "all"):
+        for selected in ("hmnsfw_aio_v2", "mysticxxx_v4", "all"):
             result = self.exercise(profile="dasiwa-v2", lora_selection=selected)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertLess(result.stdout.index("SELECTED_LORA_hmnsfw_aio_v2"), result.stdout.index("COMFY_LAUNCHED"))
+            if selected != "mysticxxx_v4":
+                self.assertLess(result.stdout.index("SELECTED_LORA_hmnsfw_aio_v2"), result.stdout.index("COMFY_LAUNCHED"))
             self.assertEqual("SELECTED_LORA_hmmotion_v1" in result.stdout, selected == "all")
+            self.assertEqual("SELECTED_LORA_mysticxxx_v4" in result.stdout, selected != "hmnsfw_aio_v2")
         result = self.exercise(lora_selection="hmnsfw_aio_v2", lora_failure=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("COMFY_LAUNCHED", result.stdout)

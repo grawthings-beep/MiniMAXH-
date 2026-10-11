@@ -81,14 +81,40 @@ class R2VDownloadSelectionTests(unittest.TestCase):
         env = {"H3_R2V_LORA_SELECTION": " HMMOTION_V1, hmnsfw_aio_v2 ", "H3_LORA_REQUIRED": "0",
                "HF_TOKEN": "hf-secret", "CIVITAI_API_TOKEN": "api-secret", "H3_LORA_REVISION": "pinned"}
         ids, child = downloads.download_env(env)
-        self.assertEqual(set(ids), set(downloads.SCRIPTS))
+        self.assertEqual(set(ids), {"hmmotion_v1", "hmnsfw_aio_v2"})
         self.assertEqual(child["H3_LORA_REQUIRED"], "1")
+        self.assertEqual(child["H3_LORA_SELECTION"], "hmmotion_v1,hmnsfw_aio_v2")
         self.assertEqual(child["CIVITAI_TOKEN"], "api-secret")
         self.assertEqual(child["H3_LORA_REVISION"], "pinned")
         self.assertEqual(env["H3_LORA_REQUIRED"], "0")
         for token in ("HF_TOKEN", "CIVITAI_API_TOKEN"):
             with self.assertRaises(ValueError):
                 downloads.download_env({k: v for k, v in env.items() if k != token})
+
+    def test_mystic_selection_uses_hf_secret_and_does_not_leak_into_legacy_selection(self):
+        env = {"H3_R2V_LORA_SELECTION": "mysticxxx_v4", "HF_TOKEN": "hf-secret"}
+        ids, child = downloads.download_env(env)
+        self.assertEqual(ids, ("mysticxxx_v4",))
+        self.assertEqual(child["H3_LORA_SELECTION"], "none")
+        with self.assertRaises(ValueError):
+            downloads.download_env({"H3_R2V_LORA_SELECTION": "mysticxxx_v4"})
+        ids, child = downloads.download_env({**env, "H3_R2V_LORA_SELECTION": "all",
+                                             "CIVITAI_API_TOKEN": "civitai-secret"})
+        self.assertEqual(set(ids), set(downloads.SCRIPTS))
+        self.assertEqual(child["H3_LORA_SELECTION"], "hmmotion_v1,hmnsfw_aio_v2")
+
+    def test_mystic_launch_is_one_required_url_not_the_extra_list(self):
+        with mock.patch.dict(os.environ, {"H3_R2V_LORA_SELECTION": "mysticxxx_v4",
+                                          "HF_TOKEN": "hf-secret"}, clear=True), \
+             mock.patch.object(sys, "argv", ["download_r2v_loras.py"]), \
+             mock.patch.object(downloads.subprocess, "Popen") as popen:
+            popen.return_value.wait.return_value = 0
+            popen.return_value.poll.return_value = 0
+            self.assertEqual(downloads.main(), 0)
+            command = popen.call_args.args[0]
+            self.assertEqual(command[-3:], ["--url", downloads.MYSTIC_URL, "--required"])
+            self.assertTrue(command[1].endswith("download_extra_loras.py"))
+            self.assertEqual(popen.call_args.kwargs["env"]["H3_LORA_SELECTION"], "none")
 
     def test_check_mode_does_not_start_transfers(self):
         with mock.patch.dict(os.environ, {"H3_R2V_LORA_SELECTION": "none"}, clear=True), \

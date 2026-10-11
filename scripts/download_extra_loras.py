@@ -312,6 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     inputs = parser.add_mutually_exclusive_group()
     inputs.add_argument("--list", type=Path, help="Local URL list; overrides the remote list")
     inputs.add_argument("--list-url", help="HTTPS URL of the plain-text URL list")
+    inputs.add_argument("--url", help="Download one HTTPS LoRA URL without reading the extra list")
     parser.add_argument("--check", action="store_true", help="Validate list syntax without downloading models")
     parser.add_argument("--required", action="store_true", help="Return an error if any extra LoRA fails")
     parser.add_argument("--model-dir", type=Path, default=Path(os.environ.get(
@@ -322,10 +323,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         timeout = max(1, int(os.environ.get("EXTRA_LORA_DOWNLOAD_TIMEOUT", "120")))
         attempts = max(1, int(os.environ.get("DOWNLOAD_RETRIES", "3")))
-        list_url = "" if args.list else (
+        list_url = "" if args.list or args.url else (
             args.list_url or os.environ.get("H3_EXTRA_LORA_LIST_URL", "").strip()
         )
-        if list_url:
+        if args.url:
+            contents = args.url
+        elif list_url:
             list_url = normalize_url(list_url)
             contents = retry(lambda: read_text(list_url, timeout), attempts)
         else:

@@ -12,7 +12,10 @@ import sys
 SCRIPTS = {
     "hmmotion_v1": "download_lora.py",
     "hmnsfw_aio_v2": "download_civitai_lora.py",
+    "mysticxxx_v4": "download_extra_loras.py",
 }
+MYSTIC_URL = "https://huggingface.co/uwgm/nikke-loras/resolve/main/MysticXXX_MMH3-V4.safetensors"
+LEGACY_IDS = {"hmmotion_v1", "hmnsfw_aio_v2"}
 
 
 def selection(env: dict) -> tuple[str, ...]:
@@ -21,19 +24,19 @@ def selection(env: dict) -> tuple[str, ...]:
         return ()
     ids = set(SCRIPTS) if raw == "all" else {s.strip() for s in raw.split(",")}
     if not ids <= SCRIPTS.keys():
-        raise ValueError("H3_R2V_LORA_SELECTION must be none, all, hmmotion_v1, hmnsfw_aio_v2 or a comma-separated pair")
+        raise ValueError("H3_R2V_LORA_SELECTION must be none, all, or a comma-separated list of: " + ", ".join(sorted(SCRIPTS)))
     return tuple(sorted(ids))
 
 
 def download_env(env: dict) -> tuple[tuple[str, ...], dict]:
     ids = selection(env)
     child = dict(env)
-    child["H3_LORA_SELECTION"] = ",".join(ids) or "none"
+    child["H3_LORA_SELECTION"] = ",".join(i for i in ids if i in LEGACY_IDS) or "none"
     # Explicitly requested files are required, irrespective of stale legacy flags.
     child["H3_LORA_REQUIRED"] = "1"
     child["CIVITAI_TOKEN"] = env.get("CIVITAI_API_TOKEN", "").strip() or env.get("CIVITAI_TOKEN", "").strip()
-    if "hmmotion_v1" in ids and not env.get("HF_TOKEN", "").strip():
-        raise ValueError("HF_TOKEN is required for the selected private HMMotion LoRA")
+    if (set(ids) & {"hmmotion_v1", "mysticxxx_v4"}) and not env.get("HF_TOKEN", "").strip():
+        raise ValueError("HF_TOKEN is required for selected private Hugging Face LoRAs")
     if "hmnsfw_aio_v2" in ids and not child["CIVITAI_TOKEN"]:
         raise ValueError("CIVITAI_API_TOKEN (or CIVITAI_TOKEN) is required for the selected V2 LoRA")
     return ids, child
@@ -53,12 +56,13 @@ def main() -> int:
     previous_handler = signal.signal(signal.SIGTERM, stop)
     try:
         for lora_id in ids:
-            processes.append(subprocess.Popen(
-                [sys.executable, str(Path(__file__).with_name(SCRIPTS[lora_id]))], env=env,
-            ))
+            command = [sys.executable, str(Path(__file__).with_name(SCRIPTS[lora_id]))]
+            if lora_id == "mysticxxx_v4":
+                command.extend(["--url", MYSTIC_URL, "--required"])
+            processes.append(subprocess.Popen(command, env=env))
         for process in processes:
             if process.wait() != 0:
-                raise RuntimeError("A selected R2VA LoRA failed download/size/SHA256 validation; ComfyUI will not start")
+                raise RuntimeError("A selected R2VA LoRA failed download/integrity validation; ComfyUI will not start")
     finally:
         signal.signal(signal.SIGTERM, previous_handler)
         for process in processes:

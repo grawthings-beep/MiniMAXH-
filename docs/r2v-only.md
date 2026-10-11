@@ -96,16 +96,20 @@ CPU smokeのQwen重み/VAE重みはfixtureです。実GPUでの顔保持率や�
 | `none`（既定） | なし |
 | `hmnsfw_aio_v2` | `HMNSFW_AIO_V2.safetensors`（約310MB） |
 | `hmmotion_v1` | `hmmotion_minimax-h3_epoch12.safetensors`（約310MB） |
-| `all` または `hmmotion_v1,hmnsfw_aio_v2` | 上記2本のみ。UIで使うのは選択した1本 |
+| `mysticxxx_v4` | `MysticXXX_MMH3-V4.safetensors`（Hugging Face private repo） |
+| `all` | 上記3本。UIで使うのは選択した1本 |
+| カンマ区切り（例 `hmmotion_v1,mysticxxx_v4`） | 指定したものだけ |
 
-V2は既存 `CIVITAI_API_TOKEN`（または `CIVITAI_TOKEN`）、V1は読み取り権限付き `HF_TOKEN` を使います。
-RunPod Secretの渡し方は変更不要。既存の取得スクリプト・再開方式・サイズ/SHA256検証を再利用し、
+V2は既存 `CIVITAI_API_TOKEN`（または `CIVITAI_TOKEN`）、V1とMysticXXX V4は読み取り権限付き `HF_TOKEN` を使います。
+MysticXXX V4は `uwgm/nikke-loras` から起動時に取得し、UIでは `extra/MysticXXX_MMH3-V4__<URLハッシュ>.safetensors` と表示されます。取得しただけでは適用されないため、04のLoRA欄で選択・強度設定・ONが必要です。private repoの閲覧権限がトークンにない場合、選択時は起動を止めます。
+このHFファイルの公開サイズ・SHA256は確認できていません。ダウンローダーはsafetensors構造と受信バイト数を検証し、受信ファイルのSHA256を記録しますが、公開された固定ハッシュとの照合ではありません。
+RunPod Secretの渡し方は変更不要。V1/V2は従来の再開方式と固定サイズ/SHA256検証を維持します。MysticXXX V4は汎用HTTPSダウンローダーで毎回取得し、再開ダウンロード・固定ハッシュ照合はありません。
 明示したLoRAが取得/検証できなければ `H3_LORA_REQUIRED=0` が残っていても起動を止めます。
 取得しただけでは適用されません。UIはOFFから開始します。手動で `models/loras` へ置いたファイルも選択可能です。
 
 配線は `DaSiWa → 任意LoRA → SigmaShift 11/4 → SchedulerとGuider`。
 25 steps、Full Prompt、1〜8枚RefMod、INT8 VAE、モデル退避、2x、CPUモザイクは維持。
-旧FL2VA Turbo LoRAの自動追加、追加URL一覧の一括取得、複数LoRAの積み重ねはしません。
+旧FL2VA Turbo LoRAの自動追加、追加URL一覧の一括取得、複数LoRAの積み重ねはしません。MysticXXX V4だけを指定した場合、追加URL一覧の他の11本はダウンロードしません。
 作者によるV2の強度目安は0.5以下ですが、DaSiWa＋R2VAの画質保証ではありません。
 参照の顔や衣装が変わる場合は強度を下げるかOFFで同じseedと比較してください。LoRAでVRAM使用が増える可能性もあります。
 実GPUでの個別LoRA互換性・画質・連続生成OOMは未検証です。

@@ -215,6 +215,10 @@ class ExtraLoRATests(unittest.TestCase):
             request.assert_called_once()
         with mock.patch.object(extra, "read_text", side_effect=AssertionError("unexpected network")):
             self.assertEqual(extra.main(["--list", str(local), "--check"]), 0)
+            self.assertEqual(extra.main(["--url", "https://huggingface.co/uwgm/nikke-loras/resolve/main/MysticXXX_MMH3-V4.safetensors", "--check"]), 0)
+        with mock.patch.object(extra, "install", return_value="ready") as install:
+            self.assertEqual(extra.main(["--url", "https://huggingface.co/uwgm/nikke-loras/resolve/main/MysticXXX_MMH3-V4.safetensors", "--required"]), 0)
+            self.assertEqual(install.call_args.args[0].name, "MysticXXX_MMH3-V4.safetensors")
 
     def test_required_optional_and_check_failure_status(self):
         local = self.directory / "list.txt"
