@@ -25,6 +25,18 @@ R2V_COMPARE="${H3_R2V_COMPARE:-0}"
 R2V_SWAP="${H3_CHARACTER_SWAP:-0}"
 R2V_SWAP_MODEL="${H3_SWAP_MODEL:-official}"
 R2V_T2VA="${H3_T2VA:-0}"
+R2V_VIDEO_AUDIO="${H3_VIDEO_AUDIO:-0}"
+if [[ "${R2V_VIDEO_AUDIO}" != "0" && "${R2V_VIDEO_AUDIO}" != "1" ]]; then
+  echo "[h3-video-audio] H3_VIDEO_AUDIO must be 0 or 1"; exit 79
+fi
+if [[ "${R2V_VIDEO_AUDIO}" == "1" ]]; then
+  if [[ "${R2V_MODEL}" == "dasiwa-turbo-v2" ]]; then
+    echo "[h3-video-audio] use official or dasiwa-v2; Turbo audio-only is not validated"; exit 79
+  fi
+  if [[ ! -s "${STORY_NODE_ROOT}/video_audio_nodes.py" ]]; then
+    echo "[h3-video-audio] audio-only nodes missing; update the image"; exit 77
+  fi
+fi
 if [[ "${R2V_T2VA}" != "0" && "${R2V_T2VA}" != "1" ]]; then
   echo "[h3-t2va] H3_T2VA must be 0 or 1"; exit 79
 fi
@@ -128,6 +140,16 @@ if [[ "${R2V_T2VA}" == "1" ]]; then
     --manifest "${COMFYUI_ROOT}/user/default/minimax_h3_t2va_models.json"
 else
   rm -f "${COMFYUI_ROOT}/user/default/workflows/07_MiniMax_H3_Text_to_Video.json"
+fi
+if [[ "${R2V_VIDEO_AUDIO}" == "1" ]]; then
+  python "${SCRIPT_DIR}/prepare_video_audio.py" --profile "${R2V_MODEL}" --vae "${R2V_VAE}" \
+    --output-dir "${COMFYUI_ROOT}/user/default"
+  R2V_04_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_04_models.json"
+  python "${SCRIPT_DIR}/verify_video_audio.py" \
+    --workflow "${COMFYUI_ROOT}/user/default/workflows/08_MiniMax_H3_Video_to_Audio.json" \
+    --manifest "${COMFYUI_ROOT}/user/default/minimax_h3_video_audio_models.json"
+else
+  rm -f "${COMFYUI_ROOT}/user/default/workflows/08_MiniMax_H3_Video_to_Audio.json"
 fi
 export COMFYUI_MODEL_DIR="${MODEL_DIR}"
 echo "[workflow] installed R2VA (${R2V_MODEL}, VAE=${R2V_VAE}); reopen 04 from Workflows"

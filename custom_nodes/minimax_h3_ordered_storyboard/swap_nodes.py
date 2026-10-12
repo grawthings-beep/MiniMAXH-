@@ -41,7 +41,7 @@ def canvas(width, height, megapixels, rotation=0, sar=1.0):
     return max(32, int(w * scale) // 32 * 32), max(32, int(h * scale) // 32 * 32)
 
 
-def read_clip(path, start, seconds, megapixels):
+def read_clip(path, start, seconds, megapixels, *, include_audio=True):
     """Return <=362 resized CPU frames, respecting PTS rather than assuming CFR."""
     import av
     import numpy as np
@@ -107,7 +107,10 @@ def read_clip(path, start, seconds, megapixels):
             raise ValueError("Selected clip is too short: need at least 22 frames (0.917s). Choose an earlier start / longer source.")
         frames = torch.from_numpy(np.stack(sampled[:count])).to(dtype=torch.float32).div_(255.)
     del sampled, previous, cached
-    audio, has_audio = read_audio(path, origin + start, count / FPS)
+    if include_audio:
+        audio, has_audio = read_audio(path, origin + start, count / FPS)
+    else:
+        audio, has_audio = {"waveform": torch.zeros(1, 2, 0), "sample_rate": 48000}, False
     return {"frames": frames, "audio": audio, "has_audio": has_audio, "length": count,
             "width": frames.shape[2], "height": frames.shape[1], "start": start,
             "duration": count / FPS}

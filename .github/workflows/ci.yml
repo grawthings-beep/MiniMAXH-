@@ -222,6 +222,11 @@ jobs:
         # T2VA is generated at startup, like replacement 06.
         run: |
           PYTHONPATH=scripts python -c 'from pathlib import Path; from prepare_t2va import build; from verify_t2va import verify; m,w=build("dasiwa-v2"); verify(w,m,Path(".ci-ComfyUI"))'
+      - name: Verify original-video / generated-audio 08 against pinned nodes
+        run: |
+          PYTHONPATH=scripts python -c 'from pathlib import Path; from prepare_video_audio import build; from verify_video_audio import verify; [verify(w,m,Path(".ci-ComfyUI")) for p in ("official","dasiwa-v2") for m,w in [build(p)]]'
+          PYTHONPATH=scripts python -c 'from pathlib import Path; from prepare_video_audio import build; from prepare_r2v_profile import write_json; write_json(Path(".ci-video-audio.json"), build("dasiwa-v2")[1])'
+          cmp .ci-video-audio.json workflows/08_MiniMax_H3_Video_to_Audio.json
       - name: Validate all JSON files
         run: |
           for file in manifests/*.json workflows/*.json runpod-template*.json; do
