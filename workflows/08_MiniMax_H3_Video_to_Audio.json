@@ -1,5 +1,5 @@
 {
-  "id": "26a43cf2-2512-5a5f-86ed-b494eaaba625",
+  "id": "c6549853-aebe-5a35-84dc-73be965327bc",
   "revision": 0,
   "version": 0.4,
   "nodes": [
@@ -8,7 +8,7 @@
       "type": "VAELoader",
       "pos": [
         1420,
-        760
+        1080
       ],
       "size": [
         540,
@@ -23,7 +23,7 @@
           "name": "VAE",
           "type": "VAE",
           "links": [
-            19
+            20
           ]
         }
       ],
@@ -47,7 +47,7 @@
       "type": "VAELoader",
       "pos": [
         1420,
-        930
+        1260
       ],
       "size": [
         540,
@@ -62,7 +62,7 @@
           "name": "VAE",
           "type": "VAE",
           "links": [
-            20
+            21
           ]
         }
       ],
@@ -245,7 +245,7 @@
         "Node name for S&R": "MarkdownNote"
       },
       "widgets_values": [
-        "## 08 · 完成動画にH3で効果音・吐息を追加\n\n4.5〜15秒のMP4を左へアップロード。MP3や声の見本は不要。音の指示を全文1欄へ。映像は解析時だけ24fps・初期0.2MPへ縮小し、H3の映像latentは固定。音声だけ生成します。\n\n出力時は元MP4の映像ストリームをコピーし、生成音声へ差し替えます。元の音声を残すミックスではありません。映像を再エンコードしません。\n\n音のタイミング・吐息の自然さ・不要な声の抑制は保証できません。実動画で確認し、合わなければseedや音の指示を変えてください。長尺は動画を15秒以下に分割。映像VAEの一度のencodeとH3推論が必要で、即時処理ではありません。\n\nDaSiWa/公式Ref2VAとQwen、標準INT8映像VAE、音声VAEを共有。X2 Detail設定でもこの08だけ標準INT8 VAEを追加取得します。04/05/06/07は変更しません。docs/video-to-audio.md"
+        "## 08 · 完成動画にH3で効果音・吐息を追加\n\n4.5〜15秒のMP4を左へアップロード。MP3や声の見本は不要。音の指示を全文1欄へ。映像は解析時だけ24fps・初期0.2MPへ縮小し、H3の映像latentは固定。音声だけ生成します。\n\n出力時は元MP4の映像ストリームをコピーし、生成音声へ差し替えます。元の音声を残すミックスではありません。映像を再エンコードしません。\n\n音のタイミング・吐息の自然さ・不要な声の抑制は保証できません。実動画で確認し、合わなければseedや音の指示を変えてください。長尺は動画を15秒以下に分割。映像VAEの一度のencodeとH3推論が必要で、即時処理ではありません。\n\n任意LoRAはモデル列で選択・強度・ON/OFFを操作。初期OFF。H3_R2V_LORA_SELECTIONで起動時に必要なLoRAを取得します。LoRAは音声推論にだけ作用し、元MP4の映像は変わりません。音質向上や互換性は未検証。\n\nDaSiWa/公式Ref2VAとQwen、標準INT8映像VAE、音声VAEを共有。X2 Detail設定でもこの08だけ標準INT8 VAEを追加取得します。04/05/06/07は変更しません。docs/video-to-audio.md"
       ]
     },
     {
@@ -313,20 +313,30 @@
       ]
     },
     {
-      "id": 150,
-      "type": "MiniMaxH3SigmaShift",
-      "title": "DaSiWa · Video / Audio shift (native)",
+      "id": 149,
+      "flags": {},
+      "order": 9,
+      "mode": 0,
       "pos": [
         1420,
         540
       ],
       "size": [
         540,
-        140
+        230
       ],
-      "flags": {},
-      "order": 9,
-      "mode": 0,
+      "color": "#432",
+      "bgcolor": "#653",
+      "type": "MiniMaxH3R2VLoRA",
+      "title": "任意LoRA · 選択 / 強度 / ON・OFF（初期OFF）",
+      "widgets_values": [
+        "None (select an installed H3 LoRA)",
+        0.4,
+        false
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3R2VLoRA"
+      },
       "inputs": [
         {
           "name": "model",
@@ -339,17 +349,9 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            17,
-            18
+            17
           ]
         }
-      ],
-      "properties": {
-        "Node name for S&R": "MiniMaxH3SigmaShift"
-      },
-      "widgets_values": [
-        11.0,
-        4.0
       ]
     },
     {
@@ -399,15 +401,16 @@
       ]
     },
     {
-      "id": 124,
-      "type": "BasicScheduler",
+      "id": 150,
+      "type": "MiniMaxH3SigmaShift",
+      "title": "DaSiWa · Video / Audio shift (native)",
       "pos": [
-        2700,
-        80
+        1420,
+        850
       ],
       "size": [
-        460,
-        170
+        540,
+        140
       ],
       "flags": {},
       "order": 11,
@@ -421,22 +424,21 @@
       ],
       "outputs": [
         {
-          "name": "SIGMAS",
-          "type": "SIGMAS",
+          "name": "MODEL",
+          "type": "MODEL",
           "links": [
-            8
+            18,
+            19
           ]
         }
       ],
       "properties": {
-        "Node name for S&R": "BasicScheduler"
+        "Node name for S&R": "MiniMaxH3SigmaShift"
       },
       "widgets_values": [
-        "simple",
-        25,
-        1.0
-      ],
-      "title": "H3 audio sampling · pinned video mask"
+        11.0,
+        4.0
+      ]
     },
     {
       "id": 153,
@@ -500,7 +502,7 @@
         {
           "name": "vae",
           "type": "VAE",
-          "link": 19
+          "link": 20
         },
         {
           "name": "source",
@@ -531,6 +533,46 @@
       ]
     },
     {
+      "id": 124,
+      "type": "BasicScheduler",
+      "pos": [
+        2700,
+        80
+      ],
+      "size": [
+        460,
+        170
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicScheduler"
+      },
+      "widgets_values": [
+        "simple",
+        25,
+        1.0
+      ],
+      "title": "H3 audio sampling · pinned video mask"
+    },
+    {
       "id": 126,
       "type": "BasicGuider",
       "pos": [
@@ -542,13 +584,13 @@
         100
       ],
       "flags": {},
-      "order": 14,
+      "order": 15,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 18
+          "link": 19
         },
         {
           "name": "conditioning",
@@ -582,7 +624,7 @@
         260
       ],
       "flags": {},
-      "order": 15,
+      "order": 16,
       "mode": 0,
       "inputs": [
         {
@@ -642,7 +684,7 @@
         110
       ],
       "flags": {},
-      "order": 16,
+      "order": 17,
       "mode": 0,
       "inputs": [
         {
@@ -680,7 +722,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 17,
+      "order": 18,
       "mode": 0,
       "inputs": [
         {
@@ -691,7 +733,7 @@
         {
           "name": "vae",
           "type": "VAE",
-          "link": 20
+          "link": 21
         }
       ],
       "outputs": [
@@ -722,7 +764,7 @@
         400
       ],
       "flags": {},
-      "order": 18,
+      "order": 19,
       "mode": 0,
       "properties": {
         "Node name for S&R": "MiniMaxH3VideoAudioSave"
@@ -881,15 +923,15 @@
       16,
       127,
       0,
-      150,
+      149,
       0,
       "MODEL"
     ],
     [
       17,
-      150,
+      149,
       0,
-      124,
+      150,
       0,
       "MODEL"
     ],
@@ -897,12 +939,20 @@
       18,
       150,
       0,
-      126,
+      124,
       0,
       "MODEL"
     ],
     [
       19,
+      150,
+      0,
+      126,
+      0,
+      "MODEL"
+    ],
+    [
+      20,
       119,
       0,
       155,
@@ -910,7 +960,7 @@
       "VAE"
     ],
     [
-      20,
+      21,
       120,
       0,
       121,
@@ -1029,5 +1079,5 @@
     }
   },
   "last_node_id": 156,
-  "last_link_id": 20
+  "last_link_id": 21
 }

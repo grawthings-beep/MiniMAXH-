@@ -15,14 +15,14 @@ def verify(workflow, manifest, comfyui_root=None):
     if len(by_id) != len(nodes) or len(links) != len(raw_links):
         raise RuntimeError("Duplicate video-audio node/link ID")
     allowed = {"LoadVideo", "MiniMaxH3VideoAudioClip", "PreviewAny", "MarkdownNote",
-               "MiniMaxH3VideoAudioPrompt", "UNETLoader", "CLIPLoader", "VAELoader",
+               "MiniMaxH3VideoAudioPrompt", "UNETLoader", "CLIPLoader", "VAELoader", "MiniMaxH3R2VLoRA",
                "MiniMaxH3SigmaShift", "MiniMaxH3VideoAudioCondition", "BasicScheduler",
                "KSamplerSelect", "RandomNoise", "BasicGuider", "SamplerCustomAdvanced",
                "MiniMaxH3ReleaseVRAMLatent", "VAEDecodeAudio", "MiniMaxH3VideoAudioSave"}
     profile = manifest.get("r2v_profile") or "official"
     expected_types = allowed if profile == "dasiwa-v2" else allowed - {"MiniMaxH3SigmaShift"}
     if {n["type"] for n in nodes} != expected_types or workflow.get("definitions"):
-        raise RuntimeError("08 must not contain video decode, re-encode, upscale, mosaic, LoRA or subgraphs")
+        raise RuntimeError("08 must contain only audio generation, one optional LoRA and no video processing/subgraphs")
     for n in nodes:
         if n.get("mode", 0) != 0:
             raise RuntimeError("Disabled node in 08")
@@ -66,6 +66,9 @@ def verify(workflow, manifest, comfyui_root=None):
     for kind in ("UNETLoader", "CLIPLoader", "BasicScheduler", "KSamplerSelect"):
         if one(kind)["widgets_values"] != baseline_nodes[kind]["widgets_values"]:
             raise RuntimeError(f"Changed shared model/sampling settings: {kind}")
+    lora = one("MiniMaxH3R2VLoRA")
+    if lora["widgets_values"] != baseline_nodes["MiniMaxH3R2VLoRA"]["widgets_values"] or lora["widgets_values"][2] is not False:
+        raise RuntimeError("08 LoRA must default to the same OFF state as 04")
     if profile == "dasiwa-v2" and one("MiniMaxH3SigmaShift")["widgets_values"] != baseline_nodes["MiniMaxH3SigmaShift"]["widgets_values"]:
         raise RuntimeError("Changed DaSiWa AV shift")
     vaes = {n["widgets_values"][0]: n for n in nodes if n["type"] == "VAELoader"}
@@ -79,6 +82,8 @@ def verify(workflow, manifest, comfyui_root=None):
     route(cond, "clip", one("CLIPLoader"))
     route(cond, "vae", vaes["minimax_h3_video_vae_int8_convrot.safetensors"])
     model_source = one("UNETLoader")
+    route(lora, "model", model_source)
+    model_source = lora
     if profile == "dasiwa-v2":
         shift = one("MiniMaxH3SigmaShift")
         route(shift, "model", model_source)

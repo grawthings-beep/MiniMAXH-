@@ -22,7 +22,7 @@ def build(profile: str, project: Path = ROOT):
     manifest["files"] = [f for f in manifest["files"] if not f["path"].startswith("upscale_models/")]
     manifest["total_bytes"] = sum(f["size"] for f in manifest["files"])
     manifest["video_audio"] = True
-    keep = {"UNETLoader", "CLIPLoader", "VAELoader", "MiniMaxH3SigmaShift", "BasicScheduler",
+    keep = {"UNETLoader", "CLIPLoader", "VAELoader", "MiniMaxH3R2VLoRA", "MiniMaxH3SigmaShift", "BasicScheduler",
             "KSamplerSelect", "RandomNoise", "BasicGuider", "SamplerCustomAdvanced",
             "MiniMaxH3ReleaseVRAMLatent", "VAEDecodeAudio", "MarkdownNote"}
     nodes = [copy.deepcopy(n) for n in baseline["nodes"] if n["type"] in keep]
@@ -68,16 +68,20 @@ def build(profile: str, project: Path = ROOT):
         "音のタイミング・吐息の自然さ・不要な声の抑制は保証できません。"
         "実動画で確認し、合わなければseedや音の指示を変えてください。"
         "長尺は動画を15秒以下に分割。映像VAEの一度のencodeとH3推論が必要で、即時処理ではありません。\n\n"
+        "任意LoRAはモデル列で選択・強度・ON/OFFを操作。初期OFF。"
+        "H3_R2V_LORA_SELECTIONで起動時に必要なLoRAを取得します。"
+        "LoRAは音声推論にだけ作用し、元MP4の映像は変わりません。音質向上や互換性は未検証。\n\n"
         "DaSiWa/公式Ref2VAとQwen、標準INT8映像VAE、音声VAEを共有。"
         "X2 Detail設定でもこの08だけ標準INT8 VAEを追加取得します。"
         "04/05/06/07は変更しません。docs/video-to-audio.md"
     ]
     by_type["BasicScheduler"]["title"] = "H3 audio sampling · pinned video mask"
+    by_type["MiniMaxH3R2VLoRA"]["title"] = "任意LoRA · 選択 / 強度 / ON・OFF（初期OFF）"
     by_type["RandomNoise"]["title"] = "Seed · 音が合わなければ変更"
     by_type["VAEDecodeAudio"]["title"] = "H3生成音声だけデコード"
     by_type["MiniMaxH3ReleaseVRAMLatent"]["title"] = "H3を解放 → 音声デコード"
 
-    workflow = {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"MiniMAXH-/video-to-audio/{profile}/v1")),
+    workflow = {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"MiniMAXH-/video-to-audio/{profile}/v2")),
                 "revision": 0, "version": 0.4, "nodes": nodes, "links": [], "groups": [], "config": {},
                 "extra": {"ds": {"scale": .7, "offset": [30, 30]},
                           "video_audio": {"model_profile": profile, "video_noise_mask": 0,
@@ -110,11 +114,12 @@ def build(profile: str, project: Path = ROOT):
         ("MiniMaxH3VideoAudioClip", "source", "MiniMaxH3VideoAudioSave", "source"),
     ):
         link(*edge)
+    link("UNETLoader", "MODEL", "MiniMaxH3R2VLoRA", "model")
     if "MiniMaxH3SigmaShift" in by_type:
-        link("UNETLoader", "MODEL", "MiniMaxH3SigmaShift", "model")
+        link("MiniMaxH3R2VLoRA", "MODEL", "MiniMaxH3SigmaShift", "model")
         model_source = "MiniMaxH3SigmaShift"
     else:
-        model_source = "UNETLoader"
+        model_source = "MiniMaxH3R2VLoRA"
     link(model_source, "MODEL", "BasicScheduler", "model")
     link(model_source, "MODEL", "BasicGuider", "model")
     # VAE loader IDs must be routed directly: there are two nodes of this type.
@@ -127,7 +132,8 @@ def build(profile: str, project: Path = ROOT):
               "PreviewAny": (40, 1080, 560, 230), "MarkdownNote": (40, 1380, 560, 600),
               "MiniMaxH3VideoAudioPrompt": (700, 80, 620, 850),
               "UNETLoader": (1420, 80, 540, 140), "CLIPLoader": (1420, 300, 540, 160),
-              "MiniMaxH3SigmaShift": (1420, 540, 540, 140),
+              "MiniMaxH3R2VLoRA": (1420, 540, 540, 230),
+              "MiniMaxH3SigmaShift": (1420, 850, 540, 140),
               "MiniMaxH3VideoAudioCondition": (2060, 80, 540, 480),
               "BasicScheduler": (2700, 80, 460, 170), "KSamplerSelect": (2700, 330, 460, 90),
               "RandomNoise": (2700, 500, 460, 130), "BasicGuider": (2700, 710, 460, 100),
@@ -136,7 +142,7 @@ def build(profile: str, project: Path = ROOT):
               "VAEDecodeAudio": (3260, 270, 540, 120),
               "MiniMaxH3VideoAudioSave": (3900, 80, 600, 400)}
     for node in nodes:
-        box = (1420, 760 if node is video_vae else 930, 540, 100) if node["type"] == "VAELoader" else layout[node["type"]]
+        box = (1420, 1080 if node is video_vae else 1260, 540, 100) if node["type"] == "VAELoader" else layout[node["type"]]
         node["pos"], node["size"] = list(box[:2]), list(box[2:])
         for socket in node.get("inputs", []): socket["link"] = None
         for socket in node.get("outputs", []): socket["links"] = []
