@@ -63,9 +63,11 @@ def verify(workflow, manifest, comfyui_root=None):
     if workflow_models(nodes) != {f["path"] for f in expected}:
         raise RuntimeError("08 workflow model dependencies differ from manifest")
     baseline_nodes = {n["type"]: n for n in baseline["nodes"]}
-    for kind in ("UNETLoader", "CLIPLoader", "BasicScheduler", "KSamplerSelect"):
+    for kind in ("UNETLoader", "CLIPLoader", "BasicScheduler"):
         if one(kind)["widgets_values"] != baseline_nodes[kind]["widgets_values"]:
             raise RuntimeError(f"Changed shared model/sampling settings: {kind}")
+    if one("KSamplerSelect")["widgets_values"] != ["euler"]:
+        raise RuntimeError("08 must default to the tested Euler sampler")
     lora = one("MiniMaxH3R2VLoRA")
     if lora["widgets_values"] != baseline_nodes["MiniMaxH3R2VLoRA"]["widgets_values"] or lora["widgets_values"][2] is not False:
         raise RuntimeError("08 LoRA must default to the same OFF state as 04")

@@ -71,17 +71,21 @@ def build(profile: str, project: Path = ROOT):
         "任意LoRAはモデル列で選択・強度・ON/OFFを操作。初期OFF。"
         "H3_R2V_LORA_SELECTIONで起動時に必要なLoRAを取得します。"
         "LoRAは音声推論にだけ作用し、元MP4の映像は変わりません。音質向上や互換性は未検証。\n\n"
+        "08のサンプラー初期値はeuler。スケジューラは選択モデルのsimple/normalを維持。"
+        "音の立ち上がりや冒頭ノイズは素材ごとに確認してください。\n\n"
         "DaSiWa/公式Ref2VAとQwen、標準INT8映像VAE、音声VAEを共有。"
         "X2 Detail設定でもこの08だけ標準INT8 VAEを追加取得します。"
         "04/05/06/07は変更しません。docs/video-to-audio.md"
     ]
     by_type["BasicScheduler"]["title"] = "H3 audio sampling · pinned video mask"
+    by_type["KSamplerSelect"]["widgets_values"] = ["euler"]
+    by_type["KSamplerSelect"]["title"] = "08 · Euler sampler / 音声生成"
     by_type["MiniMaxH3R2VLoRA"]["title"] = "任意LoRA · 選択 / 強度 / ON・OFF（初期OFF）"
     by_type["RandomNoise"]["title"] = "Seed · 音が合わなければ変更"
     by_type["VAEDecodeAudio"]["title"] = "H3生成音声だけデコード"
     by_type["MiniMaxH3ReleaseVRAMLatent"]["title"] = "H3を解放 → 音声デコード"
 
-    workflow = {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"MiniMAXH-/video-to-audio/{profile}/v2")),
+    workflow = {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"MiniMAXH-/video-to-audio/{profile}/v3")),
                 "revision": 0, "version": 0.4, "nodes": nodes, "links": [], "groups": [], "config": {},
                 "extra": {"ds": {"scale": .7, "offset": [30, 30]},
                           "video_audio": {"model_profile": profile, "video_noise_mask": 0,

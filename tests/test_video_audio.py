@@ -50,6 +50,8 @@ class VideoAudioTests(unittest.TestCase):
             self.assertFalse(workflow["extra"]["video_audio"]["quality_tested_on_gpu"])
             self.assertEqual(len(manifest["files"]), 4)
             types_ = [n["type"] for n in workflow["nodes"]]
+            sampler = next(n for n in workflow["nodes"] if n["type"] == "KSamplerSelect")
+            self.assertEqual(sampler["widgets_values"], ["euler"])
             self.assertEqual(types_.count("MiniMaxH3R2VLoRA"), 1)
             lora = next(n for n in workflow["nodes"] if n["type"] == "MiniMaxH3R2VLoRA")
             self.assertEqual(lora["widgets_values"], ["None (select an installed H3 LoRA)", 0.4, False])
@@ -69,6 +71,7 @@ class VideoAudioTests(unittest.TestCase):
             lambda w: next(n for n in w["nodes"] if n["type"] == "MiniMaxH3VideoAudioSave")["inputs"][1].__setitem__("link", None),
             lambda w: next(n for n in w["nodes"] if n["type"] == "VAELoader" and "video_vae" in n["widgets_values"][0])["widgets_values"].__setitem__(0, "wrong.safetensors"),
             lambda w: next(n for n in w["nodes"] if n["type"] == "MiniMaxH3R2VLoRA")["widgets_values"].__setitem__(2, True),
+            lambda w: next(n for n in w["nodes"] if n["type"] == "KSamplerSelect")["widgets_values"].__setitem__(0, "res_multistep"),
             lambda w: w["nodes"].__setitem__(slice(None), [n for n in w["nodes"] if n["type"] != "MiniMaxH3R2VLoRA"]),
         ):
             changed = copy.deepcopy(workflow)

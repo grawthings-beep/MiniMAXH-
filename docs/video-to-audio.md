@@ -25,6 +25,8 @@ LoRAを使う場合は、既存04と同じ`H3_R2V_LORA_SELECTION`に取得した
 4. 初期値`analysis_megapixels=0.2`で実行します。これは音の解析とH3映像latent用であり、出力MP4の画質には影響しません。モデルが細かな動作を読み取れない場合だけ0.3〜0.4へ上げます。VRAM/時間も増えます。
 5. 「04 · 元映像をコピー + H3音声で保存」が出力するMP4を視聴し、音のタイミング・声の有無・強弱を確認します。合わなければ指示を短く具体化するかseedを変えます。
 
+08のサンプラー初期値は`euler`です。ユーザーの実生成で、従来の`res_multistep`より音の立ち上がりがよかったため、08だけ変更しました。`simple`は別設定のスケジューラで、DaSiWaでは従来どおり維持します。素材ごとの音質・冒頭ノイズ改善を保証するものではありません。04など他のワークフローのサンプラーは変更しません。
+
 たとえば水しぶきの映像なら、`Soft water splashes exactly when her hand hits the surface, small clothing rustle on the quick turn, then one brief relieved breath-laugh. Quiet beach ambience. No spoken words, singing, or music.` のように、見えている原因に音を結び付けます。
 
 ## 保持と制限
