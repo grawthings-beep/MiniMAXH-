@@ -60,6 +60,8 @@ class VideoAudioTests(unittest.TestCase):
             self.assertNotIn("VAEDecode", types_)
             self.assertNotIn("CreateVideo", types_)
             self.assertNotIn("WanAutoMosaicVideo", types_)
+        self.assertEqual(json.loads((ROOT / "workflows" / WORKFLOW).read_text(encoding="utf-8")),
+                         build("dasiwa-v2")[1])
         with self.assertRaises(ValueError): build("dasiwa-turbo-v2")
 
     def test_corrupt_graph_rejected(self):

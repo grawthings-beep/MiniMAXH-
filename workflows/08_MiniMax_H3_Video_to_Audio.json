@@ -142,7 +142,7 @@
           {
             "name": "DasiwaMinimaxH3_dasiwaHybridV2_3203130.safetensors",
             "directory": "diffusion_models",
-            "url": "https://civitai.com/api/download/models/3314675?fileId=3203130"
+            "url": "https://huggingface.co/bomehika/oelala-models/resolve/7ddd0d3510335146af1e1bb7742b17875a98cf8a/diffusion_models/DasiwaMinimaxH3_dasiwaHybridV2_3203130.safetensors"
           }
         ]
       },
