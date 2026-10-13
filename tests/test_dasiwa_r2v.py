@@ -45,12 +45,33 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(manifest["total_bytes"], sum(f["size"] for f in manifest["files"]))
             self.assertEqual(common["total_bytes"], sum(f["size"] for f in common["files"]))
             asset = manifest["files"][0]
-            downloader.validate_asset(asset)
+            if profile == "dasiwa-v2":
+                self.assertEqual(asset["auth"], "hf")
+                self.assertTrue(asset["verify_sha256"])
+                self.assertEqual(asset["hf_repo_id"], "bomehika/oelala-models")
+                self.assertEqual(asset["hf_revision"], "7ddd0d3510335146af1e1bb7742b17875a98cf8a")
+                checkpoint = profiles.hf_checkpoint_manifest(manifest)
+                self.assertEqual(checkpoint["files"], [{key: asset[key] for key in
+                    ("path", "size", "sha256", "verify_sha256")}])
+                self.assertEqual((checkpoint["repo_id"], checkpoint["revision"]),
+                                 (asset["hf_repo_id"], asset["hf_revision"]))
+            else:
+                downloader.validate_asset(asset)
+                self.assertIsNone(profiles.hf_checkpoint_manifest(manifest))
             self.assertEqual((asset["size"], asset["sha256"]), (size, sha))
             loader = next(n for n in workflow["nodes"] if n["type"] == "UNETLoader")
             self.assertEqual(loader["widgets_values"], [Path(asset["path"]).name, "default"])
             self.assertEqual(loader["properties"]["models"][0]["url"], asset["source_url"])
             self.assertEqual(len([f for f in manifest["files"] if f["path"].startswith("diffusion_models/")]), 1)
+
+    def test_hf_mirror_rejects_unpinned_or_unverified_checkpoint(self):
+        manifest, _, _ = profiles.prepare("dasiwa-v2")
+        for key, value in (("source_url", "https://huggingface.co/other/resolve/main/model.safetensors"),
+                           ("verify_sha256", False)):
+            broken = copy.deepcopy(manifest)
+            broken["files"][0][key] = value
+            with self.assertRaises(ValueError):
+                profiles.hf_checkpoint_manifest(broken)
 
     def test_sampler_shift_both_consumers_and_unchanged_user_inputs_tail(self):
         _, _, official = profiles.prepare("official")
@@ -229,6 +250,9 @@ class EntrypointTests(unittest.TestCase):
                 self.assertEqual(stored, profiles.prepare(profile)[2])
                 self.assertEqual(len(list((root / "user/default/workflows").glob("*.json"))), 1)
             env.update(H3_R2V_MODEL="dasiwa-v2", AUTO_MOSAIC_REQUIRED="0", CIVITAI_TOKEN="", CIVITAI_API_TOKEN="")
+            result = harness.run_entrypoint(env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            env["H3_R2V_MODEL"] = "dasiwa-turbo-v2"
             result = harness.run_entrypoint(env)
             self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
             self.assertNotIn("entrypoint contract passed", result.stdout)

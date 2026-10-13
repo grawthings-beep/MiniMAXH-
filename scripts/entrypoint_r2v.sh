@@ -94,8 +94,8 @@ if [[ "${R2V_VAE}" == "x2-detail" || "${R2V_COMPARE}" == "1" ]]; then
     fi
 fi
 case "${R2V_MODEL}" in
-  official) ;;
-  dasiwa-v2|dasiwa-turbo-v2)
+  official|dasiwa-v2) ;;
+  dasiwa-turbo-v2)
     if [[ -z "${CIVITAI_API_TOKEN:-}" ]]; then
       echo "[r2v-only] CIVITAI_API_TOKEN is required for the selected DaSiWa checkpoint"
       exit 70
@@ -123,6 +123,7 @@ else
   rm -f "${COMFYUI_ROOT}/user/default/workflows/05_MiniMax_H3_Upscale_Compare.json"
 fi
 R2V_HF_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_hf_models.json"
+R2V_HF_CHECKPOINT_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_hf_checkpoint.json"
 if [[ "${R2V_SWAP}" == "1" ]]; then
   python "${SCRIPT_DIR}/prepare_character_swap.py" --profile "${R2V_MODEL}" --model "${R2V_SWAP_MODEL}" --vae "${R2V_VAE}" \
     --output-dir "${COMFYUI_ROOT}/user/default"
@@ -209,7 +210,11 @@ python "${SCRIPT_DIR}/download_auto_mosaic.py" &
 R2V_DOWNLOAD_PIDS+=("$!")
 MODEL_MANIFEST="${R2V_HF_MANIFEST}" "${SCRIPT_DIR}/download_models.sh" &
 R2V_DOWNLOAD_PIDS+=("$!")
-python "${SCRIPT_DIR}/download_civitai_models.py" --manifest "${MANIFEST}" --root "${MODEL_DIR}" &
+if [[ "${R2V_MODEL}" == "dasiwa-v2" ]]; then
+  MODEL_MANIFEST="${R2V_HF_CHECKPOINT_MANIFEST}" "${SCRIPT_DIR}/download_models.sh" &
+else
+  python "${SCRIPT_DIR}/download_civitai_models.py" --manifest "${MANIFEST}" --root "${MODEL_DIR}" &
+fi
 R2V_DOWNLOAD_PIDS+=("$!")
 python "${SCRIPT_DIR}/download_r2v_loras.py" &
 R2V_DOWNLOAD_PIDS+=("$!")

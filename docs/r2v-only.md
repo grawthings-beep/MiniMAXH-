@@ -19,7 +19,9 @@ H3_FAST_VAE=1
 COMFYUI_ARGS=--lowvram --vram-headroom 2 --fast fp16_accumulation
 ```
 
-`HF_TOKEN` と `CIVITAI_API_TOKEN` はRunPod Secretで渡します。
+`HF_TOKEN` と `CIVITAI_API_TOKEN` はRunPod Secretで渡します。通常DaSiWa v2本体は
+固定HFミラーから取得するためCivitai認証は不要ですが、CPUモザイク・選択したCivitai LoRA・
+Turbo v2には引き続き `CIVITAI_API_TOKEN` が必要です。
 モデルライセンスの同意・適用地域の申告は従来どおり必要です。
 `CIVITAI_TOKEN` が残っている場合は従来のAPI_TOKENへの補完も働きます。
 

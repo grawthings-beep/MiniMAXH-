@@ -95,7 +95,15 @@ class R2VOnlyOrchestrationTests(unittest.TestCase):
                 "assert len(m['files'])==5\nassert not any('fl2va' in f['path'] for f in m['files'])\n"
                 "print('PREFLIGHT_R2V_ONLY')\n")
             (scripts / "download_models.sh").write_text(
-                '#!/usr/bin/env bash\nset -eu\necho BASE_DOWNLOAD_ONLY\n'
+                '#!/usr/bin/env bash\nset -eu\n'
+                'if [[ "${MODEL_MANIFEST}" == *hf_checkpoint.json ]]; then\n'
+                '  echo HF_CHECKPOINT_DOWNLOAD\n'
+                '  python -c "import os,json; m=json.load(open(os.environ[\'MODEL_MANIFEST\'])); '
+                'assert len(m[\'files\'])==1 and m[\'files\'][0][\'verify_sha256\']; '
+                'assert m[\'repo_id\']==\'bomehika/oelala-models\'"\n'
+                '  exit "${TEST_HF_CHECKPOINT_FAILURE:-0}"\n'
+                'fi\n'
+                'echo BASE_DOWNLOAD_ONLY\n'
                 'python -c "import os,json; m=json.load(open(os.environ[\'MODEL_MANIFEST\'])); '
                 'assert not any(f.get(\'auth\') for f in m[\'files\']); '
                 'assert len(m[\'files\']) == int(os.environ[\'TEST_COMPANION_COUNT\'])"\n'
@@ -139,6 +147,7 @@ class R2VOnlyOrchestrationTests(unittest.TestCase):
                        COMFYUI_ARGS="--lowvram --vram-headroom 2",
                        TEST_DOWNLOAD_FAILURE="9" if download_failure else "0",
                        TEST_VERIFY_FAILURE="10" if verify_failure else "0",
+                       TEST_HF_CHECKPOINT_FAILURE="11" if checkpoint_failure else "0",
                        TEST_CHECKPOINT_FAILURE="11" if checkpoint_failure else "0")
             result = subprocess.run([entrypoint_tests.BASH, str(scripts / "entrypoint.sh")],
                                     cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
@@ -180,7 +189,8 @@ class R2VOnlyOrchestrationTests(unittest.TestCase):
         for profile in ("dasiwa-v2", "dasiwa-turbo-v2"):
             result = self.exercise(profile=profile)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertLess(result.stdout.index("CHECKPOINT_DOWNLOAD_SELECTED"), result.stdout.index("COMFY_LAUNCHED"))
+            marker = "HF_CHECKPOINT_DOWNLOAD" if profile == "dasiwa-v2" else "CHECKPOINT_DOWNLOAD_SELECTED"
+            self.assertLess(result.stdout.index(marker), result.stdout.index("COMFY_LAUNCHED"))
             result = self.exercise(profile=profile, checkpoint_failure=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertNotIn("COMFY_LAUNCHED", result.stdout)

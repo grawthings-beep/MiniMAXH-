@@ -20,11 +20,14 @@
       "shift_audio": 4.0,
       "asset": {
         "path": "diffusion_models/DasiwaMinimaxH3_dasiwaHybridV2_3203130.safetensors",
-        "source_url": "https://civitai.com/api/download/models/3314675?fileId=3203130",
+        "source_url": "https://huggingface.co/bomehika/oelala-models/resolve/7ddd0d3510335146af1e1bb7742b17875a98cf8a/diffusion_models/DasiwaMinimaxH3_dasiwaHybridV2_3203130.safetensors",
         "source_license_url": "https://civitai.com/models/2877206?modelVersionId=3314675",
-        "auth": "civitai",
+        "auth": "hf",
+        "hf_repo_id": "bomehika/oelala-models",
+        "hf_revision": "7ddd0d3510335146af1e1bb7742b17875a98cf8a",
         "size": 20967669160,
-        "sha256": "4cb8e1eaa9c3e5c664822760890bcbe6078455401cfa43205baf322e856d25f8"
+        "sha256": "4cb8e1eaa9c3e5c664822760890bcbe6078455401cfa43205baf322e856d25f8",
+        "verify_sha256": true
       }
     },
     "dasiwa-turbo-v2": {

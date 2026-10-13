@@ -2,6 +2,7 @@
 
 確認日: 2026-09-29。目的は「キャラ画像1枚＋演出から、元絵を保ちながら自由な冒頭の動画」。
 2026-09-30更新: モデル/サンプリングは維持し、R2VA専用04は**画像1〜8枚のRefMod + 全文1欄**へ変更。
+2026-10-13更新: 通常DaSiWa v2本体の取得元を、SHA256一致を確認した固定HFミラーへ変更。
 以下の比較表は導入時の調査記録です。現在の操作は [R2VA専用ガイド](r2v-only.md) を参照。
 結論は **DaSiWa Hybrid v2 INT8を試すための設定を追加し、R2VAの小さなグラフは維持**。
 公式が最良とも、DaSiWaなら必ず改善するとも断定しません。実画像によるGPU A/Bは未実施です。
@@ -69,19 +70,23 @@ step減少はVRAM不足の解決を保証しません。
 - 本体1個 + 同じQwen/INT8 video VAE/audio VAE/x2 upscaler = 計5個。通常DaSiWa版は
   **40,138,193,428 bytes**、Turboは40,138,193,436 bytes。別に小さなCPUモザイクモデル。
 - 公式本体とDaSiWa本体の両方を新規ダウンロードしません。既存の未選択ファイルは削除しません。
-- HFの4共通ファイルは既存Xet/aria2。DaSiWaはCivitai認証後の署名CDN URLへaria2の
-  最大16並列rangeで取得。HF・DaSiWa・モザイクの3系統が並行します。
-- `.part` + aria2制御ファイルで再開。**DaSiWaはMODEL_VERIFY=sizeでもSHA256必須**。
-  ハッシュとsafetensors構造を確認してから正規ファイル名へatomic renameします。
-- Civitai APIのversion/fileId・サイズ・SHA256は `manifests/r2v_profiles.json` に固定。
-  APIの「最新」やデフォルトファイルには追従しません。
-- `CIVITAI_API_TOKEN` はRunPod Secretからのみ渡します。API認証ヘッダーはCDNへ転送せず、
-  aria2にアカウントトークンを渡しません。署名URLも引数/ログへ出さずstdinで渡します。
-- 401/403、サイズ/ハッシュ不一致、ノード/配線不足ならComfyUI起動前に停止。
-  この調査時も匿名配布URLは401だったため、実トークンのダウンロード権限が必要です。
+- 共通4ファイルと通常DaSiWa v2本体は、別ジョブで既存Xet/aria2経路から並列取得。
+  v2本体は[既存HFミラー](https://huggingface.co/bomehika/oelala-models)のコミット
+  `7ddd0d3510335146af1e1bb7742b17875a98cf8a`とファイルパスを固定します。
+  HF公開メタデータのサイズ・SHA256は元のCivitai version3314675/file3203130と一致。
+  元ファイルのハッシュを維持するだけで、ミラー提供者によるサポートは保証されません。
+- **通常v2はMODEL_VERIFY=sizeでもSHA256必須**。Xet失敗時は同じ固定HFコミットの
+  aria2 range取得へフォールバックし、検証不合格ならComfyUIを起動しません。
+- Turbo v2は従来どおりCivitai認証後の署名CDN URLへaria2の最大16並列rangeで取得。
+  `.part` + aria2制御ファイルで再開し、サイズ・SHA256・safetensors構造を確認してから
+  atomic renameします。元APIのversion/fileIdはmanifestに固定し、「最新」には追従しません。
+- 通常v2本体にはCivitai tokenは不要。ただしTurbo v2、CPUモザイク、選択したCivitai LoRAには
+  `CIVITAI_API_TOKEN` が引き続き必要です。RunPod Secretからのみ渡します。
+- 取得失敗、サイズ/ハッシュ不一致、ノード/配線不足ならComfyUI起動前に停止。
 - 新しい有料APIはありません。RunPod利用料・通信・image pullの時間は従来どおりです。
 - MiniMaxの既存ライセンス確認は維持。作者の個別許諾が利用者へ自動移転するわけではありません。
-  作者ファイルを再配布せず、Podで直接取得し、埋め込みmetadataを改変しません。
+  このrepoは作者ファイルを再配布せず、Podで固定HFミラーまたは作者配布元から取得し、
+  埋め込みmetadataを改変しません。実際の取得・使用地域はライセンスに従ってください。
 
 設定全体は `runpod-template.r2v-cu130.example.json`。コンテナdisk120GB、永続volume0GB、HTTP8188。
 

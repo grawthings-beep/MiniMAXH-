@@ -30,7 +30,7 @@ def _prepare_model(profile: str, project: Path = ROOT) -> tuple[dict, dict, dict
     manifest["total_bytes"] = sum(f["size"] for f in manifest["files"])
     manifest["r2v_profile"] = profile
     companions = copy.deepcopy(manifest)
-    companions["files"] = [f for f in companions["files"] if f.get("auth") != "civitai"]
+    companions["files"] = [f for f in companions["files"] if not f["path"].startswith("diffusion_models/")]
     companions["total_bytes"] = sum(f["size"] for f in companions["files"])
 
     by_type = {n["type"]: n for n in workflow["nodes"]}
@@ -180,6 +180,27 @@ def write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def hf_checkpoint_manifest(manifest: dict) -> dict | None:
+    assets = [item for item in manifest["files"] if item.get("auth") == "hf"]
+    if not assets:
+        return None
+    if len(assets) != 1 or not assets[0]["path"].startswith("diffusion_models/"):
+        raise ValueError("Expected exactly one Hugging Face diffusion checkpoint")
+    asset = assets[0]
+    repo_id, revision = asset["hf_repo_id"], asset["hf_revision"]
+    expected_url = f'https://huggingface.co/{repo_id}/resolve/{revision}/{asset["path"]}'
+    if asset["source_url"] != expected_url or not asset.get("verify_sha256"):
+        raise ValueError("Hugging Face checkpoint needs a pinned source and SHA256 verification")
+    return {
+        "schema_version": 1,
+        "repo_id": repo_id,
+        "revision": revision,
+        "license_url": manifest["license_url"],
+        "total_bytes": asset["size"],
+        "files": [{key: asset[key] for key in ("path", "size", "sha256", "verify_sha256")}],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", default=os.environ.get("H3_R2V_MODEL", "official"))
@@ -189,6 +210,9 @@ def main() -> None:
     manifest, companions, workflow = prepare(args.profile, vae_profile=args.vae)
     write_json(args.output_dir / "minimax_h3_r2v_models.json", manifest)
     write_json(args.output_dir / "minimax_h3_r2v_hf_models.json", companions)
+    checkpoint = hf_checkpoint_manifest(manifest)
+    if checkpoint is not None:
+        write_json(args.output_dir / "minimax_h3_r2v_hf_checkpoint.json", checkpoint)
     destination = args.output_dir / "workflows" / WORKFLOW
     if args.profile == "official" and args.vae == "int8":
         destination.parent.mkdir(parents=True, exist_ok=True)
