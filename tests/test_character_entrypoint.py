@@ -102,6 +102,30 @@ class CharacterEntrypointTests(unittest.TestCase):
             self.assertEqual(result.returncode, 77, result.stdout + result.stderr)
             self.assertNotIn("entrypoint contract passed", result.stdout)
 
+    def test_i2va_opt_in_installs_09_beside_04_and_disabling_removes_only_09(self):
+        with tempfile.TemporaryDirectory(prefix=".entrypoint-test-", dir=ROOT) as temp:
+            root, env = self.make_install(temp)
+            (root / "custom_nodes/minimax_h3_ordered_storyboard/t2va_nodes.py").write_text("# stub")
+            env.update({"H3_PROFILE": "r2v", "H3_R2V_MODEL": "dasiwa-v2", "H3_I2VA": "1"})
+            workflows = root / "user/default/workflows"
+            personal = workflows / "My_personal_video.json"
+            personal.parent.mkdir(parents=True, exist_ok=True)
+            personal.write_text("{}")
+
+            result = self.run_entrypoint(env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue((workflows / "04_MiniMax_H3_Character_R2V_2x.json").is_file())
+            self.assertTrue((workflows / "09_MiniMax_H3_I2VA_First_Frame_2x.json").is_file())
+            manifest = json.loads((root / "user/default/minimax_h3_r2v_models.json").read_text())
+            self.assertIn("upscale_models/RealESRGAN_x2plus.pth", {item["path"] for item in manifest["files"]})
+
+            env["H3_I2VA"] = "0"
+            result = self.run_entrypoint(env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertFalse((workflows / "09_MiniMax_H3_I2VA_First_Frame_2x.json").exists())
+            self.assertTrue((workflows / "04_MiniMax_H3_Character_R2V_2x.json").is_file())
+            self.assertEqual(personal.read_text(), "{}")
+
     def test_r2v_only_ignores_legacy_models_and_restores_legacy_on_request(self):
         with tempfile.TemporaryDirectory(prefix=".entrypoint-test-", dir=ROOT) as temp:
             root, env = self.make_install(temp)

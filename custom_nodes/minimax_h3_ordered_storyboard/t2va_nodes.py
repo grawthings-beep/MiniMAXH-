@@ -44,6 +44,35 @@ class MiniMaxH3T2VAPrompt:
         return text_only_prompt(prompt), frames
 
 
+I2VA_DEFAULT_PROMPT = """integrated_multimodal_description:
+Begin from the supplied first-frame image. Preserve the character's face, eye shape, hair, outfit, colors, and original rendering style. In one continuous shot, the character notices something just outside the frame, makes a small anticipatory movement, then reacts with a clear, natural change in posture. Keep the camera close enough to recognize the face and maintain the scene established by the first frame. End on a stable, expressive image. No cut or additional person.
+
+overall_soundscape:
+Quiet ambience from the pictured setting, subtle clothing movement, and one soft natural reaction matching the visible action. No spoken dialogue.
+
+non_diegetic_music:
+N/A.
+"""
+
+
+class MiniMaxH3I2VAPrompt(MiniMaxH3T2VAPrompt):
+    """I2VA prompt and duration without the T2VA no-image wording/guard."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 5.0, "max": 15.0, "step": 0.5}),
+            "full_prompt": ("STRING", {"default": I2VA_DEFAULT_PROMPT, "multiline": True, "dynamicPrompts": False}),
+        }}
+
+    CATEGORY = "MiniMax H3/Image to Video"
+    DESCRIPTION = "最初の画像を0秒のフレームに固定。映像・音・BGMを全文1欄へ。"
+
+    def build(self, duration_seconds, full_prompt):
+        from .refmod_nodes import MiniMaxH3FullPrompt
+        return MiniMaxH3FullPrompt().build(duration_seconds, full_prompt)
+
+
 class MiniMaxH3T2VAResolution:
     @classmethod
     def INPUT_TYPES(cls):
@@ -102,13 +131,57 @@ class MiniMaxH3TextToVideo:
             "no reference inputs | native resolution, no upscale")
 
 
+class MiniMaxH3FirstFrameToVideo:
+    """Native FL2VA conditioning with an explicitly required first frame."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "clip": ("CLIP",), "vae": ("VAE",), "first_frame": ("IMAGE",),
+            "prompt": ("STRING", {"forceInput": True}),
+            "width": ("INT", {"default": 448, "min": 32, "max": 2048, "step": 32}),
+            "height": ("INT", {"default": 832, "min": 32, "max": 2048, "step": 32}),
+            "length": ("INT", {"default": 124, "min": 124, "max": 362, "step": 17}),
+        }}
+
+    RETURN_TYPES = ("CONDITIONING", "LATENT", "STRING")
+    RETURN_NAMES = ("positive", "LATENT", "actual_clip")
+    FUNCTION = "encode"
+    CATEGORY = "MiniMax H3/Image to Video"
+    DESCRIPTION = "I2VA: first_frame is the actual opening frame, not a free character reference."
+
+    def encode(self, clip, vae, first_frame, prompt, width, height, length):
+        from .refmod_nodes import PromptBudgetClip, clean_full_prompt
+        from comfy_extras.nodes_minimax_h3 import MiniMaxH3ImageToVideo
+        if any(type(v) is not int for v in (width, height, length)):
+            raise ValueError("I2VA dimensions and frame count must be integers.")
+        if not all(32 <= v <= 2048 and v % 32 == 0 for v in (width, height)) or width * height > 800_000:
+            raise ValueError("I2VAは32px単位・0.8MP以下で生成してください。まず0.4MPを推奨します。")
+        if not 124 <= length <= 362 or length % 17 != 5:
+            raise ValueError("I2VA uses 124–362 frames on the 17n+5 grid at 24fps.")
+        if first_frame is None or not hasattr(first_frame, "shape") or len(first_frame.shape) != 4 or first_frame.shape[0] < 1:
+            raise ValueError("I2VA requires one uploaded first-frame IMAGE.")
+        prompt = clean_full_prompt(prompt)
+        result = MiniMaxH3ImageToVideo.execute(
+            clip=PromptBudgetClip(clip), vae=vae, prompt=prompt,
+            width=width, height=height, length=length,
+            first_frame=first_frame[:1], last_frame=None)
+        return result[0], result[1], (
+            f"I2VA | {width} x {height} | {length} frames / 24fps = {length/24:.3f}s | "
+            "first supplied image is frame 0 | base resolution before finishing")
+
+
 NODE_CLASS_MAPPINGS = {
     "MiniMaxH3T2VAResolution": MiniMaxH3T2VAResolution,
     "MiniMaxH3T2VAPrompt": MiniMaxH3T2VAPrompt,
     "MiniMaxH3TextToVideo": MiniMaxH3TextToVideo,
+    "MiniMaxH3I2VAPrompt": MiniMaxH3I2VAPrompt,
+    "MiniMaxH3FirstFrameToVideo": MiniMaxH3FirstFrameToVideo,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3T2VAResolution": "T2VA Resolution / 縦横比・画素予算",
     "MiniMaxH3T2VAPrompt": "T2VA Full Prompt / 画像なし・全文1欄",
     "MiniMaxH3TextToVideo": "MiniMax H3 Text to Video + Audio",
+    "MiniMaxH3I2VAPrompt": "I2VA Full Prompt / 最初の画像・全文1欄",
+    "MiniMaxH3FirstFrameToVideo": "MiniMax H3 First Frame to Video + Audio",
 }

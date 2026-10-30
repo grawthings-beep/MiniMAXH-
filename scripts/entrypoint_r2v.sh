@@ -25,6 +25,7 @@ R2V_COMPARE="${H3_R2V_COMPARE:-0}"
 R2V_SWAP="${H3_CHARACTER_SWAP:-0}"
 R2V_SWAP_MODEL="${H3_SWAP_MODEL:-official}"
 R2V_T2VA="${H3_T2VA:-0}"
+R2V_I2VA="${H3_I2VA:-0}"
 R2V_VIDEO_AUDIO="${H3_VIDEO_AUDIO:-0}"
 if [[ "${R2V_VIDEO_AUDIO}" != "0" && "${R2V_VIDEO_AUDIO}" != "1" ]]; then
   echo "[h3-video-audio] H3_VIDEO_AUDIO must be 0 or 1"; exit 79
@@ -46,6 +47,17 @@ if [[ "${R2V_T2VA}" == "1" ]]; then
   fi
   if [[ ! -s "${STORY_NODE_ROOT}/t2va_nodes.py" ]]; then
     echo "[h3-t2va] text-only nodes missing; update the image"; exit 77
+  fi
+fi
+if [[ "${R2V_I2VA}" != "0" && "${R2V_I2VA}" != "1" ]]; then
+  echo "[h3-i2va] H3_I2VA must be 0 or 1"; exit 79
+fi
+if [[ "${R2V_I2VA}" == "1" ]]; then
+  if [[ "${R2V_MODEL}" != "dasiwa-v2" ]]; then
+    echo "[h3-i2va] use H3_R2V_MODEL=dasiwa-v2; this is the shared FL2VA-capable checkpoint"; exit 79
+  fi
+  if [[ ! -s "${STORY_NODE_ROOT}/t2va_nodes.py" ]]; then
+    echo "[h3-i2va] first-frame nodes missing; update the image"; exit 77
   fi
 fi
 if [[ "${R2V_SWAP}" != "0" && "${R2V_SWAP}" != "1" ]]; then
@@ -141,6 +153,16 @@ if [[ "${R2V_T2VA}" == "1" ]]; then
     --manifest "${COMFYUI_ROOT}/user/default/minimax_h3_t2va_models.json"
 else
   rm -f "${COMFYUI_ROOT}/user/default/workflows/07_MiniMax_H3_Text_to_Video.json"
+fi
+if [[ "${R2V_I2VA}" == "1" ]]; then
+  python "${SCRIPT_DIR}/prepare_i2va.py" --profile "${R2V_MODEL}" --vae "${R2V_VAE}" \
+    --output-dir "${COMFYUI_ROOT}/user/default"
+  R2V_04_MANIFEST="${COMFYUI_ROOT}/user/default/minimax_h3_r2v_04_models.json"
+  python "${SCRIPT_DIR}/verify_i2va.py" \
+    --workflow "${COMFYUI_ROOT}/user/default/workflows/09_MiniMax_H3_I2VA_First_Frame_2x.json" \
+    --manifest "${COMFYUI_ROOT}/user/default/minimax_h3_i2va_models.json"
+else
+  rm -f "${COMFYUI_ROOT}/user/default/workflows/09_MiniMax_H3_I2VA_First_Frame_2x.json"
 fi
 if [[ "${R2V_VIDEO_AUDIO}" == "1" ]]; then
   python "${SCRIPT_DIR}/prepare_video_audio.py" --profile "${R2V_MODEL}" --vae "${R2V_VAE}" \

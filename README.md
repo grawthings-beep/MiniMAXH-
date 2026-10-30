@@ -52,6 +52,16 @@ DaSiWa v2または公式R2VA本体を共有し、専用LoRA約155MBを起動時�
 比較05が不要なら `H3_R2V_COMPARE=0` とし、04・06・07の3本にできます。
 [T2VA操作・環境変数全文・制限](docs/text-to-video.md)。新しいイメージが必要です。
 
+### 参照画像で始めるI2VAと、キャラだけ参照するREF2VA
+
+`H3_PROFILE=r2v` / `H3_R2V_MODEL=dasiwa-v2` / `H3_I2VA=1` で09を追加します。
+09は画像を**冒頭フレーム**に固定し、04は画像を**キャラ参照**にして別構図から始められます。
+両方ともDaSiWa Hybrid v2本体を共有し、09だけに新しい大型チェックポイントは不要です。
+09はINT8 VAEで画像をencodeし、完成フレームをRealESRGAN 2x→CPUモザイクへ流します。
+`H3_R2V_VAE=x2-detail`でも04は従来どおりX2 Detail、09はINT8＋RealESRGANです。
+作者C-MMH3-33のDirector UI・v4 Turbo・継続生成を丸ごと入れたものではありません。
+操作、取得量、制限は[I2VA/REF2VAガイド](docs/i2va-r2va.md)を参照してください。
+
 ### 完成動画はそのまま、H3で音だけ生成する
 
 `H3_PROFILE=r2v` に `H3_VIDEO_AUDIO=1` を追加すると、08「Video to Audio」を追加します。

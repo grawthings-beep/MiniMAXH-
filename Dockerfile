@@ -346,6 +346,10 @@ RUN python /opt/minimax-h3/scripts/check_character_swap_runtime.py --comfyui-roo
 # No diffusion weights are shipped or downloaded by this smoke test.
 RUN python /opt/minimax-h3/scripts/check_t2va_runtime.py --comfyui-root "${COMFYUI_ROOT}"
 
+# First-frame I2VA must encode an actual frame-zero keyframe, not a free R2VA
+# reference or an image-free T2VA prompt. No diffusion weights are downloaded.
+RUN python /opt/minimax-h3/scripts/check_i2va_runtime.py --comfyui-root "${COMFYUI_ROOT}"
+
 # Audio-only sampling: real MP4 upload, native Qwen video-reference tokenizer,
 # joint latent mask and bit-identical original-video remux. No model weights.
 RUN python /opt/minimax-h3/scripts/check_video_audio_runtime.py --comfyui-root "${COMFYUI_ROOT}"
@@ -421,6 +425,23 @@ RUN for vae in int8 x2-detail; do \
       H3_PROFILE=legacy H3_CHARACTER_R2V=0 H3_T2VA=0 MINIMAX_H3_ENTRYPOINT_SMOKE=1 \
       /opt/minimax-h3/scripts/entrypoint.sh \
     && test ! -e "${COMFYUI_ROOT}/user/default/workflows/07_MiniMax_H3_Text_to_Video.json"
+
+# The first-frame 09 is opt-in, shares DaSiWa v2 with 04, and must also work
+# when the R2VA finishing profile uses X2 Detail (I2VA retains INT8 encode).
+RUN for vae in int8 x2-detail; do \
+      ACCEPT_MINIMAX_H3_LICENSE=1 MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
+        HF_TOKEN=entrypoint-smoke CIVITAI_API_TOKEN=entrypoint-smoke \
+        H3_PROFILE=r2v H3_R2V_MODEL=dasiwa-v2 H3_R2V_VAE="${vae}" \
+        H3_I2VA=1 MINIMAX_H3_ENTRYPOINT_SMOKE=1 \
+        /opt/minimax-h3/scripts/entrypoint.sh || exit 1; \
+      test -f "${COMFYUI_ROOT}/user/default/workflows/04_MiniMax_H3_Character_R2V_2x.json"; \
+      test -f "${COMFYUI_ROOT}/user/default/workflows/09_MiniMax_H3_I2VA_First_Frame_2x.json"; \
+    done \
+    && ACCEPT_MINIMAX_H3_LICENSE=1 MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
+      HF_TOKEN=entrypoint-smoke CIVITAI_API_TOKEN=entrypoint-smoke \
+      H3_PROFILE=r2v H3_R2V_MODEL=dasiwa-v2 H3_I2VA=0 \
+      MINIMAX_H3_ENTRYPOINT_SMOKE=1 /opt/minimax-h3/scripts/entrypoint.sh \
+    && test ! -e "${COMFYUI_ROOT}/user/default/workflows/09_MiniMax_H3_I2VA_First_Frame_2x.json"
 
 EXPOSE 8188
 
