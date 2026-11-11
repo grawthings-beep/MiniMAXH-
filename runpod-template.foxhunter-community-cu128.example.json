@@ -1,0 +1,24 @@
+{
+  "name": "MiniMax-H3-FoxFur-Seed-Hunter-v3",
+  "imageName": "ghcr.io/grawthings-beep/minimax-h3-i2v:foxhunter-community-cu128",
+  "containerDiskInGb": 150,
+  "volumeInGb": 0,
+  "volumeMountPath": "/workspace",
+  "ports": ["8188/http"],
+  "env": {
+    "HF_TOKEN": "",
+    "ACCEPT_MINIMAX_H3_LICENSE": "0",
+    "MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY": "0",
+    "MINIMAX_H3_SEPARATE_LICENSE": "0",
+    "H3_PROFILE": "foxhunter",
+    "HF_XET_HIGH_PERFORMANCE": "auto",
+    "HF_XET_CHUNK_CACHE_SIZE_BYTES": "0",
+    "HF_DOWNLOAD_WORKERS": "4",
+    "HF_HUB_DOWNLOAD_TIMEOUT": "120",
+    "DOWNLOAD_RETRIES": "3",
+    "MODEL_VERIFY": "size",
+    "REQUIRE_COMFY_KITCHEN_CUDA": "0",
+    "COMFYUI_ARGS": "--lowvram --vram-headroom 2 --fast fp16_accumulation",
+    "TINI_SUBREAPER": "1"
+  }
+}

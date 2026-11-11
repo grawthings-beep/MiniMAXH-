@@ -2,6 +2,25 @@
 
 This repository does not redistribute MiniMax H3 weights.
 
+## FoxFur Seed Hunter image
+
+The `Dockerfile.foxhunter` image imports the user-supplied FoxFurEssence Seed
+Hunter v3 workflow by foxydits / FoxFurEssence Films. The workflow's own page
+is https://civitai.red/models/2881362/minimax-h3-seed-hunter-latent-upscaler-seamless-video-continuation-speedups-ref-mods .
+The imported JSON is edited only for portable model names, a neutral sample
+prompt, first-run duration, and removal of author-local preview paths.
+
+All FoxFur model weights are downloaded at runtime, not redistributed in the
+image. Exact sources and hashes are in `manifests/foxhunter_models.json`:
+Singularity v1.3 from WarmBloodAban, Silveroxide Ref2V Turbo Dareties v2,
+LBH-123-AI 3D latent upscaler v1, Kijai TAE preview, hzwer RIFE v4.26,
+and the Comfy-Org Qwen/VAE companions. Their upstream licenses and the MiniMax
+H3 Community License remain applicable; this repository grants no new rights.
+The image pins and retains source checkouts of the ten custom-node repositories
+listed in `scripts/install_foxhunter_nodes.sh`, with their upstream license
+files where provided. The two local Easy-Use-compatible node IDs implement only
+the small seed and lazy if/else behavior required by this workflow.
+
 - Optional X2 Detail VAE weights are downloaded directly from
   [speach1sdef178/MiniMax-H3-X2-Detail-VAE](https://huggingface.co/speach1sdef178/MiniMax-H3-X2-Detail-VAE),
   revision `af8c92d267c6849fec5032c35a65d5766737b338`. The model card declares

@@ -1,0 +1,63 @@
+ARG PYTORCH_IMAGE=pytorch/pytorch:2.9.1-cuda12.8-cudnn9-runtime@sha256:7b324d212a4450795b49edba9949b7cdc72429148a64e974334bfe5774d51385
+FROM ${PYTORCH_IMAGE}
+
+ARG COMFYUI_COMMIT=4d64a8bc072b81c9b47321789b4d83fb7348ae2a
+ARG MINIMAX_H3_RUNTIME_VARIANT=community-cu128
+ARG REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT=0
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    COMFYUI_ROOT=/opt/ComfyUI \
+    COMFYUI_MODEL_DIR=/opt/ComfyUI/models \
+    HF_HOME=/tmp/huggingface \
+    HF_XET_HIGH_PERFORMANCE=auto \
+    HF_XET_CHUNK_CACHE_SIZE_BYTES=0 \
+    HF_HUB_DOWNLOAD_TIMEOUT=120 \
+    HF_HUB_ETAG_TIMEOUT=30 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    HF_HUB_DISABLE_UPDATE_CHECK=1 \
+    HF_DOWNLOAD_WORKERS=4 \
+    MODEL_VERIFY=size \
+    H3_PROFILE=foxhunter \
+    MINIMAX_H3_RUNTIME_VARIANT=${MINIMAX_H3_RUNTIME_VARIANT} \
+    REQUIRE_COMFY_KITCHEN_CUDA=${REQUIRE_COMFY_KITCHEN_CUDA_DEFAULT} \
+    COMFYUI_ARGS="--lowvram --vram-headroom 2"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      aria2 curl ffmpeg git libgl1 libglib2.0-0 tini \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/huggingface.txt /opt/minimax-h3/requirements/huggingface.txt
+ARG PIP_CONSTRAINT=/opt/minimax-h3/requirements/huggingface.txt
+
+RUN git init -q "${COMFYUI_ROOT}" \
+    && git -C "${COMFYUI_ROOT}" remote add origin https://github.com/Comfy-Org/ComfyUI.git \
+    && git -C "${COMFYUI_ROOT}" fetch -q --depth 1 origin "${COMFYUI_COMMIT}" \
+    && git -C "${COMFYUI_ROOT}" checkout -q --detach FETCH_HEAD \
+    && test "$(git -C "${COMFYUI_ROOT}" rev-parse HEAD)" = "${COMFYUI_COMMIT}" \
+    && pip uninstall -y spin \
+    && pip install --no-cache-dir -r "${COMFYUI_ROOT}/requirements.txt" \
+      -r /opt/minimax-h3/requirements/huggingface.txt \
+    && python -m pip check \
+    && grep -Fq 'class MiniMaxH3LatentUpscaleWithModel' "${COMFYUI_ROOT}/comfy_extras/nodes_minimax_h3.py" \
+    && grep -Fq 'class MiniMaxH3LatentUpscaler' "${COMFYUI_ROOT}/comfy/ldm/minimax/latent_upscaler.py"
+
+COPY . /opt/minimax-h3
+RUN chmod +x /opt/minimax-h3/scripts/*.sh \
+    && /opt/minimax-h3/scripts/install_foxhunter_nodes.sh \
+    && cp -R /opt/minimax-h3/custom_nodes/foxhunter_compat \
+      "${COMFYUI_ROOT}/custom_nodes/foxhunter_compat" \
+    && mkdir -p "${COMFYUI_ROOT}/user/default/workflows" \
+    && python /opt/minimax-h3/scripts/verify_foxhunter.py \
+      --workflow /opt/minimax-h3/workflows/foxhunter_seed_hunter_v3.json \
+      --manifest /opt/minimax-h3/manifests/foxhunter_models.json \
+    && ACCEPT_MINIMAX_H3_LICENSE=1 MINIMAX_H3_LICENSEE_IN_APPLICABLE_TERRITORY=1 \
+      MINIMAX_H3_ENTRYPOINT_SMOKE=1 /opt/minimax-h3/scripts/entrypoint_foxhunter.sh \
+    && /opt/minimax-h3/scripts/smoke_foxhunter_nodes.sh
+
+EXPOSE 8188
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30m --retries=4 \
+  CMD curl -fsS http://127.0.0.1:8188/system_stats >/dev/null || exit 1
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/minimax-h3/scripts/entrypoint_foxhunter.sh"]

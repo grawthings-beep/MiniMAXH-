@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "repo_id": "Comfy-Org/MiniMax-H3",
+  "revision": "bf92c4091e333e69b8ca1998e0a669f15cb0832b",
+  "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE",
+  "total_bytes": 41900247498,
+  "files": [
+    {
+      "path": "diffusion_models/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+      "source_url": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/resolve/1259cf16cd0b655ba691a32fb46a409142762972/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+      "source_license_url": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity",
+      "size": 20967647456,
+      "sha256": "412a7b126595a958964193f3b42513d7cf2df4196ef04223a0f05e3622949cce",
+      "verify_sha256": true
+    },
+    {
+      "path": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "size": 15687142551,
+      "sha256": "35a88d51044231fe332301d7a62aa81e3f2cba62febeb446e2c1e3e0ef76f2c6"
+    },
+    {
+      "path": "vae/minimax_h3_video_vae_int8_convrot.safetensors",
+      "size": 2811065184,
+      "sha256": "52a2c8c73583c86e4f41cdcce3a6ad0ea562987bc0bf3d60a0cef5f5c8e60c0e"
+    },
+    {
+      "path": "vae/minimax_h3_audio_vae_fp32.safetensors",
+      "size": 605254808,
+      "sha256": "8e505d95dd1561d47abd43d4238fd40d9bb1ae9e147ed0a4cba778d76ae4db48"
+    },
+    {
+      "path": "loras/MINIMAX/minimax_h3_ref2v_turbo_silver_dareties_comfy_pruned_v2.safetensors",
+      "source_url": "https://huggingface.co/silveroxides/MiniMax-H3_tests/resolve/4d302112a17d7a2699828fcbb9c7153e3566d4cf/silver_official_releases/minimax_h3_ref2v_turbo_silver_dareties_comfy_pruned_v2.safetensors",
+      "source_license_url": "https://huggingface.co/silveroxides/MiniMax-H3_tests",
+      "size": 1105883213,
+      "sha256": "6f085fb58dc3830cadb0fd3a927df730bfb500f9ea1f456a1ad605f0cf928c10",
+      "verify_sha256": true
+    },
+    {
+      "path": "latent_upscale_models/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
+      "source_url": "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/85a0187096046badc0a71ab6bd6be182ab06c0f4/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
+      "source_license_url": "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler",
+      "size": 690592992,
+      "sha256": "4f57821f5837f32f7142b67d815606dbd7550f194e5c769f7d6c3f83b146a5e6",
+      "verify_sha256": true
+    },
+    {
+      "path": "vae_approx/taeh3.safetensors",
+      "source_url": "https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/a213ac8bf2f148b4f32372279a7f207846978900/vae_approx/taeh3.safetensors",
+      "source_license_url": "https://huggingface.co/Kijai/MiniMax-H3-TAE",
+      "size": 9791388,
+      "sha256": "f0f60fa072089997f817402098c2fd90777cb2660dd79cf5df42fc1e3e08e527",
+      "verify_sha256": true
+    },
+    {
+      "path": "rife/RIFEv4.26_0921.zip",
+      "source_url": "https://huggingface.co/hzwer/RIFE/resolve/01fdc7e97404120c243c3ea7b427046e5dc7643e/RIFEv4.26_0921.zip",
+      "source_license_url": "https://huggingface.co/hzwer/RIFE",
+      "size": 22869906,
+      "sha256": "1fa9b9cda3d9b8c3e301359e2595960902f97bf926c08598b0e9957a3f3f760e",
+      "verify_sha256": true
+    }
+  ]
+}

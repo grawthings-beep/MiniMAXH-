@@ -4,6 +4,16 @@ MiniMax H3のI2Vを、永続ストレージなしのRunPod Podで毎回起動す
 ベースモデル、アップスケーラー、creator LoRA、LightX2V Turbo LoRA、自動モザイク用モデルは
 Docker imageへ埋め込まず、Pod起動時に並列・再開可能・整合性検証付きで取得します。
 
+## 最優先: FoxFurEssence Seed Hunter v3
+
+ユーザー提供のSeed Hunter v3を使う場合は、専用の `foxhunter-community-cu128` または
+`foxhunter-fast-cu130` イメージを選びます。Singularity v1.3、Silveroxide Turbo
+LoRA、LBH潜在アップスケーラ、RIFE、TAEと必要ノードを揃えた独立構成です。
+ComfyUIでは `00_FoxFur_Seed_Hunter_v3` を開いてください。既存の04/09用イメージと
+ワークフローは残しています。初回は5秒、追加アップスケール・RIFEはOFFです。
+[RunPodの環境変数・操作・制限](docs/foxhunter.md)と
+[Community CUDA 12.8テンプレート](runpod-template.foxhunter-community-cu128.example.json)を参照。
+
 ## キャラR2VAだけを使う場合（起動ダウンロード削減）
 
 新imageで `H3_PROFILE=r2v` を指定すると、同一キャラ画像1〜8枚＋全文プロンプト1欄の04だけを配置します。
