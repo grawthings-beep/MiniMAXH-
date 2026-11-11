@@ -13,8 +13,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "custom_nodes"))
 from extract_foxhunter_rife import extract  # noqa: E402
 from verify_foxhunter import validate  # noqa: E402
+from foxhunter_compat import NODE_CLASS_MAPPINGS  # noqa: E402
 
 
 class FoxHunterTests(unittest.TestCase):
@@ -25,6 +27,13 @@ class FoxHunterTests(unittest.TestCase):
 
     def test_workflow_and_model_contract(self):
         validate(self.workflow, self.manifest)
+
+    def test_small_easy_use_compat_nodes(self):
+        self.assertEqual(NODE_CLASS_MAPPINGS["easy seed"]().doit(42), (42,))
+        choice = NODE_CLASS_MAPPINGS["easy ifElse"]()
+        self.assertEqual(choice.check_lazy_status(True, None, "other"), ["on_true"])
+        self.assertEqual(choice.choose(True, "yes", "no"), ("yes",))
+        self.assertEqual(choice.choose(False, "yes", "no"), ("no",))
 
     def test_missing_lora_is_rejected(self):
         workflow = copy.deepcopy(self.workflow)

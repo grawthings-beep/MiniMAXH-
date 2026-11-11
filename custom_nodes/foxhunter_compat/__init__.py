@@ -4,9 +4,6 @@ This avoids installing the entire Easy-Use pack (and its unrelated diffusion
 dependencies) into the isolated FoxFur container.
 """
 
-from comfy_api.latest import ComfyExtension, io
-
-
 class FoxEasySeed:
     @classmethod
     def INPUT_TYPES(cls):
@@ -21,19 +18,17 @@ class FoxEasySeed:
         return (seed,)
 
 
-class FoxEasyIfElse(io.ComfyNode):
+class FoxEasyIfElse:
     @classmethod
-    def define_schema(cls):
-        return io.Schema(
-            node_id="easy ifElse",
-            category="FoxHunter/compat",
-            inputs=[
-                io.Boolean.Input("boolean"),
-                io.AnyType.Input("on_true", lazy=True),
-                io.AnyType.Input("on_false", lazy=True),
-            ],
-            outputs=[io.AnyType.Output("*")],
-        )
+    def INPUT_TYPES(cls):
+        return {"required": {"boolean": ("BOOLEAN", {"default": True})},
+                "optional": {"on_true": ("*", {"lazy": True}),
+                             "on_false": ("*", {"lazy": True})}}
+
+    RETURN_TYPES = ("*",)
+    RETURN_NAMES = ("*",)
+    FUNCTION = "choose"
+    CATEGORY = "FoxHunter/compat"
 
     @classmethod
     def check_lazy_status(cls, boolean=True, on_true=None, on_false=None):
@@ -43,21 +38,14 @@ class FoxEasyIfElse(io.ComfyNode):
             return ["on_false"]
 
     @classmethod
-    def execute(cls, **kwargs):
-        return io.NodeOutput(kwargs["on_true"] if kwargs["boolean"] else kwargs["on_false"])
+    def choose(self, boolean=True, on_true=None, on_false=None):
+        return (on_true if boolean else on_false,)
 
 
-NODE_CLASS_MAPPINGS = {"easy seed": FoxEasySeed}
-NODE_DISPLAY_NAME_MAPPINGS = {"easy seed": "EasySeed (FoxHunter compatibility)"}
+NODE_CLASS_MAPPINGS = {"easy seed": FoxEasySeed, "easy ifElse": FoxEasyIfElse}
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "easy seed": "EasySeed (FoxHunter compatibility)",
+    "easy ifElse": "If else (FoxHunter compatibility)",
+}
 
-
-class FoxHunterCompatExtension(ComfyExtension):
-    async def get_node_list(self):
-        return [FoxEasyIfElse]
-
-
-async def comfy_entrypoint():
-    return FoxHunterCompatExtension()
-
-
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "comfy_entrypoint"]
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
