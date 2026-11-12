@@ -2,8 +2,8 @@
 """Import FoxFurEssence Seed Hunter v3 as a safe, portable RunPod preset.
 
 The supplied JSON is data, not instructions. The imported graph is preserved;
-only stale model paths, the author's sample prompt, preview metadata, and the
-first-run duration are changed.
+only the selected model/LoRA, their matching sampling controls, the author's
+sample prompt, preview metadata, and the first-run duration are changed.
 """
 
 from __future__ import annotations
@@ -15,9 +15,11 @@ from pathlib import Path
 
 
 SOURCE_SHA256 = "8c4df9a03003da0527a04ee915a00a65319aaa359b0e264edeaa6841264f4a94"
-SINGULARITY = "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors"
+SOURCE_SINGULARITY = "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors"
+EROS = "10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors"
 UPSCALE = "minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors"
-SILVER = "MINIMAX/minimax_h3_ref2v_turbo_silver_dareties_comfy_pruned_v2.safetensors"
+SOURCE_SILVER = "minimax_h3_ref2v_turbo_silver_dareties_comfy_pruned_v2.safetensors"
+MYSTIC = "MINIMAX/MysticXXX_MMH3-V5-ref2va.safetensors"
 NEUTRAL_PROMPT = """subject_definitions:
 <Subject 1> is the same character shown in <Picture 1>. Preserve the reference character's face, hairstyle, outfit, proportions, and original rendering style.
 
@@ -44,29 +46,54 @@ def import_workflow(source: Path) -> dict:
         raise ValueError(f"Unexpected source JSON SHA256: {actual}")
     workflow = json.loads(raw)
     nodes = {node["id"]: node for node in workflow["nodes"]}
-    expected = {22: "b240b117-e18a-4bbf-bc5e-580a3284e8ac", 171: "fc72fed4-8bc4-4873-9164-c09cc633cce6", 365: "H3PromptIDE", 554: "PixaromaLoraLoader", 605: "LatentUpscaleModelLoader"}
+    expected = {22: "b240b117-e18a-4bbf-bc5e-580a3284e8ac", 171: "fc72fed4-8bc4-4873-9164-c09cc633cce6", 195: "MiniMaxH3SigmaShift", 365: "H3PromptIDE", 554: "PixaromaLoraLoader", 597: "PixaromaSliders", 605: "LatentUpscaleModelLoader"}
     if any(nodes[node_id]["type"] != kind for node_id, kind in expected.items()):
         raise ValueError("Source graph layout changed; refusing to patch unknown nodes")
-    if nodes[171]["widgets_values"][0] != SINGULARITY:
+    if nodes[171]["widgets_values"][0] != SOURCE_SINGULARITY:
         raise ValueError("Source does not select the expected Singularity v1.3 model")
+    nodes[171]["widgets_values"][0] = EROS
+    nodes[171]["widgets_values_named"]["unet_name"] = EROS
+    nodes[22]["widgets_values"][:3] = ["euler", "simple", 8]
     nodes[22]["widgets_values"][-1] = 5
+    sliders = nodes[597]["properties"]["slidersState"]["sliders"]
+    if [slider["name"] for slider in sliders[:3]] != [
+        "sampler name", "scheduler", "steps - 1st stage"
+    ]:
+        raise ValueError("Source first-pass controls changed")
+    for slider, value in zip(sliders[:3], ("euler", "simple", 8)):
+        slider["value"] = value
+    # Eros beta5 Turbo's creator recommends 12 video / 7+ audio shift with
+    # Euler + simple at 8 steps. The source workflow bypasses this node.
+    if nodes[195]["mode"] != 4:
+        raise ValueError("Source sigma-shift node is no longer bypassed")
+    nodes[195]["mode"] = 0
+    nodes[195]["widgets_values"] = [12, 7]
+    nodes[195]["widgets_values_named"].update(shift_video=12, shift_audio=7)
     nodes[365]["widgets_values"][0] = NEUTRAL_PROMPT
     nodes[605]["widgets_values"][0] = UPSCALE
     lora = nodes[554]["widgets_values"][0]["loras"]
-    if len(lora) != 1 or not lora[0]["name"].replace("\\", "/").endswith(Path(SILVER).name):
+    if len(lora) != 1 or not lora[0]["name"].replace("\\", "/").endswith(SOURCE_SILVER):
         raise ValueError("Source Silver LoRA selection changed")
-    lora[0]["name"] = SILVER
+    # Eros beta5 already contains a Turbo delta. Do not stack Silver Turbo.
+    lora[0]["name"] = MYSTIC
+    lora[0]["sm"] = 0.5
+    lora[0]["sc"] = 0.5
+    nodes[554]["widgets_values_named"]["loras_ui"] = nodes[554]["widgets_values"][0]
+    nodes[554]["properties"]["loraLoaderState"] = json.dumps(
+        nodes[554]["widgets_values"][0], ensure_ascii=False, separators=(",", ":")
+    )
     for subgraph in workflow["definitions"]["subgraphs"]:
         if subgraph["id"] == nodes[171]["type"]:
             unet = next(node for node in subgraph["nodes"] if node["type"] == "UNETLoader")
-            unet["widgets_values"][0] = SINGULARITY
+            unet["widgets_values"][0] = EROS
+            unet["widgets_values_named"]["unet_name"] = EROS
     for node in workflow["nodes"]:
         if node["type"] == "VHS_VideoCombine":
             node["widgets_values"]["videopreview"] = {"hidden": False, "paused": False, "params": {}}
     workflow.setdefault("extra", {})["minimax_h3_foxhunter_import"] = {
         "source_sha256": SOURCE_SHA256,
         "first_run_seconds": 5,
-        "model_profile": "singularity-v1.3-silver",
+        "model_profile": "eros-beta5-w4a8-mystic-v5",
         "gpu_generation_verified": False,
     }
     return workflow

@@ -44,7 +44,7 @@ if [[ "${REQUIRE_COMFY_KITCHEN_CUDA:-0}" == "1" ]]; then
   PREFLIGHT+=(--require-comfy-kitchen-cuda)
 fi
 python "${ROOT}/scripts/preflight.py" "${PREFLIGHT[@]}"
-MODEL_MANIFEST="${MANIFEST}" COMFYUI_MODEL_DIR="${MODEL_DIR}" "${ROOT}/scripts/download_models.sh"
+python "${ROOT}/scripts/download_foxhunter_models.py" --manifest "${MANIFEST}" --root "${MODEL_DIR}"
 python "${ROOT}/scripts/verify_models.py" --manifest "${MANIFEST}" --root "${MODEL_DIR}" \
   --mode "${MODEL_VERIFY:-size}" --workers "${HF_DOWNLOAD_WORKERS:-4}"
 python "${ROOT}/scripts/extract_foxhunter_rife.py" \

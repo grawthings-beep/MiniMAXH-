@@ -41,6 +41,7 @@ RUN git init -q "${COMFYUI_ROOT}" \
     && pip install --no-cache-dir -r "${COMFYUI_ROOT}/requirements.txt" \
       -r /opt/minimax-h3/requirements/huggingface.txt \
     && python -m pip check \
+    && PYTHONPATH="${COMFYUI_ROOT}" python -c 'from importlib.metadata import version; from comfy_kitchen.tensor import AsymW4A8Int8Layout; from comfy.quant_ops import QUANT_ALGOS; assert version("comfy-kitchen") == "0.2.41"; assert QUANT_ALGOS["asym_w4a8_int8"]["comfy_tensor_layout"] == "AsymW4A8Int8Layout"' \
     && grep -Fq 'class MiniMaxH3LatentUpscaleWithModel' "${COMFYUI_ROOT}/comfy_extras/nodes_minimax_h3.py" \
     && grep -Fq 'class MiniMaxH3LatentUpscaler' "${COMFYUI_ROOT}/comfy/ldm/minimax/latent_upscaler.py"
 

@@ -3,14 +3,15 @@
   "repo_id": "Comfy-Org/MiniMax-H3",
   "revision": "bf92c4091e333e69b8ca1998e0a669f15cb0832b",
   "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE",
-  "total_bytes": 41900247498,
+  "total_bytes": 33962725035,
   "files": [
     {
-      "path": "diffusion_models/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
-      "source_url": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/resolve/1259cf16cd0b655ba691a32fb46a409142762972/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
-      "source_license_url": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity",
-      "size": 20967647456,
-      "sha256": "412a7b126595a958964193f3b42513d7cf2df4196ef04223a0f05e3622949cce",
+      "path": "diffusion_models/10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors",
+      "source_url": "https://huggingface.co/TenStrip/10Eros-Max/resolve/e4753986789e11aa50dd3eea15a774d4ef773a5a/10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors",
+      "civitai_file_url": "https://civitai.com/api/download/models/3294059?fileId=3185144",
+      "source_license_url": "https://huggingface.co/TenStrip/10Eros-Max",
+      "size": 13997668774,
+      "sha256": "a8067999c65594b462d581c02b8a0573dd42d9812a14c586150a947c13388f2e",
       "verify_sha256": true
     },
     {
@@ -29,11 +30,13 @@
       "sha256": "8e505d95dd1561d47abd43d4238fd40d9bb1ae9e147ed0a4cba778d76ae4db48"
     },
     {
-      "path": "loras/MINIMAX/minimax_h3_ref2v_turbo_silver_dareties_comfy_pruned_v2.safetensors",
-      "source_url": "https://huggingface.co/silveroxides/MiniMax-H3_tests/resolve/4d302112a17d7a2699828fcbb9c7153e3566d4cf/silver_official_releases/minimax_h3_ref2v_turbo_silver_dareties_comfy_pruned_v2.safetensors",
-      "source_license_url": "https://huggingface.co/silveroxides/MiniMax-H3_tests",
-      "size": 1105883213,
-      "sha256": "6f085fb58dc3830cadb0fd3a927df730bfb500f9ea1f456a1ad605f0cf928c10",
+      "path": "loras/MINIMAX/MysticXXX_MMH3-V5-ref2va.safetensors",
+      "auth": "hf",
+      "source_repo_id": "uwgm/illustrious",
+      "source_path": "MysticXXX_MMH3-V5-ref2va.safetensors",
+      "source_revision": "main",
+      "size": 138339432,
+      "sha256": "f57c76e761f7a5113e541ad58e84c648a5fe4d3cfbc277d0c44ae9763da29afe",
       "verify_sha256": true
     },
     {

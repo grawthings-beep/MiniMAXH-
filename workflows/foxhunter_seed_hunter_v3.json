@@ -1989,7 +1989,7 @@
       ],
       "flags": {},
       "order": 76,
-      "mode": 4,
+      "mode": 0,
       "inputs": [
         {
           "name": "model",
@@ -2019,11 +2019,11 @@
       },
       "widgets_values": [
         12,
-        6
+        7
       ],
       "widgets_values_named": {
         "shift_video": 12,
-        "shift_audio": 6
+        "shift_audio": 7
       },
       "color": "#322",
       "bgcolor": "#533"
@@ -5895,13 +5895,13 @@
         "previewExposures": []
       },
       "widgets_values": [
-        "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+        "10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors",
         "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
         "minimax_h3_video_vae_int8_convrot.safetensors",
         "minimax_h3_audio_vae_fp32.safetensors"
       ],
       "widgets_values_named": {
-        "unet_name": "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+        "unet_name": "10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors",
         "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
         "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors",
         "vae_name_1": "minimax_h3_audio_vae_fp32.safetensors"
@@ -6043,8 +6043,8 @@
         "previewExposures": []
       },
       "widgets_values": [
-        "er_sde",
-        "beta",
+        "euler",
+        "simple",
         8,
         0.20000000000000004,
         "16:9 (Widescreen)",
@@ -9098,7 +9098,7 @@
           "input_ue_unconnectable": {},
           "version": "7.8"
         },
-        "loraLoaderState": "{\"version\":1,\"loras\":[{\"id\":\"l41092a8e\",\"name\":\"MINIMAX\\\\minimax_h3_ref2v_turbo_silver_dareties_comfy_pruned_v2.safetensors\",\"on\":true,\"sm\":0.75,\"sc\":0.75,\"triggers\":[],\"custom\":[],\"at\":true}],\"sep\":\", \",\"step\":0.05,\"defStrength\":1,\"linkStrength\":true,\"civitai\":true,\"thumbs\":true,\"hideExt\":true,\"accent\":null,\"cacheMode\":\"last\"}"
+        "loraLoaderState": "{\"version\":1,\"loras\":[{\"id\":\"l41092a8e\",\"name\":\"MINIMAX/MysticXXX_MMH3-V5-ref2va.safetensors\",\"on\":true,\"sm\":0.5,\"sc\":0.5,\"triggers\":[],\"custom\":[],\"at\":true}],\"sep\":\", \",\"step\":0.05,\"defStrength\":1,\"linkStrength\":true,\"civitai\":true,\"thumbs\":true,\"hideExt\":true,\"accent\":null,\"cacheMode\":\"last\"}"
       },
       "widgets_values": [
         {
@@ -9106,10 +9106,10 @@
           "loras": [
             {
               "id": "l41092a8e",
-              "name": "MINIMAX/minimax_h3_ref2v_turbo_silver_dareties_comfy_pruned_v2.safetensors",
+              "name": "MINIMAX/MysticXXX_MMH3-V5-ref2va.safetensors",
               "on": true,
-              "sm": 0.75,
-              "sc": 0.75,
+              "sm": 0.5,
+              "sc": 0.5,
               "triggers": [],
               "custom": [],
               "at": true
@@ -9132,10 +9132,10 @@
           "loras": [
             {
               "id": "l41092a8e",
-              "name": "MINIMAX\\minimax_h3_ref2v_turbo_silver_dareties_comfy_pruned_v2.safetensors",
+              "name": "MINIMAX/MysticXXX_MMH3-V5-ref2va.safetensors",
               "on": true,
-              "sm": 0.75,
-              "sc": 0.75,
+              "sm": 0.5,
+              "sc": 0.5,
               "triggers": [],
               "custom": [],
               "at": true
@@ -10257,7 +10257,7 @@
               "min": 0,
               "max": 1,
               "step": 0.01,
-              "value": "er_sde",
+              "value": "euler",
               "options": [
                 "euler",
                 "euler_cfg_pp",
@@ -10338,7 +10338,7 @@
               "min": 0,
               "max": 1,
               "step": 0.01,
-              "value": "beta",
+              "value": "simple",
               "options": [
                 "simple",
                 "sgm_uniform",
@@ -10366,7 +10366,7 @@
               "min": 4,
               "max": 20,
               "step": 1,
-              "value": 6,
+              "value": 8,
               "autoName": false
             },
             {
@@ -16464,11 +16464,11 @@
               }
             },
             "widgets_values": [
-              "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+              "10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors",
               "default"
             ],
             "widgets_values_named": {
-              "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+              "unet_name": "10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors",
               "weight_dtype": "default"
             },
             "color": "#222",
@@ -17341,7 +17341,7 @@
     "minimax_h3_foxhunter_import": {
       "source_sha256": "8c4df9a03003da0527a04ee915a00a65319aaa359b0e264edeaa6841264f4a94",
       "first_run_seconds": 5,
-      "model_profile": "singularity-v1.3-silver",
+      "model_profile": "eros-beta5-w4a8-mystic-v5",
       "gpu_generation_verified": false
     }
   },
