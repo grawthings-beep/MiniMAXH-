@@ -25,6 +25,11 @@ if [[ "${ready}" != "1" ]]; then
   echo "[foxhunter] ComfyUI failed to start on CPU during image build" >&2
   exit 1
 fi
+curl -fsS http://127.0.0.1:8191/extensions/foxhunter_compat/sample2_batch.js >/dev/null
+curl -fsS http://127.0.0.1:8191/extensions/foxhunter_compat/pair_files.mjs >/dev/null
+# Distinguish an installed route returning validation errors from a missing route.
+test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d '{"rows":[],"graph":{}}' http://127.0.0.1:8191/api/foxhunter/batch)" = "400"
 python /opt/minimax-h3/scripts/check_foxhunter_object_info.py \
   --object-info /tmp/foxhunter-object-info.json \
   --workflow /opt/minimax-h3/workflows/foxhunter_seed_hunter_v3.json || {

@@ -48,4 +48,17 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "easy ifElse": "If else (FoxHunter compatibility)",
 }
 
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
+WEB_DIRECTORY = "./web"
+
+# Unit tests also import the legacy nodes without ComfyUI installed.
+try:
+    from server import PromptServer
+except ModuleNotFoundError as exc:
+    if exc.name != "server":
+        raise
+else:
+    import folder_paths
+    from .batch_routes import register
+    register(PromptServer.instance, folder_paths.get_input_directory())
+
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
